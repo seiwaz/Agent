@@ -1,4 +1,7 @@
-"""Analysis-only RoomToTP probe: never influences runtime, records complete causal evidence."""
+"""Analysis-only RoomToTP probe: never influences runtime.
+
+V6.0: RoomToTP is informational and never rejects, so the probe's trigger (a Context rejected
+for RoomToTP) can no longer occur; the probe stays compiled but inert (DECISIONS V6.0)."""
 
 from __future__ import annotations
 
@@ -55,28 +58,9 @@ def runtime_hash(eng: ShadowSymbolEngine) -> str:
     return hashlib.sha256(json.dumps(rows, default=str).encode()).hexdigest()
 
 
-def test_probes_never_change_any_runtime_result():
+def test_probes_never_change_any_runtime_result_and_are_inert_under_v6():
     with_probes, rec = run(True)
     without, _ = run(False)
-    assert rec.records, "the tape must produce RoomToTP rejections"
+    assert rec.records == []  # V6.0: no Context is ever rejected for RoomToTP
     assert runtime_hash(with_probes) == runtime_hash(without)
-
-
-def test_probe_records_are_complete_and_causal():
-    eng, rec = run(True)
-    results = {r["result"] for r in rec.records}
-    assert results  # e.g. RUN_ENDED / NO_CLOSE_THROUGH_OBSTACLE / REJECTED_* / CLOSED
-    for r in rec.records:
-        assert r["probe_version"] == "room-b1"
-        assert r["blocking_swing"] and r["distance_r"] >= 0
-        assert "same_spike_alive" in r or r["result"] in ("AMBIGUOUS_DATA_GAP", "PROBE_ERROR")
-        if r.get("closed_through") and r["result"] not in ("RUN_ENDED", "PULLBACK_STARTED"):
-            re = r["reevaluation"]
-            # exactly the consumed swing is gone; any OTHER swing in the path still blocks
-            assert re["obstacle"] != r["blocking_swing"]
-        if r["filled"]:
-            ex = r["execution"]
-            assert D(ex["e1_filled_qty"]) > 0 and ex["r_usdt"]
-            pb = r["pullback_minute"]
-            assert pb is not None
-    assert not eng.probes or all(not p.done for p in eng.probes)
+    assert not any("ROOM_TO_TP_INSUFFICIENT" in m.reasons for m in with_probes.finished)

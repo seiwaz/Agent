@@ -137,3 +137,72 @@ def test_b38_opposing_candidates_strictly_beyond_spike_extreme():
     assert snap.opposing_swing_level == D("121")
     st2 = late_state(20, pivots=[pivot_high(10, "120")], regime=Regime.TREND)
     assert ex(st2, spike_candles()).opposing_swing_infinite  # equal to extreme: not strictly above
+
+
+# ---- V6.0: Exhaustion is advisory at the gates level --------------------------------------
+
+
+def _gates(state):  # type: ignore[no-untyped-def]
+    from sp2l.engine.gates import M5Gates
+    from sp2l.strategy.risk.engine import (
+        CostModel,
+        ExchangeFilters,
+        Mode,
+        unverifiable_liquidation,
+    )
+
+    return M5Gates(
+        state,
+        Mode.SHADOW,
+        10,
+        CostModel(D("0.0008"), D("0.00095"), D("0.000198")),
+        ExchangeFilters(D("0.1"), D("0.001"), None, None, False),
+        lambda: D(100),
+        lambda: D(100),
+        unverifiable_liquidation,
+    )
+
+
+def _evaluate(state, candles):  # type: ignore[no-untyped-def]
+    from sp2l.strategy.levels import compute_levels
+    from sp2l.strategy.spike import Spike
+
+    sp = Spike(Side.LONG, list(candles))
+    lv = compute_levels(Side.LONG, sp.origin, sp.last, D("0.1"))
+    return _gates(state).evaluate(
+        side=Side.LONG,
+        eval_time=eval_time(state),
+        levels=lv,
+        spike=sp,
+        frozen=None,
+        with_risk=False,
+    )
+
+
+def test_gates_never_reject_on_exhaustion_and_record_advisory_would_reject():
+    st = late_state(20)
+    raw = ex(st, spike_candles())
+    assert raw.status == "REJECT"  # evaluate_exhaustion itself is unchanged
+    res = _evaluate(st, spike_candles())
+    assert res.exhaustion is not None and res.exhaustion.passed
+    assert res.exhaustion.reason is None
+    assert res.exhaustion.sub_reasons[:3] == [
+        Sub.LATE_TREND_AGE,
+        Sub.EXTREME_STRETCH,
+        Sub.CLIMACTIC_SPIKE,
+    ]
+    assert (
+        "ADVISORY_WOULD_REJECT" in res.exhaustion.sub_reasons
+        and REJECT in res.exhaustion.sub_reasons
+    )
+    assert res.failed_state() is None or res.failed_state().value != "REJECTED_EXHAUSTION"
+    assert REJECT not in res.reasons()
+
+
+def test_gates_turn_unknown_exhaustion_into_advisory_unknown():
+    st = make_state(high=lambda k: "100", low=lambda k: "100")
+    res = _evaluate(st, spike_candles())
+    assert res.exhaustion is not None and res.exhaustion.passed
+    assert (
+        "ADVISORY_UNKNOWN" in res.exhaustion.sub_reasons and UNKNOWN in res.exhaustion.sub_reasons
+    )

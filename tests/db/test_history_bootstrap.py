@@ -40,6 +40,16 @@ def true_series() -> dict[datetime, Candle]:
 SERIES = true_series()
 
 
+def _set_clock() -> None:
+    """Re-anchor the synthetic series to the current wall-clock 5-minute boundary."""
+    global BASE, NOW, SERIES
+    now5 = datetime.now(UTC).replace(second=0, microsecond=0)
+    now5 -= timedelta(minutes=now5.minute % 5)
+    BASE = now5 - N * MIN
+    NOW = BASE + N * MIN + timedelta(seconds=90)
+    SERIES = true_series()
+
+
 def chart(a: datetime, b: datetime, tamper: bool = False) -> list[dict[str, object]]:
     """Tabdeal's chart under the continuity model; it omits the HOLES minutes."""
     out, prev = [], None
@@ -63,6 +73,7 @@ def live(engine):  # type: ignore[no-untyped-def]
     """A fresh symbol per test (canonical candles can never be deleted)."""
     global SYM
     SYM = f"XAU{next(_n)}USDT"
+    _set_clock()  # anchored when the test runs: readiness is judged against wall-clock time
     store = MarketStore(engine, SYM)
     agg = M5Aggregator()
     for i in range(LIVE_FROM - 1, N):

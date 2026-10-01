@@ -284,3 +284,4 @@ Owner brief: a WebSocket interruption must not needlessly invalidate 12.5 h of i
 - **Exhaustion keeps its trigger.** When advisory turns a REJECT/UNKNOWN into PASS, the original reason code is appended to the sub-reasons so nothing is lost.
 - **Warmup has one source.** `indicators.m5_state.DEFAULT_WARMUP` = 30 is the code default (engine, Shadow, feed report and API readiness); the config value overrides it for the engine.
 - **Git.** The working copy was not a git repository; it was initialised with a baseline commit of the V5.12 state and the work done on branch `context-v6`.
+- **RoomToTP probe inert.** The analysis-only RoomProbe fires only on a Context rejected for RoomToTP, which cannot happen under V6.0. It stays compiled (and `consumed_obstacles` stays available) but produces no records; its tests now assert exactly that.

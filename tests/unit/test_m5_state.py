@@ -17,19 +17,19 @@ def feed(state: M5State, candles) -> None:
         state.add(M5Result(c.open_time, M5Status.OK, c))
 
 
-def test_warm_only_after_150_bars_and_reanchor_on_missing():
+def test_warm_only_after_30_bars_and_reanchor_on_missing():
     cs = random_walk(320, seed=11)
-    st = M5State()
-    feed(st, cs[:149])
+    st = M5State()  # V6.0 default warmup: 30 bars
+    feed(st, cs[:29])
     assert not st.warm
-    feed(st, cs[149:150])
+    feed(st, cs[29:30])
     assert st.warm
-    st.add(M5Result(cs[150].open_time, M5Status.DATA_GAP, None))
+    st.add(M5Result(cs[30].open_time, M5Status.DATA_GAP, None))
     assert st.segment is None and not st.warm
-    feed(st, cs[151:300])
-    assert st.segment is not None and st.segment.anchor_open_time == cs[151].open_time
-    assert not st.warm  # 149 bars since the new anchor
-    feed(st, cs[300:301])
+    feed(st, cs[31:60])
+    assert st.segment is not None and st.segment.anchor_open_time == cs[31].open_time
+    assert not st.warm  # 29 bars since the new anchor
+    feed(st, cs[60:61])
     assert st.warm
 
 

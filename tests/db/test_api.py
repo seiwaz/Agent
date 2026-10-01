@@ -159,7 +159,7 @@ def test_setup_detail_has_human_flow_summaries_and_overlays(client):
     assert [f["name"] for f in d["flow_human"]][:3] == ["Spike", "Context", "Exhaustion"]
     assert d["flow_human"][-1]["label"] == "Completed"
     assert d["context_summary"]["result"]["label"] == "Passed"
-    assert d["context_summary"]["question"].startswith("Is this a good location")
+    assert d["context_summary"]["question"].startswith("Does a win cover costs")
     assert d["exhaustion_summary"]["result"]["code"] == "PASS"
     kinds = {line["kind"] for line in d["overlays"]["lines"]}
     assert {"E1", "SL", "TP"} <= kinds and "TP2" not in kinds

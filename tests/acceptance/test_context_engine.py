@@ -1,10 +1,17 @@
-"""Context Engine acceptance tests (CTX-01..18; V5.1 B07, B08, B09, B10, B11)."""
+"""Context Engine V6.0 acceptance tests (CONTEXT_ENGINE_SPEC V6.0; owner decision 2026-10-01).
+
+PASS iff NetTP > 0 AND (A LevelBreak OR B ChannelEdge OR C HTFAligned). Regime, RangeMiddle,
+HTF-opposite, RoomToTP and Liquidity are informational only. Breakout-level selection (B27,
+B32, B38 geometry) is unchanged and still tested here.
+"""
 
 from __future__ import annotations
 
 from datetime import timedelta
 from decimal import Decimal as D
 from fractions import Fraction
+
+import pytest
 
 from sp2l.core.types import Side
 from sp2l.indicators.regime import Regime
@@ -15,17 +22,23 @@ from sp2l.strategy.context.levels import (
     eligible_breakout_levels,
     select_breakout_level,
 )
+from sp2l.strategy.risk.engine import CostModel
 from tests.conftest import candle
-from tests.m5_fixtures import bar_time, eval_time, make_state, pivot_high
+from tests.m5_fixtures import bar_time, eval_time, make_state, pivot_high, pivot_low
 
-ORIGIN = candle(0, "101", "102", "101", "101.5")  # OriginLow 101
-
-
-def spike(*closes: str, high: str = "140"):
-    return [ORIGIN] + [candle(i + 1, c, high, c, c) for i, c in enumerate(closes)]
+COSTS = CostModel(D("0.0008"), D("0.00095"), D("0.000198"))
+ORIGIN = candle(0, "101", "102", "101", "101.5")  # OriginLow 101: RP 1/30 in 100..130 -> B true
+MID = candle(0, "115", "116", "115", "115.5")  # OriginLow 115: RP 1/2 -> B false (Long)
 
 
-def inp(state, e1="110", r="2", side=Side.LONG, spike_candles=None, level=None, origin=ORIGIN):
+def spike(*closes: str, high: str = "140", origin=ORIGIN):  # type: ignore[no-untyped-def]
+    return [origin] + [candle(i + 1, c, high, c, c) for i, c in enumerate(closes)]
+
+
+def inp(  # type: ignore[no-untyped-def]
+    state, e1="110", r="2", side=Side.LONG, spike_candles=None, level=None, origin=ORIGIN,
+    costs=COSTS,
+):  # fmt: skip
     return ContextInputs(
         side=side,
         eval_time=eval_time(state),
@@ -34,102 +47,250 @@ def inp(state, e1="110", r="2", side=Side.LONG, spike_candles=None, level=None, 
         origin=origin,
         spike_candles=spike_candles or [origin],
         breakout_level=level,
+        costs=costs,
     )
 
 
-def test_range_middle_inclusive_exact_thirds_reject_only_in_range():
-    st = make_state(regime=Regime.RANGE)  # range 100..130
-    one_third = evaluate_context(st, inp(st, e1="110"))
-    two_thirds = evaluate_context(st, inp(st, e1="120"))
-    just_below = evaluate_context(st, inp(st, e1="109.99"))
-    assert one_third.range_position_e1 == Fraction(1, 3) and one_third.range_middle_reject
-    assert two_thirds.range_middle_reject and Reason.RANGE_MIDDLE in two_thirds.reasons
-    assert just_below.range_middle_reject is False
-    trend_st = make_state(regime=Regime.TREND)
-    assert evaluate_context(trend_st, inp(trend_st, e1="115")).range_middle_reject is False
+def none_state(**kw):  # type: ignore[no-untyped-def]
+    """No trend alignment (NEUTRAL); with a mid-range Origin and no level, A/B/C are all false."""
+    return make_state(trend=Trend.NEUTRAL, **kw)
 
 
-def test_range_position_not_clamped_for_logic():
-    st = make_state(regime=Regime.RANGE)
-    snap = evaluate_context(st, inp(st, e1="145"))
-    assert snap.range_position_e1 == Fraction(3, 2)
-    assert snap.range_middle_reject is False
+# ---- the rule: any one of A / B / C, plus a positive net ------------------------------------
 
 
-def test_range_edge_origin_uses_raw_origin_position():
-    st = make_state(regime=Regime.RANGE, trend=Trend.NEUTRAL)
-    snap = evaluate_context(st, inp(st, e1="99"))  # origin low 101 -> RP 1/30
-    assert snap.range_edge_origin is True and Reason.NO_CONTEXT not in snap.reasons
+def test_level_break_alone_passes():
+    st = none_state()
+    level = FrozenLevel(Side.LONG, D("125"), bar_time(3))
+    snap = evaluate_context(
+        st, inp(st, origin=MID, spike_candles=spike("125.01", origin=MID), level=level)
+    )
+    assert snap.passed and snap.level_break and not snap.channel_edge and not snap.htf_aligned
 
 
-def test_breakout_requires_strict_m1_close_not_wick():
+def test_channel_edge_alone_passes():
+    st = none_state()
+    snap = evaluate_context(st, inp(st))  # OriginLow 101 -> RP 1/30
+    assert snap.passed and snap.channel_edge and not snap.level_break and not snap.htf_aligned
+
+
+def test_htf_aligned_alone_passes():
+    st = make_state(trend=Trend.BULL)
+    snap = evaluate_context(st, inp(st, origin=MID))
+    assert snap.passed and snap.htf_aligned and not snap.channel_edge and not snap.level_break
+
+
+def test_no_condition_is_no_valid_context():
+    st = none_state()
+    snap = evaluate_context(st, inp(st, origin=MID))
+    assert snap.status == "REJECT" and snap.reasons == [Reason.NO_CONTEXT]
+
+
+# ---- D NetTP ----------------------------------------------------------------------------
+
+
+def test_net_tp_exactly_zero_rejects_and_tiny_positive_passes():
+    st = make_state(low=lambda k: "90")
+    zero = CostModel(D("0.01"), D(0), D(0))  # 1 - 100*0.01 = 0
+    snap = evaluate_context(st, inp(st, e1="100", r="1", costs=zero))
+    assert snap.net_tp_per_unit == 0 and snap.net_tp_positive is False
+    assert snap.reasons == [Reason.NET_TP_NOT_POSITIVE] and snap.status == "REJECT"
+    tiny = CostModel(D("0.00999"), D(0), D(0))
+    ok = evaluate_context(st, inp(st, e1="100", r="1", costs=tiny))
+    assert ok.net_tp_per_unit == D("0.001") and ok.passed
+
+
+def test_net_tp_formula_matches_risk_v511_and_short_side():
+    st = make_state(trend=Trend.BEAR)
+    snap = evaluate_context(st, inp(st, e1="110", r="2", side=Side.SHORT, origin=MID))
+    assert snap.tp == D("108")
+    assert snap.net_tp_per_unit == D("2") - D("110") * D("0.0008") - D("108") * D("0.00095")
+    assert snap.passed and snap.htf_aligned
+
+
+def test_costs_missing_fail_closed():
+    st = make_state()
+    snap = evaluate_context(st, inp(st, costs=None))
+    assert snap.reasons == [Reason.NET_TP_UNKNOWN] and snap.status == "UNKNOWN"
+    assert snap.net_tp_per_unit is None and snap.net_tp_positive is None
+
+
+def test_net_tp_is_evaluated_while_unwarm_and_ordered_first():
+    cold = make_state(warmup=1000)
+    snap = evaluate_context(cold, inp(cold))
+    assert snap.net_tp_positive is True and snap.reasons == [Reason.WARMUP]
+    bad = evaluate_context(cold, inp(cold, costs=CostModel(D("0.05"), D(0), D(0))))
+    assert bad.reasons == [Reason.NET_TP_NOT_POSITIVE, Reason.WARMUP]
+    assert bad.status == "REJECT"
+
+
+# ---- A LevelBreak -----------------------------------------------------------------------
+
+
+def test_level_break_needs_a_strict_m1_close_not_wick_or_equality():
+    st = none_state()
+    level = FrozenLevel(Side.LONG, D("125"), bar_time(3))
+    wick = evaluate_context(
+        st, inp(st, origin=MID, spike_candles=spike("124", high="140", origin=MID), level=level)
+    )
+    eq = evaluate_context(
+        st, inp(st, origin=MID, spike_candles=spike("125", origin=MID), level=level)
+    )
+    assert not wick.level_break and not eq.level_break
+    assert wick.reasons == eq.reasons == [Reason.NO_CONTEXT]
+
+
+# ---- B ChannelEdge ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("side", "origin_ref", "expected"),
+    [
+        (Side.LONG, "110", True),  # RP exactly 1/3 (inclusive)
+        (Side.LONG, "110.01", False),
+        (Side.LONG, "95", True),  # raw RP -1/6: below the range, never clamped
+        (Side.SHORT, "120", True),  # RP exactly 2/3 (inclusive)
+        (Side.SHORT, "119.99", False),
+        (Side.SHORT, "135", True),  # raw RP 7/6
+    ],
+)
+def test_channel_edge_inclusive_thirds_raw_position(side, origin_ref, expected):  # type: ignore[no-untyped-def]
+    st = none_state()
+    ref = D(origin_ref)
+    origin = (
+        candle(0, origin_ref, str(ref + 1), origin_ref, origin_ref)
+        if side is Side.LONG
+        else candle(0, origin_ref, origin_ref, str(ref - 1), origin_ref)
+    )
+    e1, r = ("125", "2") if side is Side.LONG else ("105", "2")
+    snap = evaluate_context(st, inp(st, e1=e1, r=r, side=side, origin=origin))
+    assert snap.channel_edge is expected and snap.passed is expected
+    rp = (Fraction(ref) - 100) / 30
+    assert snap.range_position_origin == rp
+
+
+@pytest.mark.parametrize("regime", [Regime.TREND, Regime.RANGE, Regime.TRANSITION])
+def test_channel_edge_and_htf_aligned_work_in_any_regime(regime):  # type: ignore[no-untyped-def]
+    edge = make_state(trend=Trend.NEUTRAL, regime=regime)
+    assert evaluate_context(edge, inp(edge)).channel_edge
+    trend = make_state(trend=Trend.BULL, regime=regime)
+    snap = evaluate_context(trend, inp(trend, origin=MID))
+    assert snap.htf_aligned and snap.passed
+
+
+def test_flat_range_makes_b_false_not_a_global_reject():
+    st = make_state(trend=Trend.BULL, high=lambda k: "100", low=lambda k: "100")
+    snap = evaluate_context(st, inp(st, e1="110", origin=MID))
+    assert snap.channel_edge is False and snap.passed  # C still passes
+
+
+# ---- C HTFAligned -----------------------------------------------------------------------
+
+
+def test_opposite_trend_with_breakout_passes_and_alone_is_no_valid_context():
     st = make_state(trend=Trend.BEAR)
     level = FrozenLevel(Side.LONG, D("125"), bar_time(3))
-    wick = evaluate_context(st, inp(st, spike_candles=spike("125"), level=level))
-    assert wick.breakout_context is False
-    assert Reason.HTF_OPPOSITE in wick.reasons
-    closed = evaluate_context(st, inp(st, spike_candles=spike("125.01"), level=level))
-    assert closed.breakout_context is True and Reason.HTF_OPPOSITE not in closed.reasons
+    broke = evaluate_context(
+        st, inp(st, origin=MID, spike_candles=spike("125.5", origin=MID), level=level)
+    )
+    assert broke.passed and broke.htf_opposite_no_breakout is False
+    alone = evaluate_context(st, inp(st, origin=MID))
+    assert alone.reasons == [Reason.NO_CONTEXT] and alone.htf_opposite_no_breakout is True
 
 
-def test_no_valid_context_rejects():
-    st = make_state(trend=Trend.NEUTRAL)
-    snap = evaluate_context(st, inp(st))
-    assert snap.reasons == [Reason.NO_CONTEXT]
+def test_dual_pivot_trend_makes_c_false_but_a_and_b_still_pass():
+    st = make_state(trend=Trend.INVALID_DUAL_PIVOT)
+    edge = evaluate_context(st, inp(st))
+    assert edge.htf_aligned is False and edge.channel_edge and edge.passed
+    level = FrozenLevel(Side.LONG, D("125"), bar_time(3))
+    brk = evaluate_context(
+        st, inp(st, origin=MID, spike_candles=spike("126", origin=MID), level=level)
+    )
+    assert brk.passed and brk.level_break
+    none = evaluate_context(st, inp(st, origin=MID))
+    assert none.reasons == [Reason.NO_CONTEXT]
 
 
-def test_htf_alignment_passes_and_is_off_in_range():
-    st = make_state(trend=Trend.BULL, regime=Regime.TREND)
-    assert evaluate_context(st, inp(st)).passed
-    st_range = make_state(trend=Trend.BULL, regime=Regime.RANGE)
-    assert evaluate_context(st_range, inp(st_range, e1="140")).htf_alignment is False
+# ---- warmup and timing ------------------------------------------------------------------
 
 
-def test_room_to_tp_exact_1r_passes_and_infinite_without_obstacle():
-    st = make_state(pivots=[pivot_high(5, "112")])
-    exact = evaluate_context(st, inp(st, e1="110", r="2"))
-    assert exact.room_to_tp_r == 1 and exact.room_pass and exact.passed
-    short = evaluate_context(st, inp(st, e1="110.01", r="2"))
-    assert short.room_pass is False and Reason.ROOM in short.reasons
-    none = evaluate_context(make_state(), inp(make_state()))
-    assert none.room_to_tp_infinite and none.room_pass
+def test_warm_boundary_at_30_bars():
+    from sp2l.indicators.m5_state import DEFAULT_WARMUP
+
+    assert DEFAULT_WARMUP == 30
+    cold = make_state(n=29, warmup=DEFAULT_WARMUP)
+    snap = evaluate_context(cold, inp(cold))
+    assert snap.reasons == [Reason.WARMUP] and snap.status == "UNKNOWN"
+    warm = make_state(n=30, warmup=DEFAULT_WARMUP)
+    assert evaluate_context(warm, inp(warm)).passed
 
 
-def test_obstacle_invalidated_by_m5_close_is_ignored():
-    st = make_state(pivots=[pivot_high(5, "111", broken=20), pivot_high(8, "111.5")])
+def test_stale_series_is_warmup_and_forming_m5_is_never_used():
+    st = make_state()
+    stale = ContextInputs(
+        Side.LONG, eval_time(st) + timedelta(minutes=5), D("110"), D("2"), ORIGIN, [ORIGIN], None,
+        costs=COSTS,
+    )  # fmt: skip
+    assert evaluate_context(st, stale).reasons == [Reason.WARMUP]
+    mid = ContextInputs(
+        Side.LONG, eval_time(st) + timedelta(minutes=3), D("110"), D("2"), ORIGIN, [ORIGIN], None,
+        costs=COSTS,
+    )  # fmt: skip
+    snap = evaluate_context(st, mid)
+    assert snap.ctx_open_time == bar_time(39)  # the last finalized bar, not the forming one
+
+
+# ---- former hard rejects are informational only -----------------------------------------
+
+
+def test_middle_of_range_no_longer_rejects_but_is_recorded():
+    st = make_state(regime=Regime.RANGE, trend=Trend.NEUTRAL)
+    snap = evaluate_context(st, inp(st, e1="110"))  # E1 RP exactly 1/3, regime RANGE
+    assert snap.range_middle_reject is True and snap.passed  # B (origin edge) holds
+    assert Reason.RANGE_MIDDLE not in snap.reasons
+
+
+def test_room_to_tp_below_1r_no_longer_rejects_but_is_recorded():
+    st = make_state(pivots=[pivot_high(5, "111")])
     snap = evaluate_context(st, inp(st, e1="110", r="2"))
-    assert snap.nearest_obstacle == D("111.5") and not snap.room_pass
+    assert snap.room_to_tp_r == Fraction(1, 2) and snap.room_pass is False
+    assert snap.passed and Reason.ROOM not in snap.reasons
 
 
-def test_b38_only_levels_in_the_e1_to_tp_path_are_obstacles():
+def test_low_liquidity_no_longer_rejects_but_is_recorded():
+    vols = {k: str(k - 19) for k in range(20, 40)}
+    st = make_state(n=41, volume=lambda k: vols.get(k, "1000") if k != 40 else "1",
+                    trades=lambda k: 1 if k == 40 else 10)  # fmt: skip
+    snap = evaluate_context(st, inp(st))
+    assert snap.liquidity_status == Reason.LOW_LIQUIDITY and snap.passed
+    assert Reason.LOW_LIQUIDITY not in snap.reasons
+
+
+def test_regime_is_informational():
+    for regime in (Regime.RANGE, Regime.TREND, Regime.TRANSITION):
+        st = make_state(regime=regime)
+        snap = evaluate_context(st, inp(st))
+        assert snap.regime is regime and snap.passed
+
+
+def test_room_measure_geometry_unchanged_b38():
     # E1 110, R 2 -> TP 112. 109 is behind E1, 113 is beyond TP: neither is an obstacle.
     st = make_state(pivots=[pivot_high(5, "109"), pivot_high(8, "113")])
     snap = evaluate_context(st, inp(st, e1="110", r="2"))
-    assert snap.nearest_obstacle is None and snap.room_to_tp_infinite and snap.room_pass
+    assert snap.nearest_obstacle is None and snap.room_to_tp_infinite
     at_tp = make_state(pivots=[pivot_high(5, "112")])
     s2 = evaluate_context(at_tp, inp(at_tp, e1="110", r="2"))
     assert s2.nearest_obstacle == D("112") and s2.room_to_tp_r == 1 and s2.room_pass
+    inv = make_state(pivots=[pivot_high(5, "111", broken=20), pivot_high(8, "111.5")])
+    s3 = evaluate_context(inv, inp(inv, e1="110", r="2"))
+    assert s3.nearest_obstacle == D("111.5")
+    sh = make_state(trend=Trend.BEAR, pivots=[pivot_low(5, "108"), pivot_low(8, "107.5")])
+    o = candle(0, "112", "112.5", "111", "111.5")
+    s4 = evaluate_context(sh, inp(sh, e1="110", r="2", side=Side.SHORT, origin=o))
+    assert s4.nearest_obstacle == D("108") and s4.room_to_tp_r == 1
 
 
-def test_b38_crossed_breakout_level_back_in_path_counts_again():
-    st = make_state(pivots=[pivot_high(5, "111")])
-    level = FrozenLevel(Side.LONG, D("111"), bar_time(5))
-    crossed = spike("111.01")  # the Spike closed above 111 (BreakoutContext true)
-    back = evaluate_context(st, inp(st, e1="110", spike_candles=crossed, level=level))
-    assert back.breakout_context and back.nearest_obstacle == D("111") and not back.room_pass
-    beyond = evaluate_context(st, inp(st, e1="111.5", spike_candles=crossed, level=level))
-    assert beyond.nearest_obstacle is None and beyond.room_pass
-
-
-def test_b38_short_path():
-    from tests.m5_fixtures import pivot_low
-
-    st = make_state(trend=Trend.BEAR, pivots=[pivot_low(5, "108"), pivot_low(8, "107.5")])
-    origin = candle(0, "112", "112.5", "111", "111.5")
-    snap = evaluate_context(
-        st, inp(st, e1="110", r="2", side=Side.SHORT, origin=origin, spike_candles=[origin])
-    )
-    assert snap.nearest_obstacle == D("108") and snap.room_to_tp_r == 1 and snap.room_pass
+# ---- B27 breakout-level selection (levels.py, unchanged) ---------------------------------
 
 
 def _spike_at(minute: int, *closes: str):
@@ -176,7 +337,7 @@ def test_b27_short_lowest_crossed_swing_low():
     assert lvl is not None and lvl.price == D("92")
 
 
-def test_dual_pivot_usable_as_breakout_level_and_obstacle_b32():
+def test_dual_pivot_usable_as_breakout_level_b32():
     from sp2l.indicators.m5_state import SegPivot
     from sp2l.indicators.pivots import PivotKind
 
@@ -186,46 +347,4 @@ def test_dual_pivot_usable_as_breakout_level_and_obstacle_b32():
     lvl = select_breakout_level(Side.LONG, _eligible(st, sp), sp)
     assert lvl is not None and lvl.price == D("104")
     snap = evaluate_context(st, inp(st, e1="103", r="2"))
-    assert snap.nearest_obstacle == D("104") and not snap.room_pass
-
-
-def test_liquidity_median_excludes_current_and_equality_passes():
-    vols = {k: str(k - 19) for k in range(20, 40)}  # bars 20..39 -> 1..20
-
-    def vol(k):
-        return vols.get(k, "1000") if k != 40 else "5.25"
-
-    def trades(k):
-        return 1 if k == 40 else 10
-
-    st = make_state(n=41, volume=vol, trades=trades)
-    snap = evaluate_context(st, inp(st))
-    assert snap.volume_ratio == Fraction("5.25") / Fraction("10.5")
-    assert snap.liquidity_status == "PASS"  # 5.25 == 0.5 * 10.5
-    st2 = make_state(
-        n=41, volume=lambda k: vols.get(k, "1000") if k != 40 else "5.24", trades=trades
-    )
-    assert evaluate_context(st2, inp(st2)).liquidity_status == Reason.LOW_LIQUIDITY
-    st3 = make_state(n=41, volume=lambda k: vols.get(k, "1000") if k != 40 else "5.24")
-    assert evaluate_context(st3, inp(st3)).liquidity_status == "PASS"  # AND, not OR
-
-
-def test_warmup_stale_and_dual_pivot_fail_closed():
-    cold = make_state(warmup=150)
-    assert evaluate_context(cold, inp(cold)).reasons == [Reason.WARMUP]
-    st = make_state()
-    stale = ContextInputs(
-        Side.LONG, eval_time(st) + timedelta(minutes=5), D("110"), D("2"), ORIGIN, [ORIGIN], None
-    )
-    assert evaluate_context(st, stale).reasons == [Reason.WARMUP]
-    dual = make_state(trend=Trend.INVALID_DUAL_PIVOT)
-    assert evaluate_context(dual, inp(dual)).reasons == [Reason.INVALID_DATA]
-
-
-def test_forming_m5_is_never_used():
-    st = make_state()
-    mid = ContextInputs(
-        Side.LONG, eval_time(st) + timedelta(minutes=3), D("110"), D("2"), ORIGIN, [ORIGIN], None
-    )
-    snap = evaluate_context(st, mid)
-    assert snap.ctx_open_time == bar_time(39)  # the last finalized bar, not the forming one
+    assert snap.nearest_obstacle == D("104")  # informational obstacle

@@ -1228,13 +1228,6 @@ def _context_rows(s: dict[str, Any]) -> list[dict[str, Any]]:
             "reason": "NO_VALID_CONTEXT" if "NO_VALID_CONTEXT" in reasons else None,
         },
         {
-            "gate": "CONTEXT RESULT",
-            "value": s.get("status"),
-            "threshold": "NetTP AND (A OR B OR C)",
-            "result": "PASS" if s.get("status") == "PASS" else "FAIL",
-            "reason": ", ".join(reasons) or None,
-        },
-        {
             "gate": "Regime",
             "value": f"{s.get('regime')}  CHOP14={_x(s, 'chop14')}  ADX14={_x(s, 'adx14')}",
             "threshold": "info only",
@@ -1270,6 +1263,13 @@ def _context_rows(s: dict[str, Any]) -> list[dict[str, Any]]:
             "threshold": "info only",
             "result": "INFO",
             "reason": None,
+        },
+        {
+            "gate": "CONTEXT RESULT",
+            "value": s.get("status"),
+            "threshold": "NetTP AND (A OR B OR C)",
+            "result": "PASS" if s.get("status") == "PASS" else "FAIL",
+            "reason": ", ".join(reasons) or None,
         },
     ]
 

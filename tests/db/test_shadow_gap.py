@@ -115,7 +115,12 @@ def test_disconnect_gap_while_position_active(scenario):
         c=cid,
     )[0][0]
     assert ev["reason"] == "DISCONNECTED" and D(ev["discarded_position"]) != 0
-    assert r.engine.broker.position_qty() == 0
+    # the ambiguous setup's position was discarded; any position left at the end of the tape
+    # belongs to a later, still-active setup (V6.0 lets more setups through)
+    active = r.engine.active
+    left = active.exposure()[1] if active is not None else D(0)
+    assert active is None or active.candidate_id != str(cid)
+    assert r.engine.broker.position_qty() == left
     # excluded from confirmed performance
     api = TestClient(create_app(cfg(URL, "BTCUSDT")))
     perf = api.get("/api/performance").json()["confirmed"]
