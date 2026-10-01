@@ -1,0 +1,20 @@
+[Unit]
+Description=SP2L market-data collector (Tabdeal public stream; no API key, no orders)
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=sp2l
+WorkingDirectory=/home/sp2l/SP2L
+ExecStart=/home/sp2l/SP2L/.venv/bin/python -m sp2l --config config/server.yaml collect --log-file /home/sp2l/logs/collector.log
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

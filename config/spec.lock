@@ -1,0 +1,5 @@
+# SHA-256 pin of spec/SP2L_RULES.yaml (V5.12, 2026-09-30: the V5.9 P-Gap quality filter is no longer a
+# rule - measured and recorded only; V5.11 net-at-TP and V5.10 volume-decided Liquidity kept).
+# Changing the rules requires a new manually versioned spec, a regenerated
+# spec/MANIFEST_SHA256.json and an updated pin (GOV-01).
+sha256=7a5eae92e5e2b82791159a34812c586f348435fb4c2f48d1fe6db94bf7440aaa

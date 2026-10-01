@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-09-30T08:26:38.285188+00:00",
+  "source_fees": "https://api-web.tabdeal.org/get-commission-levels-v2/ (special_margin_commission_levels)",
+  "fee_level": {
+    "id": 1,
+    "level": 1,
+    "name": "\u0633\u0637\u062d \u06f1",
+    "maker_commission_percent": "0.0008",
+    "taker_commission_percent": "0.00095",
+    "from_volume": "0",
+    "to_volume": "1000000.00000000"
+  },
+  "fee_level_basis": "30-day special-margin volume 0.0 USDT",
+  "maker_fee": "0.0008",
+  "taker_fee": "0.00095",
+  "order_book_samples": 180,
+  "half_spread_frac": {
+    "p50": 9.766369387907197e-05,
+    "p90": 0.0001084770654451391,
+    "p99": 0.00011204134564046043,
+    "max": 0.00011323610920726596
+  },
+  "market": "XAUT_USDT",
+  "top_of_book_min_amount_base": {
+    "p1": 0.0011,
+    "p50": 0.2236
+  },
+  "trade_tape": {
+    "trades": 791,
+    "since": "2026-09-29T08:26:38.266299+00:00",
+    "source": "public recent-trades polled during the order-book sampling"
+  },
+  "stop_overshoot_frac": {
+    "p50": 1.8594077136873266e-05,
+    "p90": 7.946794218923667e-05,
+    "p99": 0.00021377195001736325,
+    "max": 0.0005381570058271919
+  },
+  "slippage_allowance": "0.000326",
+  "slippage_method": "p99(half-spread) + p99(stop overshoot by first trade through the level)",
+  "market_rules_public": {
+    "min_trade_amount": "0.0001",
+    "min_order_size": "2",
+    "max_market_order_amount": "10",
+    "price_precision": 2,
+    "default_price_precision_visible": 2,
+    "price_precision_options": "[2, 1, 0, -1]",
+    "first_currency_precision": 4,
+    "quote_precision_visible": 3,
+    "base_precision_visible": 4,
+    "max_price": "8401.6",
+    "min_price": "2100.4"
+  }
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=SP2L read-only API and WebUI (GET only; LIVE_AUTOMATION_DISABLED)
+After=network-online.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=sp2l
+WorkingDirectory=/home/sp2l/SP2L
+ExecStart=/home/sp2l/SP2L/.venv/bin/python -m sp2l --config config/server.yaml api --host 0.0.0.0 --port 4000
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+# secrets never live in the repo
+.env
+.env.*
+*.env
+secrets/
+# tooling
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.DS_Store
+graphify-out/
+*.log

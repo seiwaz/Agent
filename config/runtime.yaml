@@ -1,0 +1,70 @@
+# SP2L runtime configuration (non-strategy). Strategy rules live in spec/SP2L_RULES.yaml.
+database_url: postgresql+psycopg:///sp2l_dev?host=/tmp
+symbol: XAUTUSDT
+
+collector:
+  grace_ms: 2000          # B05
+  ping_interval_s: 1.0
+  ping_timeout_s: 3.0
+  clock_safety_ms: 1000   # coverage margin for local-vs-exchange clock offset
+  heartbeat_s: 30
+  # B46 transport-redundancy test: independent connections, started staggered. Coverage is
+  # the union of each connection's own pong-proven coverage; DATA_GAP rules are unchanged.
+  connections: [A, B]
+  stagger_s: 600
+  # V5.6 exact gap repair from Tabdeal's public recent-trades (last 50 trades, read-only).
+  # Accepted only if exact (see marketdata/repair.py); otherwise the gap is UNRECOVERED.
+  repair:
+    enabled: true
+    max_gap_s: 120            # longer gaps cannot be inside a 50-trade window: UNRECOVERED
+    rest_delay_min_ms: -100   # Tabdeal record time - WS time: measured -25 .. +427 ms
+    rest_delay_max_ms: 500    #   (3,527 trades, 2.5 h, p50 +33 ms, p99.9 +287 ms)
+  # V5.7 continuous REST reconciliation (B48 mandatory). recent-trades returns the newest 50
+  # trades (measured span 42.6 s min, 50 s p1, 105 s p50); polls are spaced at a third of the
+  # last window so windows always overlap. A minute is final only after REST covered it, or
+  # after the deadline (then LIVE_WS_ONLY).
+  rest_reconciliation:
+    enabled: true
+    poll_min_s: 3
+    poll_max_s: 15
+    stale_s: 45
+    reconcile_deadline_s: 60
+  history_recovery:               # V5.8 tier 3: validated Tabdeal chart history (read-only)
+    enabled: true
+    max_gap_s: 604800               # 7 days (1-minute retention measured >= 90 days)
+    deadline_s: 300                 # retries after the gap's last minute is final
+    settle_s: 5
+    overlap_minutes: 15
+    min_overlap_minutes: 5
+    min_agreement: "0.8"            # exact H/L/C/V under the continuity model
+    max_hl_rel_diff: "0.001"
+  history_bootstrap:              # V5.12 cold start: fill the series from Tabdeal's chart (read-only)
+    enabled: false                  # default off; needs history_recovery.enabled
+    max_lookback_s: 604800          # 7 days (XAUT_USDT futures exist since ~2026-06-27)
+    timeout_s: 180                  # one res=1 request; a full-history pull takes ~30 s
+    validate_minutes: 60            # compare with up to this many recent live minutes
+    min_live_minutes: 5             # stored live minutes (any run) needed to validate against
+    max_fill_gap_minutes: 2         # chart holes up to this long = synthetic no-trade minutes
+
+# B16: fees and the SL slippage allowance are never hardcoded. Fill these in from your
+# actual Tabdeal account tier, as fractions (0.0002 = 0.02 %). Shadow refuses to start while
+# any value is missing. evidence_id stays null until runtime validation records the evidence
+# (required for Live).
+costs:
+  # Evidence: docs/cost_evidence.json (2026-09-27, scripts/cost_evidence.py, read-only public data).
+  # Fees = Tabdeal special-margin commission level 1 (30-day volume 0 - 1,000,000; this account
+  # is far below it), from api-web.tabdeal.org/get-commission-levels-v2/, the table Tabdeal's
+  # own futures UI uses. Tabdeal publishes no slippage figure: the allowance is MEASURED as
+  # p99(half-spread, 90 order-book samples) + p99(stop overshoot by the first trade through a
+  # level, 24 h trade tape) = 0.38 bp + 1.60 bp (max overshoot seen 8.2 bp).
+  maker_fee: 0.0008          # resting limit fills (E1, E2)
+  taker_fee: 0.00095         # exits (SL; TP charged taker conservatively)
+  slippage_allowance: 0.000326   # modeled worst SL fill beyond the SL price (XAUT, 2026-09-30)
+  evidence_id: "docs/cost_evidence.json@2026-09-30T08:26Z"
+
+shadow:
+  warmup_m5_bars: 150     # B06
+
+validation:
+  server_time_max_offset_ms: 500    # B42 Live target: worst |server - local midpoint| offset
+  server_time_samples: 20           # B42: at least 20 samples

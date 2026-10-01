@@ -1,0 +1,9677 @@
+Tabdeal API Documentation
+        NAV
+مقدمه
+امنیت
+مکانیزم‌های امنیتی
+احراز هویت
+توضیحات
+وضعیت سفارشات
+نوع سفارشات
+جهت سفارشات
+وضعیت سفارش OCO
+وضعیت سفارشات زیرمجموعه OCO
+معامله
+ارسال سفارش
+جستجوی سفارش
+سفارشات باز
+سفارشات باز صفحه بندی شده
+لغو سفارش
+تمام سفارشات
+تمام سفارشات منقضی نشده
+لغو تمام سفارشات باز
+ارسال سفارش OCO
+جستجوی سفارش OCO
+سفارشات باز OCO
+لغو سفارش OCO
+تمام سفارشات OCO
+معاملات من
+اطلاعات کاربر
+بازار
+لیست سفارشات
+لیست معاملات
+لیست بازارها
+تست اتصال به سرور
+گرفتن زمان سرور
+وب سوکت بازار
+توضیحات
+سفارشات (OrderBook)
+وب سوکت اطلاعات کاربر
+توضیحات
+دریافت  listenKey
+به‌روزرسانی  listenKey
+حذف  listenKey
+اطلاعات دریافتی (سفارش)
+کیف پول
+لیست دارایی‌ها
+معامله اهرم‌دار
+جابه‌جایی
+تاریخچه جابه‌جایی
+سفارشات باز معامله اهرم‌دار
+لغو تمام سفارشات باز معامله اهرم‌دار
+تمام سفارشات معامله اهرم‌دار
+ارسال سفارش معامله اهرم‌دار
+جستجوی سفارش معامله اهرم‌دار
+لغو سفارش معامله اهرم‌دار
+ارزهای معامله اهرم‌دار
+تاریخچه بازپرداخت
+تاریخچه بهره
+اطلاعات حساب معامله اهرم‌دار
+تاریخچه لیکویید شدن‌ها
+تاریخچه گرفتن اعتبار
+اهرم حرفه ای (FAPI)
+تست اتصال به سرور
+زمان سرور
+اطلاعات بازارهای اهرم حرفه ای
+اردربوک (عمق بازار) اهرم حرفه ای
+اردربوک تجمیع‌شده (Agg Depth)
+ارسال سفارش اهرم حرفه ای
+جستجوی سفارش اهرم حرفه ای
+لغو سفارش اهرم حرفه ای
+سفارشات باز اهرم حرفه ای
+تمام سفارشات اهرم حرفه ای
+ریسک پوزیشن (Position Risk)
+اهرم (Leverage)
+حساب اهرم حرفه ای (Account)
+موجودی اهرم حرفه ای (Balance)
+انتقال بین کیف اسپات و اهرم حرفه ای (Transfer)
+معاملات کاربر (User Trades)
+سوابق درآمد (Income)
+سفارشات اجباری (فروش اجباری / لیکویید)
+تاریخچه پوزیشن (Position)
+بستن پوزیشن (Position)
+تنظیم حدضرر/حدسود پوزیشن (Position SL/TP)
+وب‌سوکت اهرم حرفه ای
+دو نوع اتصال
+وب‌سوکت Stream (اردربوک با دوره زمانی)
+وب‌سوکت Broadcast (معاملات لحظه‌ای)
+خلاصه تفاوت با وب‌سوکت بازار
+خطاها
+خطای سرور
+خطای احراز هویت
+خطا در ارسال درخواست
+خطاهای API اهرم حرفه ای (FAPI)
+خطای معامله اهرم‌دار
+تغییرات
+ورژن 
+0.6.0
+ مرداد ۱۴۰۱
+ورژن 
+0.7.0
+ دی ۱۴۰۲
+ورژن 
+0.8.0
+ اردیبهشت ۱۴۰۳
+ورژن 
+0.9.0
+ اردیبهشت ۱۴۰۵
+دریافت API-Key
+Postman Collection
+مقدمه
+به داکیومنت API 
+تبدیل
+ خوش آمدید.
+برای استفاده از API می‌توانید از ماژول پایتونی زیر استفاده نمایید:
+Tabdeal-Python
+API اهرم پیشرفته (FAPI) با پیشوند 
+fapi
+ در مسیرهای جداگانه در دسترس است؛ جزئیات در بخش 
+اهرم پیشرفته (FAPI)
+ آمده است.
+امنیت
+مکانیزم‌های امنیتی
+نوع مکانیزم
+ملزومات
+TRADE
+api-key
+ و 
+signature
+USER
+api-key
+NONE
+-
+برای APIهایی که مکانیزم امنیتی آن‌ها از نوع 
+TRADE
+ باشد، نیاز است تا Headerی با نام 
+X-MBX-APIKEY
+ ارسال شود که مقدار آن، API Key دریافت‌شده از سایت می‌باشد. همچنین لازم است تا پارامترهای ارسالی، با کلید 
+api-secret
+ دریافت‌شده از سایت، رمز شده و تحت عنوان 
+signature
+ در پارامترها ارسال شود.
+برای APIهایی که مکانیزم امنیتی آن‌ها از نوع 
+NONE
+ باشد، نیازی به ارسال هیچ پارامتر اضافه‌ای نیست.
+احراز هویت
+در APIهایی که دارای مکانیزم امنیتی 
+TRADE
+ هستند، برای احراز هویت لازم است تا 
+api-key
+ و 
+api-secret
+ از سایت دریافت شده و به صورتی که در زیر توضیح داده شده، ارسال شوند.
+از طریق این 
+آدرس
+ اقدام به دریافت API Key کنید.
+سپس لازم هست تا 
+api-key
+ دریافت‌شده را به عنوان header درخواست خود به صورت زیر قرار دهید:
+X-MBX-APIKEY: your_api_key
+شما باید 
+api-key
+ خود را به جای 
+your_api_key
+ بگذارید.
+در ادامه لازم است تا پارامترهای ارسالی را با 
+api-secret
+ رمز کنید.
+برای این کار باید زمان ارسال درخواست را در فرمت 
+timestamp
+ به انتهای پارامترهای ارسالی اضافه کنید و کل این مجموعه را به ساختار Query String در آورده و آن را با کلید 
+api-secret
+ و با الگوریتم SHA256 و با مکانیزم HMAC رمز کنید.
+خروجی رشته‌ی رمزشده‌ی بالا را تحت عنوان 
+signature
+ به انتهای پارامترهای ارسالی اضافه کرده و درخواست خود را ارسال کنید.
+منظور از Query String ساختاری شبیه به ساختار زیر است:
+param_1=test_1&param_2=test_2&...&timestamp=1507725176595
+توضیحات
+وضعیت سفارشات
+وضعیت سفارش
+توضیحات
+NEW
+سفارش ایجاد شده است
+PARTIALLY_FILLED
+بخشی از سفارش انجام شده است
+FILLED
+سفارش به طور کامل انجام شده است
+CANCELED
+سفارش لغو شده است
+REJECTED
+سفارش رد شده است
+نوع سفارشات
+LIMIT
+MARKET
+STOP_LOSS_LIMIT
+جهت سفارشات
+BUY
+SELL
+وضعیت سفارش OCO
+وضعیت سفارش
+توضیحات
+EXECUTING
+سفارش ایجاد شده یا یکی از سفارشات زیرمجموعه در حال اجراست
+ALL_DONE
+سفارش تکمیل شده و سفارشات زیرمجموعه پایان یافته‌اند
+REJECT
+سفارش رد و یا لغو شده است
+وضعیت سفارشات زیرمجموعه OCO
+وضعیت سفارش
+توضیحات
+RESPONSE
+یکی از سفارشات زیرمجموعه لغو و یا رد شده است
+EXEC_STARTED
+سفارشات زیرمجموعه فعال شده‌اند و یا وضعیتشان تغییر کرده است
+ALL_DONE
+سفارشات زیرمجموعه تکمیل شده و پایان یافته‌اند
+معامله
+ارسال سفارش
+POST https://api1.tabdeal.org/api/v1/order [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+from
+tabdeal.enums
+import
+OrderSides
+,
+OrderTypes
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+order
+=
+client
+.
+new_order
+(
+symbol
+=
+'BTCIRT'
+,
+side
+=
+OrderSides
+.
+SELL
+,
+type
+=
+OrderTypes
+.
+MARKET
+,
+quantity
+=
+"0.001"
+)
+نمونه خروجی:
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+139
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126344421
+,
+"price"
+:
+"0.0000000000000000"
+,
+"origQty"
+:
+"0.00100000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"99999.99900000"
+,
+"cumulativeQuoteQty"
+:
+"99999.99900000"
+,
+"status"
+:
+"FILLED"
+,
+"type"
+:
+"MARKET"
+,
+"side"
+:
+"SELL"
+,
+"stopPrice"
+:
+"0.0000000000000000"
+,
+"updateTime"
+:
+1650126344546
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+,
+"fills"
+:
+[
+{
+"price"
+:
+"99999999.00000000"
+,
+"qty"
+:
+"0.00100000"
+,
+"commission"
+:
+"399.99999600"
+,
+"commissionAsset"
+:
+"IRT"
+,
+"tradeId"
+:
+4
+}
+]
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+side
+بله
+ENUM
+SELL
+ یا 
+BUY
+type
+بله
+ENUM
+MARKET
+ یا 
+LIMIT
+ یا 
+STOP_LOSS_LIMIT
+quantity
+بله
+DECIMAL
+تعداد خرید یا فروش
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+newClientOrderId
+خیر
+STRING
+id
+ سفارش که توسط کاربر تولید شده
+price
+خیر
+DECIMAL
+قیمت خرید یا فروش
+stopPrice
+خیر
+DECIMAL
+قیمت فعال شدن سفارش
+    با تغییر 
+type
+ مربوط به سفارش، ملزومات سفارش تغییر می‌کند و ممکن است پارامترهای 
+price
+ یا 
+stopPrice
+ الزامی شوند.
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+در صورتی که 
+type
+ سفارش 
+LIMIT
+ باشد، ارسال 
+price
+ الزامی است.
+در صورتی که 
+type
+ سفارش 
+STOP_LOSS_LIMIT
+ باشد، ارسال 
+stopPrice
+ الزامی است.
+پارامتر 
+newClientOrderId
+ شناسه‌ی یکتا برای سفارش است و توسط کاربر تولید می‌شود که برای هر کاربر باید یکتا باشد.
+جستجوی سفارش
+GET https://api1.tabdeal.org/r/api/v1/order [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+order
+=
+client
+.
+get_order
+(
+symbol
+=
+'BTC_IRT'
+,
+order_id
+=
+140
+)
+نمونه خروجی:
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+140
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126546994
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00200000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"99999.99900000"
+,
+"cumulativeQuoteQty"
+:
+"99999.99900000"
+,
+"status"
+:
+"PARTIALLY_FILLED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126680079
+,
+"isWorking"
+:
+true
+,
+"isStopOrderTriggered"
+:
+false
+,
+"fee"
+:
+"0.99900000"
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+orderId
+خیر
+LONG
+id
+ سفارش
+origClientOrderId
+خیر
+STRING
+id
+ سفارش که توسط کاربر تولید شده
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+ارسال فقط یکی از پارامترهای 
+orderId
+ یا 
+origClientOrderId
+ الزامی است.
+سفارشات باز
+GET https://api1.tabdeal.org/r/api/v1/openOrders [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+orders
+=
+client
+.
+get_open_orders
+(
+symbol
+=
+'BTCIRT'
+)
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+140
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126546994
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00200000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"PARTIALLY_FILLED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126680079
+,
+"isWorking"
+:
+true
+,
+"isStopOrderTriggered"
+:
+false
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+در صورتی که 
+symbol
+ یا 
+tabdealSymbol
+ را ارسال نکنید، سفارشات باز تمام بازارها را برمی‌گرداند.
+سفارشات باز صفحه بندی شده
+GET https://api1.tabdeal.org/r/api/v1/paginatedOpenOrders [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+orders
+=
+client
+.
+get_paginated_open_orders
+(
+symbol
+=
+'BTCIRT'
+,
+page
+=
+1
+,
+page_size
+=
+250
+):
+نمونه خروجی:
+{
+"number_of_pages"
+:
+1
+,
+"results"
+:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+140
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126546994
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00200000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"PARTIALLY_FILLED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126680079
+,
+"isWorking"
+:
+true
+,
+"isStopOrderTriggered"
+:
+false
+,
+"fee"
+:
+"0.0000003"
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+141
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126546994
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00200000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"NEW"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126680079
+,
+"isWorking"
+:
+true
+,
+"isStopOrderTriggered"
+:
+false
+,
+"fee"
+:
+"0.0000003"
+}
+]
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+page
+خیر
+INT
+صفحه مورد نظر
+page_size
+خیر
+INT
+تعداد آیتم در هر صفحه
+در صورتی که 
+symbol
+ یا 
+tabdealSymbol
+ را ارسال نکنید، سفارشات باز تمام بازارها را برمی‌گرداند.
+در صورتی که 
+page
+ وارد نشود مقدار پیش فرض آن برابر یک تنظیم می شود.
+در صورتی که 
+page_size
+ وارد نشود مقدار پیش فرض آن برابر 100 تنظیم میگردد.
+حداکثر مقدار 
+page_size
+ برابر با مقدار 500 می باشد و اگر کاربر بیشتر از آن تنظیم کند به صورت خودکار روی 500 تنظیم می شود.
+لغو سفارش
+DELETE https://api1.tabdeal.org/api/v1/order [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+order
+=
+client
+.
+cancel_order
+(
+symbol
+=
+'BTC_IRT'
+,
+order_id
+=
+143
+)
+نمونه خروجی:
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+143
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126665341
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00300000"
+,
+"executedQty"
+:
+"0.00000000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"CANCELED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126730359
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+orderId
+خیر
+LONG
+id
+ سفارش
+origClientOrderId
+خیر
+STRING
+id
+ سفارش که توسط کاربر تولید شده
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+ارسال فقط یکی از پارامترهای 
+orderId
+ یا 
+origClientOrderId
+ الزامی است.
+تمام سفارشات
+GET https://api1.tabdeal.org/r/api/v1/allOrders [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+orders
+=
+client
+.
+get_orders
+(
+symbol
+=
+'BTCIRT'
+,
+start_time
+=
+1650126305575
+,
+end_time
+=
+1650126665350
+)
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+143
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126665341
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00300000"
+,
+"executedQty"
+:
+"0.00000000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"CANCELED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126730359
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+138
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126305575
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00100000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"99999.99900000"
+,
+"cumulativeQuoteQty"
+:
+"99999.99900000"
+,
+"status"
+:
+"FILLED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126569260
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+startTime
+خیر
+LONG
+سفارشاتی که بعد از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+endTime
+خیر
+LONG
+سفارشاتی که قبل از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+limit
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی نیست. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+در صورت عدم ارسال 
+symbol
+ یا 
+tabdealSymbol
+ تمام سفارشات مربوط به همه بازار ها ارسال خواهد شد.
+پارامتر 
+limit
+ حداکثر 
+1000
+ می‌تواند باشد و مقدار پیش‌فرض آن در صورت عدم ارسال پارامتر، 
+50
+ است.
+تمام سفارشات منقضی نشده
+DELETE https://api1.tabdeal.org/api/v1/nonExpiredAllOrders [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+orders
+=
+client
+.
+get_non_expired_all_orders
+(
+start_time
+=
+1715596507000
+,
+end_time
+=
+1715598316000
+,
+limit
+=
+20
+)
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"PHBUSDT"
+,
+"tabdealSymbol"
+:
+"PHB_USDT"
+,
+"orderId"
+:
+1861605314
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1715598306906
+,
+"price"
+:
+"2.3285000000000000"
+,
+"origQty"
+:
+"12.00000000"
+,
+"executedQty"
+:
+"12.00000000"
+,
+"cummulativeQuoteQty"
+:
+"27.94200000"
+,
+"cumulativeQuoteQty"
+:
+"27.94200000"
+,
+"status"
+:
+"FILLED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"SELL"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1715598569370
+,
+"isWorking"
+:
+"False"
+,
+"isStopOrderTriggered"
+:
+"False"
+,
+"fee"
+:
+"0.02235360"
+},
+{
+"symbol"
+:
+"ENSUSDT"
+,
+"tabdealSymbol"
+:
+"ENS_USDT"
+,
+"orderId"
+:
+1861604680
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1715598302824
+,
+"price"
+:
+"13.9560000000000000"
+,
+"origQty"
+:
+"11.74550000"
+,
+"executedQty"
+:
+"0.00000000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"NEW"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"SELL"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1715598308532
+,
+"isWorking"
+:
+"True"
+,
+"isStopOrderTriggered"
+:
+"False"
+,
+"fee"
+:
+"0.00000000"
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+startTime
+خیر
+LONG
+سفارشاتی که بعد از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+endTime
+خیر
+LONG
+سفارشاتی که قبل از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+limit
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+پارامتر 
+startTime
+ نباید کمتر از یک روز گذشته باشد.
+در صورت عدم ارسال پارامتر 
+startTime
+ مقدار پیش فرض آن برابر یک روز گذشته تنظیم میگردد.
+در صورت عدم ارسال پارامتر 
+endTime
+ مقدار پیش فرض آن برابر اکنون قرار میگیرد.
+در صورتی که پارامتر 
+limit
+ ارسال نشود مقدار پیش فرض آن برابر 50 می باشد.
+حداکثر مقدار 
+limit
+ برابر با 1000 می باشد.
+لغو تمام سفارشات باز
+DELETE https://api1.tabdeal.org/api/v1/openOrders [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+orders
+=
+client
+.
+cancel_open_orders
+(
+symbol
+=
+'BTC_IRT'
+)
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+145
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126930817
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00300000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"99999.99900000"
+,
+"cumulativeQuoteQty"
+:
+"99999.99900000"
+,
+"status"
+:
+"FILLED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126954582
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+ این درخواست سفارشات OCO را نیز شامل می‌شود و آن‌ها را هم لغو می‌کند. 
+    در صورتی که در لغو یکی از سفارشات مشکلی به وجود آید، لغو سایر سفارشات انجام نمی‌شود.
+لذا در صورت مشاهده‌ی خطا لازم است تا مجدداً سفارشات باز خود را بررسی کنید و اگر سفارش بازی وجود داشت، مجدداً همه‌ی سفارشات را لغو کنید. 
+ارسال سفارش OCO
+POST https://api1.tabdeal.org/api/v1/order/oco [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+from
+tabdeal.enums
+import
+OrderSides
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+oco
+=
+client
+.
+new_oco_order
+(
+symbol
+=
+'BTC_IRT'
+,
+side
+=
+OrderSides
+.
+SELL
+,
+quantity
+=
+"0.005"
+,
+price
+=
+"100100000"
+,
+stop_price
+=
+"99899999"
+,
+stop_limit_price
+=
+"99890000"
+,
+list_client_order_id
+=
+"oco_6"
+,
+limit_client_order_id
+=
+"limit_6"
+,
+stop_client_order_id
+=
+"stop_6"
+)
+نمونه خروجی:
+{
+"orderListId"
+:
+20
+,
+"contingencyType"
+:
+"OCO"
+,
+"listStatusType"
+:
+"EXEC_STARTED"
+,
+"listOrderStatus"
+:
+"EXECUTING"
+,
+"listClientOrderId"
+:
+"oco_6"
+,
+"transactionTime"
+:
+1652161449338
+,
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orders"
+:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+159
+,
+"clientOrderId"
+:
+"limit_6"
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+226
+,
+"clientOrderId"
+:
+"stop_6"
+}
+],
+"orderReports"
+:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+159
+,
+"orderListId"
+:
+20
+,
+"clientOrderId"
+:
+"limit_6"
+,
+"transactTime"
+:
+1652161449593
+,
+"price"
+:
+"100100000.00000000"
+,
+"origQty"
+:
+"0.00500000"
+,
+"executedQty"
+:
+"0.00000000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"NEW"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"SELL"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1652161449905
+,
+"isWorking"
+:
+true
+,
+"isStopOrderTriggered"
+:
+false
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+226
+,
+"orderListId"
+:
+20
+,
+"clientOrderId"
+:
+"stop_6"
+,
+"transactTime"
+:
+1652161450753
+,
+"price"
+:
+"99890000.00000000"
+,
+"origQty"
+:
+"0.00500000"
+,
+"executedQty"
+:
+"0.00000000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"NEW"
+,
+"type"
+:
+"STOP_LOSS_LIMIT"
+,
+"side"
+:
+"SELL"
+,
+"stopPrice"
+:
+"99899999.00000000"
+,
+"updateTime"
+:
+1652161450753
+,
+"isWorking"
+:
+true
+,
+"isStopOrderTriggered"
+:
+false
+}
+]
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+side
+بله
+ENUM
+SELL
+ یا 
+BUY
+quantity
+بله
+DECIMAL
+تعداد خرید یا فروش
+price
+بله
+DECIMAL
+قیمت سفارش limit
+stopPrice
+بله
+DECIMAL
+قیمت فعالسازی سفارش stop
+stopLimitPrice
+بله
+DECIMAL
+قیمت سفارش stop
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+                         listClientOrderId
+limitClientOrderId
+خیر
+STRING
+id
+ سفارش limit که توسط کاربر تولید شده
+stopClientOrderId
+خیر
+STRING
+id
+ سفارش stop که توسط کاربر تولید شده
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+پارامترهای 
+listClientOrderId
+ و 
+limitClientOrderId
+ و 
+stopClientOrderId
+ شناسه‌های یکتا برای سفارشات هستند و توسط کاربر تولید می‌شوند که برای هر کاربر باید یکتا باشند.
+جستجوی سفارش OCO
+GET https://api1.tabdeal.org/r/api/v1/orderList [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+oco
+=
+client
+.
+get_oco_order
+(
+oco_id
+=
+19
+)
+نمونه خروجی:
+{
+"orderListId"
+:
+19
+,
+"contingencyType"
+:
+"OCO"
+,
+"listStatusType"
+:
+"EXEC_STARTED"
+,
+"listOrderStatus"
+:
+"EXECUTING"
+,
+"listClientOrderId"
+:
+null
+,
+"transactionTime"
+:
+1651489273803
+,
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orders"
+:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+142
+,
+"clientOrderId"
+:
+null
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+225
+,
+"clientOrderId"
+:
+null
+}
+]
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+orderListId
+خیر
+LONG
+id
+ سفارش
+origClientOrderId
+خیر
+STRING
+id
+ سفارش که توسط کاربر تولید شده
+ارسال فقط یکی از پارامترهای 
+orderListId
+ یا 
+origClientOrderId
+ الزامی است.
+سفارشات باز OCO
+GET https://api1.tabdeal.org/r/api/v1/openOrderList [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+open_oco
+=
+client
+.
+get_oco_open_orders
+()
+نمونه خروجی:
+[
+{
+"orderListId"
+:
+19
+,
+"contingencyType"
+:
+"OCO"
+,
+"listStatusType"
+:
+"EXEC_STARTED"
+,
+"listOrderStatus"
+:
+"EXECUTING"
+,
+"listClientOrderId"
+:
+null
+,
+"transactionTime"
+:
+1651489273803
+,
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orders"
+:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+142
+,
+"clientOrderId"
+:
+null
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+225
+,
+"clientOrderId"
+:
+null
+}
+]
+},
+{
+"orderListId"
+:
+22
+,
+"contingencyType"
+:
+"OCO"
+,
+"listStatusType"
+:
+"EXEC_STARTED"
+,
+"listOrderStatus"
+:
+"EXECUTING"
+,
+"listClientOrderId"
+:
+null
+,
+"transactionTime"
+:
+1652162579757
+,
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orders"
+:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+161
+,
+"clientOrderId"
+:
+null
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+228
+,
+"clientOrderId"
+:
+null
+}
+]
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+لغو سفارش OCO
+DELETE https://api1.tabdeal.org/api/v1/orderList [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+order
+=
+client
+.
+cancel_oco_order
+(
+symbol
+=
+'BTC_IRT'
+,
+oco_id
+=
+19
+)
+نمونه خروجی:
+{
+"orderListId"
+:
+19
+,
+"contingencyType"
+:
+"OCO"
+,
+"listStatusType"
+:
+"ALL_DONE"
+,
+"listOrderStatus"
+:
+"ALL_DONE"
+,
+"listClientOrderId"
+:
+null
+,
+"transactionTime"
+:
+1651489273803
+,
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orders"
+:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+142
+,
+"clientOrderId"
+:
+null
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+225
+,
+"clientOrderId"
+:
+null
+}
+],
+"orderReports"
+:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+142
+,
+"orderListId"
+:
+19
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1651489273833
+,
+"price"
+:
+"100100000.00000000"
+,
+"origQty"
+:
+"0.00500000"
+,
+"executedQty"
+:
+"0.00000000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"CANCELED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"SELL"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1652162973131
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+225
+,
+"orderListId"
+:
+19
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1651489275437
+,
+"price"
+:
+"99890000.00000000"
+,
+"origQty"
+:
+"0.00500000"
+,
+"executedQty"
+:
+"0.00000000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"CANCELED"
+,
+"type"
+:
+"STOP_LOSS_LIMIT"
+,
+"side"
+:
+"SELL"
+,
+"stopPrice"
+:
+"99899999.00000000"
+,
+"updateTime"
+:
+1652162973140
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+}
+]
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+orderListId
+خیر
+LONG
+id
+ سفارش
+listClientOrderId
+خیر
+STRING
+id
+ سفارش که توسط کاربر تولید شده
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+ارسال فقط یکی از پارامترهای 
+orderListId
+ یا 
+listClientOrderId
+ الزامی است.
+تمام سفارشات OCO
+GET https://api1.tabdeal.org/r/api/v1/allOrderList [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+all_oco
+=
+client
+.
+get_oco_orders
+(
+start_time
+=
+1650962658352
+,
+end_time
+=
+1652161449338
+,
+limit
+=
+2
+)
+نمونه خروجی:
+[
+{
+"orderListId"
+:
+19
+,
+"contingencyType"
+:
+"OCO"
+,
+"listStatusType"
+:
+"EXEC_STARTED"
+,
+"listOrderStatus"
+:
+"EXECUTING"
+,
+"listClientOrderId"
+:
+null
+,
+"transactionTime"
+:
+1651489273803
+,
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orders"
+:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+142
+,
+"clientOrderId"
+:
+null
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+225
+,
+"clientOrderId"
+:
+null
+}
+]
+},
+{
+"orderListId"
+:
+18
+,
+"contingencyType"
+:
+"OCO"
+,
+"listStatusType"
+:
+"ALL_DONE"
+,
+"listOrderStatus"
+:
+"ALL_DONE"
+,
+"listClientOrderId"
+:
+"oco_5"
+,
+"transactionTime"
+:
+1650963634241
+,
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orders"
+:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+141
+,
+"clientOrderId"
+:
+null
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+224
+,
+"clientOrderId"
+:
+null
+}
+]
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+startTime
+خیر
+LONG
+سفارشاتی که بعد از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+endTime
+خیر
+LONG
+سفارشاتی که قبل از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+limit
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+پارامتر 
+limit
+ حداکثر 
+1000
+ می‌تواند باشد و مقدار پیش‌فرض آن در صورت عدم ارسال پارامتر، 
+50
+ است.
+معاملات من
+GET https://api1.tabdeal.org/r/api/v1/myTrades [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+trades
+=
+client
+.
+my_trades
+(
+symbol
+=
+'BTC_IRT'
+,
+start_time
+=
+1653210673316
+,
+end_time
+=
+1653222331419
+,
+limit
+=
+2
+)
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"id"
+:
+36
+,
+"orderId"
+:
+1140
+,
+"price"
+:
+"99900500.00000000"
+,
+"qty"
+:
+"0.00500000"
+,
+"quoteQty"
+:
+"0.00498000"
+,
+"commission"
+:
+"1998.01000000"
+,
+"commissionAsset"
+:
+"IRT"
+,
+"time"
+:
+1653211038472
+,
+"isBuyer"
+:
+false
+,
+"isMaker"
+:
+true
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"id"
+:
+35
+,
+"orderId"
+:
+1137
+,
+"price"
+:
+"99900500.00000000"
+,
+"qty"
+:
+"0.00500000"
+,
+"quoteQty"
+:
+"0.00498000"
+,
+"commission"
+:
+"1998.01000000"
+,
+"commissionAsset"
+:
+"IRT"
+,
+"time"
+:
+1653210886838
+,
+"isBuyer"
+:
+false
+,
+"isMaker"
+:
+true
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+startTime
+خیر
+LONG
+معاملاتی که بعد از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+endTime
+خیر
+LONG
+معاملاتی که قبل از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+limit
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+orderId
+خیر
+INT
+معاملاتی که سفارش آنها این 
+id
+ را دارند بازگردانده میشوند
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+پارامتر 
+limit
+ حداکثر 
+1000
+ می‌تواند باشد و مقدار پیش‌فرض آن در صورت عدم ارسال پارامتر، 
+50
+ است.
+اطلاعات کاربر
+GET https://api1.tabdeal.org/r/api/v1/account [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+account
+=
+client
+.
+account
+()
+نمونه خروجی:
+{
+"makerCommission"
+:
+40
+,
+"takerCommission"
+:
+40
+,
+"canTrade"
+:
+true
+,
+"canWithdraw"
+:
+false
+,
+"canDeposit"
+:
+false
+,
+"updateTime"
+:
+1657531256965
+,
+"accountType"
+:
+"SPOT"
+,
+"balances"
+:
+[
+{
+"asset"
+:
+"BTC"
+,
+"free"
+:
+"0.05297200"
+,
+"freeze"
+:
+"0.04700000"
+},
+{
+"asset"
+:
+"IRT"
+,
+"free"
+:
+"99990721.20000000"
+,
+"freeze"
+:
+"0.00000000"
+},
+{
+"asset"
+:
+"USDT"
+,
+"free"
+:
+"0.00000000"
+,
+"freeze"
+:
+"0.00000000"
+},
+...
+],
+"permissions"
+:
+[
+"SPOT"
+]
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+بازار
+لیست سفارشات
+GET https://api1.tabdeal.org/r/api/v1/depth [NONE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+()
+order_book
+=
+client
+.
+depth
+(
+symbol
+=
+'BTCUSDT'
+,
+limit
+=
+1
+)
+نمونه خروجی:
+{
+"bids"
+:
+[
+[
+"39792.23000000"
+,
+//
+PRICE
+"8.27169000"
+//
+QUANTITY
+],
+[
+"39792.18000000"
+,
+//
+PRICE
+"0.33006000"
+//
+QUANTITY
+]
+],
+"asks"
+:
+[
+[
+"39792.24000000"
+,
+//
+PRICE
+"1.27040000"
+//
+QUANTITY
+],
+[
+"39792.27000000"
+,
+//
+PRICE
+"0.00850000"
+//
+QUANTITY
+]
+]
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+limit
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+پارامتر 
+limit
+ حداکثر 
+5000
+ می‌تواند باشد و مقدار پیش‌فرض آن در صورت عدم ارسال پارامتر، 
+50
+ است.
+لیست معاملات
+GET https://api1.tabdeal.org/r/api/v1/trades [NONE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+()
+trades
+=
+client
+.
+trades
+(
+symbol
+=
+'BTC_IRT'
+,
+limit
+=
+2
+)
+نمونه خروجی:
+[
+{
+"id"
+:
+18
+,
+"price"
+:
+"100000000.00000000"
+,
+"qty"
+:
+"0.02500000"
+,
+"quoteQty"
+:
+"0.02490000"
+,
+"time"
+:
+1648990888735
+,
+"isBuyerMaker"
+:
+false
+},
+{
+"id"
+:
+17
+,
+"price"
+:
+"99999999.00000000"
+,
+"qty"
+:
+"0.02500000"
+,
+"quoteQty"
+:
+"2489999.97510000"
+,
+"time"
+:
+1648990780492
+,
+"isBuyerMaker"
+:
+true
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+limit
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+پارامتر 
+limit
+ حداکثر 
+1000
+ می‌تواند باشد و مقدار پیش‌فرض آن در صورت عدم ارسال پارامتر، 
+50
+ است.
+لیست بازارها
+GET https://api1.tabdeal.org/r/api/v1/exchangeInfo [NONE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+()
+market
+=
+client
+.
+exchange_info
+(
+symbol
+=
+'BTC_IRT'
+)
+market
+=
+client
+.
+exchange_info
+(
+symbol
+=
+'MANAUSDT'
+)
+markets
+=
+client
+.
+exchange_info
+(
+symbols
+=
+[
+'BTCIRT'
+,
+'MANAUSDT'
+]
+)
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"status"
+:
+"TRADING"
+,
+"baseAsset"
+:
+"BTC"
+,
+"baseAssetPrecision"
+:
+"8"
+,
+"quoteAsset"
+:
+"IRT"
+,
+"quoteAssetPrecision"
+:
+"8"
+,
+"baseCommissionPrecision"
+:
+"8"
+,
+"quoteCommissionPrecision"
+:
+"8"
+,
+"orderTypes"
+:
+[
+"LIMIT"
+,
+"STOP_LOSS_LIMIT"
+,
+"MARKET"
+],
+"icebergAllowed"
+:
+false
+,
+"ocoAllowed"
+:
+true
+,
+"quoteOrderQtyMarketAllowed"
+:
+false
+,
+"allowTrailingStop"
+:
+false
+,
+"isSpotTradingAllowed"
+:
+true
+,
+"isMarginTradingAllowed"
+:
+false
+,
+"filters"
+:
+[
+{
+"filterType"
+:
+"PRICE_FILTER"
+,
+"minPrice"
+:
+"300.00000000"
+,
+"maxPrice"
+:
+"30000000000.00000000"
+,
+"tickSize"
+:
+"1.00000000"
+},
+{
+"filterType"
+:
+"PERCENT_PRICE"
+,
+"multiplierUp"
+:
+5.0
+,
+"multiplierDown"
+:
+0.2
+,
+"avgPriceMins"
+:
+5
+},
+{
+"filterType"
+:
+"LOT_SIZE"
+,
+"minQty"
+:
+"0.00005000"
+,
+"stepSize"
+:
+"0.00000001"
+},
+{
+"filterType"
+:
+"MIN_NOTIONAL"
+,
+"minNotional"
+:
+"99000.00000000"
+,
+"applyToMarket"
+:
+false
+,
+"avgPriceMins"
+:
+5
+},
+{
+"filterType"
+:
+"MARKET_LOT_SIZE"
+,
+"minQty"
+:
+"0.00005000"
+,
+"maxQty"
+:
+"0.99250018"
+,
+"stepSize"
+:
+"0.00000001"
+}
+],
+"permissions"
+:
+[
+"SPOT"
+]
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+خیر
+STRING
+نام بازار
+symbols
+خیر
+STRING
+نام بازارها
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+tabdealSymbols
+خیر
+STRING
+نام بازارها با 
+_
+limit
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+پارامتر 
+limit
+ حداکثر 
+1000
+ می‌تواند باشد و مقدار پیش‌فرض آن در صورت عدم ارسال پارامتر، 
+50
+ است.
+در صورتی که هیچکدام از فیلدهای 
+symbol
+ یا 
+symbols
+ یا 
+tabdealSymbol
+ یا 
+tabdealSymbols
+ ارسال نشود، تمامی بازارها بازگردانده می‌شوند.
+تست اتصال به سرور
+GET https://api1.tabdeal.org/r/api/v1/ping [NONE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+()
+client
+.
+ping
+()
+نمونه خروجی:
+{}
+پارامترها:
+نیاز به ارسال پارامتر نیست.
+گرفتن زمان سرور
+GET https://api1.tabdeal.org/r/api/v1/time [NONE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+()
+client
+.
+time
+()
+نمونه خروجی:
+{
+"serverTime"
+:
+1660046774413
+}
+پارامترها:
+نیاز به ارسال پارامتر نیست.
+وب سوکت بازار
+توضیحات
+ wss://api1.tabdeal.org/stream/ 
+نمونه خروجی:
+{
+"result"
+:
+null
+,
+"id"
+:
+1
+}
+برای اتصال به وب سوکت باید از url بالا استفاده کنید.
+برای استفاده از وب سوکت لازم است تا یک json با پارامترهای زیر ارسال شود:
+پارامتر
+الزامی
+توضیحات
+method
+بله
+نام بازار
+id
+بله
+شناسه‌ی عددی یکتای درخواست ارسالی
+params
+وابسته به 
+method
+لیست پارامترهای مورد نیاز
+مقادیر معتبر برای پارامتر 
+method
+مقدار
+توضیحات
+SUBSCRIBE
+برای subscribe کردن در topic موردنظر
+پارامتر 
+id
+ شناسه‌ی یکتای درخواست ارسالی است و پاسخ پیام ارسالی با همین 
+id
+ بازمی‌گردد.
+در خروجی درخواست در صورتی که درخواست موفقیت‌آمیز باشد، مقدار پارامتر 
+result
+ برابر با 
+null
+ خواهد بود.
+سفارشات (OrderBook)
+ "[symbol]@depth@2000ms", "btcusdt@depth@2000ms", "usdtirt@depth@2000ms" 
+نمونه درخواست ارسالی
+{
+"method"
+:
+"SUBSCRIBE"
+,
+"params"
+:
+[
+"usdtirt@depth@2000ms"
+],
+"id"
+:
+1
+}
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.websocket_client
+import
+SpotWebsocketClient
+def
+handler
+(
+message
+):
+print
+(
+message
+)
+tabdeal_ws
+=
+SpotWebsocketClient
+()
+tabdeal_ws
+.
+market_order_book
+(
+symbol
+=
+"bnbusdt"
+,
+id
+=
+1
+,
+callback
+=
+handler
+,
+)
+نمونه خروجی:
+{
+"stream"
+:
+"usdtirt@depth@2000ms"
+,
+//
+topic
+"data"
+:
+{
+"e"
+:
+"depthUpdate"
+,
+//
+event
+type
+"E"
+:
+1657530675579
+,
+//
+timeStamp
+"s"
+:
+"USDTIRT"
+,
+//
+symbol
+"b"
+:
+[
+//
+bids
+(Buy)
+[
+"32290"
+,
+//
+price
+"155.903075"
+//
+quantity
+],
+[
+"32267"
+,
+"31.501710"
+],
+[
+"32265"
+,
+"31.501710"
+],
+[
+"32263"
+,
+"31.501710"
+],
+[
+"32261"
+,
+"31.501710"
+],
+...
+],
+"a"
+:
+[
+//
+asks
+(Sell)
+[
+"32311"
+,
+//
+price
+"76.378076"
+//
+quantity
+],
+[
+"32427"
+,
+"9.876782"
+],
+[
+"32430"
+,
+"2984.657201"
+],
+[
+"32503"
+,
+"19.753564"
+],
+[
+"32568"
+,
+"98.767818"
+],
+...
+]
+}
+}
+این topic برای subscribe کردن در لیست سفارشات بازارهاست. در پارامتر 
+params
+ لیست بازارهایی که می‌خواهیم در آن‌ها subscribe کنیم را می‌دهیم و ساختار آن به صورت بالا است.
+لیست سفارشات بازار هر 
+2
+ ثانیه یکبار توسط این topic ارسال می‌شود.
+در صورتی که می‌خواهید به بازارهای بیشتری متصل شوید، لازم است تا در پارامتر 
+params
+ سایر بازارها را نیز قرار دهید.
+وب سوکت اطلاعات کاربر
+توضیحات
+ wss://api1.tabdeal.org/stream/streams={listen_key} 
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.websocket_client
+import
+SpotWebsocketClient
+from
+tabdeal.spot
+import
+Spot
+def
+handler
+(
+message
+):
+print
+(
+message
+)
+tabdeal_ws
+=
+SpotWebsocketClient
+()
+tabdeal
+=
+Spot
+(
+api_key
+=
+api_key
+)
+response
+=
+tabdeal
+.
+new_listen_key
+()
+tabdeal_ws
+.
+user_data
+(
+listen_key
+=
+response
+[
+"listenKey"
+],
+callback
+=
+handler
+,
+)
+هر کاربر یک 
+listenKey
+ دارد که با استفاده از آن می‌تواند به وب سوکت متصل شده و از رویدادهای مرتبط با خود مطلع شود.
+هر 
+listenKey
+ فقط 
+60
+ دقیقه معتبر است.
+برای اتصال به وب سوکت اطلاعات کاربر، لازم است تا 
+listenKey
+ کاربر را در url بالا قرار داده و به آن متصل شوید.
+دریافت  listenKey
+POST https://api1.tabdeal.org/api/v1/userDataStream [USER]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+)
+listen_key
+=
+client
+.
+new_listen_key
+()
+نمونه خروجی:
+{
+"listenKey"
+:
+"5b9drdtugwm5d1a76ztika1xxa649xv3mquc57cd2eyoag77han53iov8yyixnt3"
+}
+با ارسال درخواست به این url یک 
+listenKey
+ دریافت می‌کنید که به مدت 
+60
+ دقیقه معتبر است.
+در صورتی که از قبل 
+listenKey
+ معتبر داشته باشید، با ارسال درخواست به این url مدت زمان اعتبار 
+listenKey
+ قبلی افزایش یافته و خروجی این درخواست همان 
+listenKey
+ قبلی خواهد بود.
+به‌روزرسانی  listenKey
+PUT https://api1.tabdeal.org/api/v1/userDataStream [USER]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+)
+listen_key
+=
+client
+.
+renew_listen_key
+(
+listen_key
+=
+"5b9drdtugwm5d1a76ztika1xxa649xv3mquc57cd2eyoag77han53iov8yyixnt3"
+)
+نمونه خروجی:
+{}
+با ارسال درخواست به این url مدت اعتبار 
+listenKey
+ ارسالی، به مدت 
+60
+ دقیقه افزایش می‌یابد.
+حذف  listenKey
+DELETE https://api1.tabdeal.org/api/v1/userDataStream [USER]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+)
+listen_key
+=
+client
+.
+close_listen_key
+(
+listen_key
+=
+"5b9drdtugwm5d1a76ztika1xxa649xv3mquc57cd2eyoag77han53iov8yyixnt3"
+)
+نمونه خروجی:
+{}
+با ارسال درخواست، 
+listenKey
+ ارسالی حذف خواهد شد و دیگر قابل استفاده نخواهد بود.
+اطلاعات دریافتی (سفارش)
+نمونه خروجی برای سفارش
+{
+"e"
+:
+"executionReport"
+,
+//
+Event
+type
+"E"
+:
+1499405658658
+,
+//
+Event
+time
+"s"
+:
+"ETHBTC"
+,
+//
+Symbol
+"c"
+:
+"mUvoqJxFIILMdfAW5iGSOW"
+,
+//
+Client
+order
+ID
+"S"
+:
+"BUY"
+,
+//
+Side
+"o"
+:
+"LIMIT"
+,
+//
+Order
+type
+"f"
+:
+"GTC"
+,
+//
+Time
+in
+force
+"q"
+:
+"1.00000000"
+,
+//
+Order
+quantity
+"p"
+:
+"0.10264410"
+,
+//
+Order
+price
+"P"
+:
+"0.00000000"
+,
+//
+Stop
+price
+"g"
+:
+-1
+,
+//
+OrderListId
+(OCO
+Id)
+"x"
+:
+"NEW"
+,
+//
+Current
+execution
+type
+"X"
+:
+"NEW"
+,
+//
+Current
+order
+status
+"i"
+:
+4293153
+,
+//
+Order
+ID
+"l"
+:
+"0.00000000"
+,
+//
+Last
+executed
+quantity
+"z"
+:
+"0.00000000"
+,
+//
+Cumulative
+filled
+quantity
+"L"
+:
+"0.00000000"
+,
+//
+Last
+executed
+price
+"n"
+:
+"0"
+,
+//
+Commission
+amount
+"N"
+:
+null
+,
+//
+Commission
+asset
+"t"
+:
+-1
+,
+//
+Trade
+ID
+"m"
+:
+false
+,
+//
+Is
+this
+trade
+the
+maker
+side?
+"O"
+:
+1499405658657
+//
+Order
+creation
+time
+}
+نمونه خروجی برای سفارش OCO
+{
+"e"
+:
+"listStatus"
+,
+//Event
+Type
+"E"
+:
+1564035303637
+,
+//Event
+Time
+"s"
+:
+"ETHBTC"
+,
+//Symbol
+"g"
+:
+2
+,
+//OrderListId
+(OCO
+Id)
+"c"
+:
+"OCO"
+,
+//Contingency
+Type
+"l"
+:
+"EXEC_STARTED"
+,
+//List
+Status
+Type
+"L"
+:
+"EXECUTING"
+,
+//List
+Order
+Status
+"C"
+:
+"F4QN4G8DlFATFlIUQ0cjdD"
+,
+//List
+Client
+Order
+ID
+"T"
+:
+1564035303625
+,
+//Transaction
+Time
+"O"
+:
+[
+//An
+array
+of
+objects
+{
+"s"
+:
+"ETHBTC"
+,
+//Symbol
+"i"
+:
+17
+,
+//
+orderId
+"c"
+:
+"AJYsMjErWJesZvqlJCTUgL"
+//ClientOrderId
+},
+{
+"s"
+:
+"ETHBTC"
+,
+"i"
+:
+18
+,
+"c"
+:
+"bfYPSQdLoqAJeNrOr9adzq"
+}
+]
+}
+یکی از اطلاعاتی که از وب سوکت اطلاعات کاربر دریافت می‌شود تغییرات مربوط به سفارشات کاربر است و درصورت ایجاد سفارش جدید یا حذف سفارش موجود و یا fill شدن کل یا بخشی از سفارش موجود، از این وب سوکت دیتای سفارش کاربر مانند نمونه ارسال می‌شود.
+درصورتی که تغییری در سفارشات زیرمجموعه‌ی OCO ایجاد شود، هم دیتای مربوط به OCO و هم Order مربوطه ارسال می‌شوند.
+پارامتر 
+x
+ در خروجی برای نشان دادن عملیات انجام‌شده روی سفارش است.
+عملیات‌های انجام‌شده روی سفارش
+عملیات
+توضیحات
+NEW
+سفارش ایجاد شد
+CANCELED
+سفارش لغو شد
+TRADE
+روی سفارش، معامله صورت گرفت
+TRIGGERRED
+سفارش 
+STOP
+ فعال شد
+کیف پول
+لیست دارایی‌ها
+GET https://api1.tabdeal.org/r/api/v1/asset/get-funding-asset [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.spot
+import
+Spot
+client
+=
+Spot
+(
+api_key
+,
+api_secret
+)
+order
+=
+client
+.
+funding_wallet
+(
+asset
+=
+'BTC'
+,
+)
+نمونه خروجی:
+{
+"asset"
+:
+"BTC"
+,
+"free"
+:
+"1.97427700"
+,
+"freeze"
+:
+"0.00634300"
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+asset
+خیر
+STRING
+نماد مربوط به دارایی مورد نظر
+در صورتی که پارامتر 
+asset
+ ارسال نشود، لیست تمام دارایی‌ها بازگردانده می‌شود.
+معامله اهرم‌دار
+جابه‌جایی
+POST https://api1.tabdeal.org/r/api/v1/margin/isolated/transfer [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+transfer
+=
+client
+.
+transfer
+(
+asset
+=
+'BTC'
+,
+amount
+=
+"0.01"
+,
+trans_from
+=
+"ISOLATED_MARGIN"
+,
+trans_to
+=
+"SPOT"
+,
+symbol
+=
+"BTCUSDT"
+)
+نمونه خروجی:
+{
+"tranId"
+:
+21
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+asset
+بله
+STRING
+نماد مربوط به دارایی مورد نظر
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با _
+transFrom
+بله
+ENUM
+ISOLATED_MARGIN یا SPOT
+transTo
+بله
+ENUM
+ISOLATED_MARGIN یا SPOT
+amount
+بله
+DECIMAL
+مقدار جابه‌جایی
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+تاریخچه جابه‌جایی
+GET https://api1.tabdeal.org/r/api/v1/margin/isolated/transfer [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+transfer_history
+=
+client
+.
+get_transfers
+(
+asset
+=
+'BTC'
+,
+current
+=
+1
+,
+symbol
+=
+"BTCUSDT"
+)
+نمونه خروجی:
+{
+"rows"
+:
+[
+{
+"amount"
+:
+"0.01000000"
+,
+"asset"
+:
+"BTC"
+,
+"status"
+:
+"CONFIRMED"
+,
+//
+PENDING
+,
+CONFIRMED
+,
+FAILED;
+"timestamp"
+:
+1566898617
+,
+"txId"
+:
+5240372201
+,
+"type"
+:
+"ROLL_IN"
+,
+"transFrom"
+:
+"SPOT"
+,
+"transTo"
+:
+"ISOLATED_MARGIN"
+},
+{
+"amount"
+:
+"10.00000000"
+,
+"asset"
+:
+"USDT"
+,
+"status"
+:
+"CONFIRMED"
+,
+//
+PENDING
+,
+CONFIRMED
+,
+FAILED;
+"timestamp"
+:
+1566888403
+,
+"txId"
+:
+5239808703
+,
+"type"
+:
+"ROLL_OUT"
+,
+"transFrom"
+:
+"ISOLATED_MARGIN"
+,
+"transTo"
+:
+"SPOT"
+}
+],
+"total"
+:
+2
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+asset
+خیر
+STRING
+نماد مربوط به دارایی مورد نظر
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با _
+startTime
+خیر
+LONG
+سفارشاتی که بعد از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+endTime
+خیر
+LONG
+سفارشاتی که قبل از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+size
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+current
+خیر
+INT
+خروجی برای این صفحه برگردانده میشود
+type
+خیر
+ENUM
+ROLL_OUT یا ROLL_IN
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+مقدار size به صورت پیش فرض 
+10
+ است و حداکثر مقدار قابل قبول برای آن 
+1000
+ میباشد.
+سفارشات باز معامله اهرم‌دار
+GET https://api1.tabdeal.org/r/api/v1/margin/openOrders [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+orders
+=
+client
+.
+get_open_margin_orders
+(
+symbol
+=
+'BTCIRT'
+)
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+140
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126546994
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00200000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"PARTIALLY_FILLED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126680079
+,
+"isWorking"
+:
+true
+,
+"isStopOrderTriggered"
+:
+false
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+در صورتی که 
+symbol
+ یا 
+tabdealSymbol
+ را ارسال نکنید، سفارشات باز تمام بازارها را برمی‌گرداند.
+لغو تمام سفارشات باز معامله اهرم‌دار
+DELETE https://api1.tabdeal.org/api/v1/margin/openOrders [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+orders
+=
+client
+.
+cancel_margin_open_orders
+(
+symbol
+=
+'BTC_IRT'
+)
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+145
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126930817
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00300000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"99999.99900000"
+,
+"cumulativeQuoteQty"
+:
+"99999.99900000"
+,
+"status"
+:
+"FILLED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126954582
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+    در صورتی که در لغو یکی از سفارشات مشکلی به وجود آید، لغو سایر سفارشات انجام نمی‌شود.
+لذا در صورت مشاهده‌ی خطا لازم است تا مجدداً سفارشات باز خود را بررسی کنید و اگر سفارش بازی وجود داشت، مجدداً همه‌ی سفارشات را لغو کنید. 
+تمام سفارشات معامله اهرم‌دار
+GET https://api1.tabdeal.org/r/api/v1/margin/allOrders [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+orders
+=
+client
+.
+get_all_margin_orders
+(
+symbol
+=
+'BTCIRT'
+,
+start_time
+=
+1650126305575
+,
+end_time
+=
+1650126665350
+)
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+143
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126665341
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00300000"
+,
+"executedQty"
+:
+"0.00000000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"CANCELED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126730359
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+},
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+138
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126305575
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00100000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"99999.99900000"
+,
+"cumulativeQuoteQty"
+:
+"99999.99900000"
+,
+"status"
+:
+"FILLED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126569260
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+startTime
+خیر
+LONG
+سفارشاتی که بعد از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+endTime
+خیر
+LONG
+سفارشاتی که قبل از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+limit
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+پارامتر 
+limit
+ حداکثر 
+1000
+ می‌تواند باشد و مقدار پیش‌فرض آن در صورت عدم ارسال پارامتر، 
+50
+ است.
+ارسال سفارش معامله اهرم‌دار
+POST https://api1.tabdeal.org/api/v1/margin/order [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+from
+tabdeal.enums
+import
+OrderSides
+,
+OrderTypes
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+order
+=
+client
+.
+create_margin_order
+(
+symbol
+=
+'BTCIRT'
+,
+side
+=
+OrderSides
+.
+BUY
+,
+type
+=
+OrderTypes
+.
+MARKET
+,
+quantity
+=
+"0.001"
+,
+borrow_quantity
+=
+"4500000"
+)
+نمونه خروجی:
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+139
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126344421
+,
+"price"
+:
+"0.00000000"
+,
+"origQty"
+:
+"0.00100000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"99999.99900000"
+,
+"cumulativeQuoteQty"
+:
+"99999.99900000"
+,
+"status"
+:
+"FILLED"
+,
+"type"
+:
+"MARKET"
+,
+"side"
+:
+"SELL"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126344546
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+,
+"fills"
+:
+[
+{
+"price"
+:
+"99999999.00000000"
+,
+"qty"
+:
+"0.00100000"
+,
+"commission"
+:
+"399.99999600"
+,
+"commissionAsset"
+:
+"IRT"
+,
+"tradeId"
+:
+4
+}
+]
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+side
+بله
+ENUM
+SELL
+ یا 
+BUY
+type
+بله
+ENUM
+MARKET
+ یا 
+LIMIT
+ یا 
+STOP_LOSS_LIMIT
+quantity
+بله
+DECIMAL
+تعداد خرید یا فروش
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+newClientOrderId
+خیر
+STRING
+id
+ سفارش که توسط کاربر تولید شده
+price
+خیر
+DECIMAL
+قیمت خرید یا فروش
+stopPrice
+خیر
+DECIMAL
+قیمت فعال شدن سفارش
+borrow_quantity
+بله
+DECIMAL
+مقدار اعتبار دریافتی از ارز دوم برای خرید یا ارز اول برای فروش
+    با تغییر 
+type
+ مربوط به سفارش، ملزومات سفارش تغییر می‌کند و ممکن است پارامترهای 
+price
+ یا 
+stopPrice
+ الزامی شوند.
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+در صورتی که 
+type
+ سفارش 
+LIMIT
+ باشد، ارسال 
+price
+ الزامی است.
+در صورتی که 
+type
+ سفارش 
+STOP_LOSS_LIMIT
+ باشد، ارسال 
+stopPrice
+ الزامی است.
+پارامتر 
+newClientOrderId
+ شناسه‌ی یکتا برای سفارش است و توسط کاربر تولید می‌شود که برای هر کاربر باید یکتا باشد.
+پارامتر 
+borrow_quantity
+ میتواند به واحد ارز اول یا دوم بازار باشد. اگر سفارش خرید باشد این پارامتر بر حسب ارز دوم بازار و اگر سفارش فروش باشد بر حسب ارز اول بازار میباشد.
+جستجوی سفارش معامله اهرم‌دار
+GET https://api1.tabdeal.org/r/api/v1/margin/order [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+order
+=
+client
+.
+get_margin_order
+(
+symbol
+=
+'BTC_IRT'
+,
+order_id
+=
+140
+)
+نمونه خروجی:
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+140
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126546994
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00200000"
+,
+"executedQty"
+:
+"0.00100000"
+,
+"cummulativeQuoteQty"
+:
+"99999.99900000"
+,
+"cumulativeQuoteQty"
+:
+"99999.99900000"
+,
+"status"
+:
+"PARTIALLY_FILLED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126680079
+,
+"isWorking"
+:
+true
+,
+"isStopOrderTriggered"
+:
+false
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+orderId
+خیر
+LONG
+id
+ سفارش
+origClientOrderId
+خیر
+STRING
+id
+ سفارش که توسط کاربر تولید شده
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+ارسال فقط یکی از پارامترهای 
+orderId
+ یا 
+origClientOrderId
+ الزامی است.
+لغو سفارش معامله اهرم‌دار
+DELETE https://api1.tabdeal.org/api/v1/margin/order [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+order
+=
+client
+.
+cancel_margin_order
+(
+symbol
+=
+'BTC_IRT'
+,
+order_id
+=
+143
+)
+نمونه خروجی:
+{
+"symbol"
+:
+"BTCIRT"
+,
+"tabdealSymbol"
+:
+"BTC_IRT"
+,
+"orderId"
+:
+143
+,
+"orderListId"
+:
+-1
+,
+"clientOrderId"
+:
+null
+,
+"transactTime"
+:
+1650126665341
+,
+"price"
+:
+"99999999.00000000"
+,
+"origQty"
+:
+"0.00300000"
+,
+"executedQty"
+:
+"0.00000000"
+,
+"cummulativeQuoteQty"
+:
+"0.00000000"
+,
+"cumulativeQuoteQty"
+:
+"0.00000000"
+,
+"status"
+:
+"CANCELED"
+,
+"type"
+:
+"LIMIT"
+,
+"side"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0.00000000"
+,
+"updateTime"
+:
+1650126730359
+,
+"isWorking"
+:
+false
+,
+"isStopOrderTriggered"
+:
+false
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته ی رمز شده
+symbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+orderId
+خیر
+LONG
+id
+ سفارش
+origClientOrderId
+خیر
+STRING
+id
+ سفارش که توسط کاربر تولید شده
+ارسال 
+symbol
+ یا 
+tabdealSymbol
+ الزامی است. تفاوت این دو در علامت 
+_
+ بین علامت ارزهاست.
+ارسال فقط یکی از پارامترهای 
+orderId
+ یا 
+origClientOrderId
+ الزامی است.
+ارزهای معامله اهرم‌دار
+GET https://api1.tabdeal.org/api/v1/margin/allAssets [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+assets
+=
+client
+.
+get_all_assets
+()
+نمونه خروجی:
+[
+{
+"assetFullName"
+:
+"TetherUS"
+,
+"symbol"
+:
+"USDTIRT"
+,
+"tabdealSymbol"
+:
+"BTC_USDT"
+,
+"assetName"
+:
+"USDT"
+,
+"isBorrowable"
+:
+true
+,
+"userMaxBorrow"
+:
+"150.00000000"
+}
+]
+این درخواست پارامتر ورودی ندارد.
+تاریخچه بازپرداخت
+GET https://api1.tabdeal.org/api/v1/margin/repay [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+assets
+=
+client
+.
+get_repays
+(
+isolatedSymbol
+=
+"BTCUSDT"
+,
+size
+=
+3
+)
+نمونه خروجی:
+{
+"rows"
+:
+[
+{
+"isolatedSymbol"
+:
+"BTCUSDT"
+,
+"tabdealSymbol"
+:
+"BTC_USDT"
+,
+"amount"
+:
+"14.00000000"
+,
+//
+Total
+amount
+borrowed/repaid
+"asset"
+:
+"USDT"
+,
+"interest"
+:
+"0.01866667"
+,
+//
+Interest
+repaid
+"principal"
+:
+"13.98133333"
+,
+//
+Principal
+repaid
+"status"
+:
+"CONFIRMED"
+,
+//
+PENDING
+,
+CONFIRMED
+,
+FAILED;
+"timestamp"
+:
+1563438204000
+,
+"txId"
+:
+2970933056
+}
+],
+"total"
+:
+1
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+asset
+خیر
+STRING
+نماد مربوط به دارایی مورد نظر
+isolatedSymbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+txId
+خیر
+LONG
+id
+ تراکنش
+startTime
+خیر
+LONG
+سفارشاتی که بعد از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+endTime
+خیر
+LONG
+سفارشاتی که قبل از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+size
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+current
+خیر
+INT
+خروجی برای این صفحه برگردانده میشود
+تاریخچه بهره
+GET https://api1.tabdeal.org/api/v1/margin/interestHistory [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+assets
+=
+client
+.
+get_interests
+(
+isolatedSymbol
+=
+"BTCUSDT"
+,
+size
+=
+3
+)
+نمونه خروجی:
+{
+"rows"
+:
+[
+{
+"txId"
+:
+1352286576452864727
+,
+"interestAccuredTime"
+:
+1672160400000
+,
+"asset"
+:
+"USDT"
+,
+"principal"
+:
+"45.3313"
+,
+"interest"
+:
+"0.00024995"
+,
+"interestRate"
+:
+"0.00013233"
+,
+"type"
+:
+"ON_BORROW"
+,
+"isolatedSymbol"
+:
+"BTCUSDT"
+,
+"tabdealSymbol"
+:
+"BTC_USDT"
+}
+],
+"total"
+:
+1
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+asset
+خیر
+STRING
+نماد مربوط به دارایی مورد نظر
+isolatedSymbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+startTime
+خیر
+LONG
+سفارشاتی که بعد از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+endTime
+خیر
+LONG
+سفارشاتی که قبل از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+size
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+current
+خیر
+INT
+خروجی برای این صفحه برگردانده میشود
+مقدار size به صورت پیش فرض 
+10
+ است و حداکثر مقدار قابل قبول برای آن 
+1000
+ میباشد.
+type
+ پاسخ دارای ۲ مقدار میباشد:
+PERIODIC: سود به ازای هر ساعت نگه داشتن اعتبار
+ON_BORROW: نخستین بهره دریافتی به ازای اعتبار گرفتن
+اطلاعات حساب معامله اهرم‌دار
+GET https://api1.tabdeal.org/api/v1/margin/isolated/account [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+assets
+=
+client
+.
+get_isolated_margin_account
+(
+symbols
+=
+[
+"BTCUSDT"
+]
+)
+نمونه خروجی با symbols:
+{
+"assets"
+:[
+{
+"baseAsset"
+:
+{
+"asset"
+:
+"BTC"
+,
+"borrowEnabled"
+:
+true
+,
+"borrowed"
+:
+"0.00000000"
+,
+"free"
+:
+"0.00000000"
+,
+"interest"
+:
+"0.00000000"
+,
+"locked"
+:
+"0.00000000"
+,
+"netAsset"
+:
+"0.00000000"
+,
+"netAssetOfBtc"
+:
+"0.00000000"
+,
+"netAssetOfUsdt"
+:
+"0.00000000"
+,
+"repayEnabled"
+:
+true
+,
+"totalAsset"
+:
+"0.00000000"
+},
+"quoteAsset"
+:
+{
+"asset"
+:
+"USDT"
+,
+"borrowEnabled"
+:
+true
+,
+"borrowed"
+:
+"0.00000000"
+,
+"free"
+:
+"0.00000000"
+,
+"interest"
+:
+"0.00000000"
+,
+"locked"
+:
+"0.00000000"
+,
+"netAsset"
+:
+"0.00000000"
+,
+"netAssetOfBtc"
+:
+"0.00000000"
+,
+"netAssetOfUsdt"
+:
+"0.00000000"
+,
+"repayEnabled"
+:
+true
+,
+"totalAsset"
+:
+"0.00000000"
+},
+"symbol"
+:
+"BTCUSDT"
+,
+"isolatedCreated"
+:
+true
+,
+"enabled"
+:
+true
+,
+"marginLevel"
+:
+"0.00000000"
+,
+"marginLevelStatus"
+:
+"EXCESSIVE"
+,
+//
+"EXCESSIVE"
+,
+"NORMAL"
+,
+"MARGIN_CALL"
+,
+"FORCE_LIQUIDATION"
+"marginRatio"
+:
+"0.00000000"
+,
+"indexPrice"
+:
+"10000.00000000"
+,
+"liquidatePrice"
+:
+"1000.00000000"
+,
+"liquidateRate"
+:
+"1.00000000"
+,
+"tradeEnabled"
+:
+true
+}
+]
+}
+نمونه خروجی بدون symbols:
+{
+"assets"
+:[
+{
+"baseAsset"
+:
+{
+"asset"
+:
+"BTC"
+,
+"borrowEnabled"
+:
+true
+,
+"borrowed"
+:
+"0.00000000"
+,
+"free"
+:
+"0.00000000"
+,
+"interest"
+:
+"0.00000000"
+,
+"locked"
+:
+"0.00000000"
+,
+"netAsset"
+:
+"0.00000000"
+,
+"netAssetOfBtc"
+:
+"0.00000000"
+,
+"netAssetOfUsdt"
+:
+"0.00000000"
+,
+"repayEnabled"
+:
+true
+,
+"totalAsset"
+:
+"0.00000000"
+},
+"quoteAsset"
+:
+{
+"asset"
+:
+"USDT"
+,
+"borrowEnabled"
+:
+true
+,
+"borrowed"
+:
+"0.00000000"
+,
+"free"
+:
+"0.00000000"
+,
+"interest"
+:
+"0.00000000"
+,
+"locked"
+:
+"0.00000000"
+,
+"netAsset"
+:
+"0.00000000"
+,
+"netAssetOfBtc"
+:
+"0.00000000"
+,
+"netAssetOfUsdt"
+:
+"0.00000000"
+,
+"repayEnabled"
+:
+true
+,
+"totalAsset"
+:
+"0.00000000"
+},
+"symbol"
+:
+"BTCUSDT"
+,
+"isolatedCreated"
+:
+true
+,
+"enabled"
+:
+true
+,
+"marginLevel"
+:
+"0.00000000"
+,
+"marginLevelStatus"
+:
+"EXCESSIVE"
+,
+//
+"EXCESSIVE"
+,
+"NORMAL"
+,
+"MARGIN_CALL"
+,
+"FORCE_LIQUIDATION"
+"marginRatio"
+:
+"0.00000000"
+,
+"indexPrice"
+:
+"10000.00000000"
+,
+"liquidatePrice"
+:
+"1000.00000000"
+,
+"liquidateRate"
+:
+"1.00000000"
+,
+"tradeEnabled"
+:
+true
+}
+],
+"totalAssetOfUsdt"
+:
+"0.00000000"
+,
+"totalLiabilityOfUsdt"
+:
+"0.00000000"
+,
+"totalNetAssetOfUsdt"
+:
+"0.00000000"
+,
+"totalAssetOfBtc"
+:
+"0.00000000"
+,
+"totalLiabilityOfBtc"
+:
+"0.00000000"
+,
+"totalNetAssetOfBtc"
+:
+"0.00000000"
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbols
+خیر
+STRING
+نام بازارها با ،
+tabdealSymbols
+خیر
+STRING
+نام بازار با 
+_
+ و با ،
+اگر 
+symbols
+ ارسال نشود، تمامی دارایی‌های اهرم‌دار برگردانده خواهند شد.
+در صورتی که 
+symbols
+ ارسال شود، تنها دارایی‌های مربوط به نمادهای ارسال شده برگردانده خواهند شد.
+تاریخچه لیکویید شدن‌ها
+GET https://api1.tabdeal.org/api/v1/margin/forceLiquidationRec [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+assets
+=
+client
+.
+get_margin_force_liquidation_rec
+(
+isolatedSymbol
+=
+"BTCUSDT"
+,
+size
+=
+3
+)
+نمونه خروجی:
+{
+"rows"
+:
+[
+{
+"avgPrice"
+:
+"0.00388359"
+,
+"executedQty"
+:
+"31.39000000"
+,
+"price"
+:
+"0.00388110"
+,
+"qty"
+:
+"31.39000000"
+,
+"symbol"
+:
+"BTCUSDT"
+,
+"tabdealSymbol"
+:
+"BTC_USDT"
+,
+"isIsolated"
+:
+true
+,
+"updatedTime"
+:
+1558941374745
+}
+],
+"total"
+:
+1
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+isolatedSymbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+startTime
+خیر
+LONG
+سفارشاتی که بعد از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+endTime
+خیر
+LONG
+سفارشاتی که قبل از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+size
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+current
+خیر
+INT
+خروجی برای این صفحه برگردانده میشود
+تاریخچه گرفتن اعتبار
+GET https://api1.tabdeal.org/api/v1/margin/loan [TRADE]
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.isolated_margin
+import
+IsolatedMargin
+client
+=
+IsolatedMargin
+(
+api_key
+,
+api_secret
+)
+assets
+=
+client
+.
+get_margin_loan_details
+(
+asset
+=
+"USDT"
+,
+isolatedSymbol
+=
+"BTCUSDT"
+,
+size
+=
+3
+)
+نمونه خروجی:
+{
+"rows"
+:
+[
+{
+"isolatedSymbol"
+:
+"BTCUSDT"
+,
+"tabdealSymbol"
+:
+"BTC_USDT"
+,
+"txId"
+:
+2970933056
+,
+"asset"
+:
+"USDT"
+,
+"principal"
+:
+"13.98133333"
+,
+"status"
+:
+"CONFIRMED"
+,
+//
+PENDING
+,
+CONFIRMED
+,
+FAILED;
+"timestamp"
+:
+1563438204000
+}
+],
+"total"
+:
+1
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+asset
+خیر
+STRING
+نماد مربوط به دارایی مورد نظر
+isolatedSymbol
+خیر
+STRING
+نام بازار
+tabdealSymbol
+خیر
+STRING
+نام بازار با 
+_
+startTime
+خیر
+LONG
+سفارشاتی که بعد از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+endTime
+خیر
+LONG
+سفارشاتی که قبل از این زمان ایجاد شده باشند به عنوان خروجی بازگردانده میشوند
+size
+خیر
+INT
+خروجی تنها به این تعداد بازگردانده میشود
+current
+خیر
+INT
+خروجی برای این صفحه برگردانده میشود
+اهرم حرفه ای (FAPI)
+API اهرم حرفه‌ای با پیشوند 
+fapi
+ در دسترس است و از نظر ساختار شبیه به API فیوچر Binance می‌باشد؛ پارامترها و پاسخ‌ها با فرمت مشابه پشتیبانی می‌شوند. همچنین API به گونه‌ای طراحی شده است که هر بات یا اپلیکیشنی که برای Binance نوشته‌اید، با SDK صرافی تبدیل نیز کار خواهد کرد. در صورت غیرفعال بودن اهرم حرفه‌ای برای کاربر، خطای 
+1207
+ با پیام «Futures not active» بازگردانده می‌شود. در این صورت کاربر می بایست api مربوط به تنظیم اهرم را استفاده نماید.
+برای درخواست‌های نیازمند احراز هویت (TRADE)، همان مکانیزم امنیتی API اسپات استفاده می‌شود: هدر 
+X-MBX-APIKEY
+ و پارامتر 
+signature
+ و 
+timestamp
+.
+تست اتصال به سرور
+GET https://api1.tabdeal.org/r/fapi/v1/ping [NONE]
+بررسی اتصال به سرور اهرم حرفه ای.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+()
+response
+=
+client
+.
+ping
+()
+نمونه خروجی:
+{}
+پارامترها:
+نیاز به ارسال پارامتر نیست.
+زمان سرور
+GET https://api1.tabdeal.org/r/fapi/v1/time [NONE]
+دریافت زمان سرور به میلی‌ثانیه.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+()
+server_time
+=
+client
+.
+time
+()
+نمونه خروجی:
+{
+"serverTime"
+:
+1660046774413
+}
+پارامترها:
+نیاز به ارسال پارامتر نیست.
+اطلاعات بازارهای اهرم حرفه ای
+GET https://api1.tabdeal.org/r/fapi/v1/exchangeInfo [NONE]
+لیست نمادها و تنظیمات بازارهای اهرم حرفه ای فعال.
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+خیر
+STRING
+نام یک نماد
+symbols
+خیر
+STRING
+لیست نمادها با کاما (مثلاً 
+BTCUSDT,ETHUSDT
+)
+در صورت عدم ارسال 
+symbol
+ یا 
+symbols
+، تمام بازارهای اهرم حرفه ای فعال بازگردانده می‌شوند.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+()
+# دریافت تمام بازارها
+markets
+=
+client
+.
+exchange_info
+()
+# دریافت یک بازار
+btc_market
+=
+client
+.
+exchange_info
+(
+symbol
+=
+"BTCUSDT"
+)
+نمونه خروجی:
+{
+"symbols"
+:
+[
+{
+"symbol"
+:
+"BTCUSDT"
+,
+"status"
+:
+"TRADING"
+,
+"baseAsset"
+:
+"BTC"
+,
+"quoteAsset"
+:
+"USDT"
+,
+"pricePrecision"
+:
+2
+,
+"quantityPrecision"
+:
+6
+,
+"quotePrecision"
+:
+2
+}
+]
+}
+اردربوک (عمق بازار) اهرم حرفه ای
+GET https://api1.tabdeal.org/r/fapi/v1/depth [NONE]
+دریافت اردربوک (order book) برای یک نماد اهرم حرفه ای.
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+بله
+STRING
+نام نماد
+limit
+خیر
+INT
+تعداد سطوح (پیش‌فرض 100، حداقل 5، حداکثر 100)
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+()
+order_book
+=
+client
+.
+depth
+(
+symbol
+=
+"BTCUSDT"
+,
+limit
+=
+50
+)
+نمونه خروجی:
+{
+"lastUpdateId"
+:
+12345
+,
+"E"
+:
+0
+,
+"bids"
+:
+[
+[
+"39792.23"
+,
+"8.27169"
+],
+[
+"39792.18"
+,
+"0.33006"
+]
+],
+"asks"
+:
+[
+[
+"39792.24"
+,
+"1.27040"
+],
+[
+"39792.27"
+,
+"0.00850"
+]
+]
+}
+اردربوک تجمیع‌شده (Agg Depth)
+GET https://api1.tabdeal.org/r/fapi/v1/aggDepth [NONE]
+دریافت اردربوک تجمیع‌شده بر اساس 
+aggregationPrecision
+. این مقدار تعیین کننده تجمیع اردربوک ها می باشد.
+به عنوان مثال:
+اگر این مقدار ۱ باشد اردر بوک با تفاوت رنج ۱، به صورت تجمیعی به نمایش در می آیند
+اگر این مقدار ۱۰۰ باشد اردر بوک با تفاوت رنج ۱۰۰، به صورت تجمیعی به نمایش در می آیند
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+بله
+STRING
+نام نماد
+aggregationPrecision
+بله
+DECIMAL
+گام تجمیع قیمت (باید بزرگ‌تر از صفر باشد)
+limitRows
+خیر
+INT
+حداکثر تعداد سطر خروجی (در صورت ارسال)
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+()
+agg_order_book
+=
+client
+.
+agg_depth
+(
+symbol
+=
+"BTCUSDT"
+,
+aggregation_precision
+=
+"10"
+,
+limit_rows
+=
+20
+)
+نمونه خروجی:
+{
+"asks"
+:
+[
+{
+"price"
+:
+"39800.00"
+,
+"amount"
+:
+"1.25"
+}
+],
+"bids"
+:
+[
+{
+"price"
+:
+"39790.00"
+,
+"amount"
+:
+"2.10"
+}
+],
+"sequence"
+:
+123456
+,
+"market_info"
+:
+{
+"symbol"
+:
+"BTCUSDT"
+}
+}
+ارسال سفارش اهرم حرفه ای
+POST https://api1.tabdeal.org/fapi/v1/order [TRADE]
+ثبت سفارش جدید در بازار اهرم حرفه ای. تنها نوع‌های 
+LIMIT
+ و 
+MARKET
+ پشتیبانی می‌شوند.
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+بله
+STRING
+نام نماد
+side
+بله
+ENUM
+BUY
+ یا 
+SELL
+type
+بله
+ENUM
+LIMIT
+ یا 
+MARKET
+quantity
+بله
+DECIMAL
+مقدار
+price
+خیر
+DECIMAL
+قیمت (برای MARKET توصیه می‌شود)
+timeInForce
+خیر
+ENUM
+GTC
+، 
+IOC
+، 
+FOK
+ (پیش‌فرض 
+GTC
+) باقی انواع زمانی فعلا پشتیبانی نمی شود
+reduceOnly
+خیر
+BOOLEAN
+فعلا پشتیبانی نمی شود (پیش‌فرض false)
+newClientOrderId
+خیر
+STRING
+شناسه یکتای سفارش از سمت کاربر
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+برای سفارش نوع 
+LIMIT
+ ارسال 
+quantity
+ الزامی است. برای 
+MARKET
+ در صورت نیاز از سمت سرور محاسبه می‌شود.
+فقط نوع سفارش 
+LIMIT
+ و 
+MARKET
+ پشتیبانی می‌شوند.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+from
+tabdeal.enums
+import
+OrderSides
+,
+OrderTypes
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+order
+=
+client
+.
+new_order
+(
+symbol
+=
+"BTCUSDT"
+,
+side
+=
+OrderSides
+.
+BUY
+,
+type
+=
+OrderTypes
+.
+LIMIT
+,
+quantity
+=
+"0.01"
+,
+price
+=
+"39500"
+,
+time_in_force
+=
+"GTC"
+,
+reduce_only
+=
+False
+)
+نمونه خروجی:
+{
+"orderId"
+:
+5001
+,
+"symbol"
+:
+"BTCUSDT"
+,
+"status"
+:
+"NEW"
+,
+"clientOrderId"
+:
+""
+,
+"price"
+:
+"39700.00"
+,
+"avgPrice"
+:
+"0"
+,
+"origQty"
+:
+"0.100"
+,
+"executedQty"
+:
+"0"
+,
+"cumQty"
+:
+"0"
+,
+"cumQuote"
+:
+"0"
+,
+"timeInForce"
+:
+"GTC"
+,
+"type"
+:
+"LIMIT"
+,
+"reduceOnly"
+:
+false
+,
+"closePosition"
+:
+false
+,
+"side"
+:
+"BUY"
+,
+"positionSide"
+:
+"BUY"
+,
+"stopPrice"
+:
+"0"
+,
+"workingType"
+:
+"MARK_PRICE"
+,
+"priceProtect"
+:
+false
+,
+"origType"
+:
+"LIMIT"
+,
+"time"
+:
+1660046774413
+,
+"updateTime"
+:
+1660046774413
+}
+جستجوی سفارش اهرم حرفه ای
+GET https://api1.tabdeal.org/r/fapi/v1/order [TRADE]
+دریافت اطلاعات یک سفارش اهرم حرفه ای با استفاده از 
+orderId
+.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+# جستجو با orderId
+order
+=
+client
+.
+get_order
+(
+symbol
+=
+'BTCUSDT'
+,
+order_id
+=
+5001
+)
+نمونه خروجی:
+{
+"orderId"
+:
+5001
+,
+"symbol"
+:
+"BTCUSDT"
+,
+"status"
+:
+"PARTIALLY_FILLED"
+,
+"clientOrderId"
+:
+""
+,
+"price"
+:
+"39700.00"
+,
+"avgPrice"
+:
+"39700.00"
+,
+"origQty"
+:
+"0.100"
+,
+"executedQty"
+:
+"0.050"
+,
+"cumQty"
+:
+"0.050"
+,
+"cumQuote"
+:
+"1985.00"
+,
+"timeInForce"
+:
+"GTC"
+,
+"type"
+:
+"LIMIT"
+,
+"reduceOnly"
+:
+false
+,
+"closePosition"
+:
+false
+,
+"side"
+:
+"BUY"
+,
+"positionSide"
+:
+"BOTH"
+,
+"stopPrice"
+:
+"0"
+,
+"workingType"
+:
+"MARK_PRICE"
+,
+"priceProtect"
+:
+false
+,
+"origType"
+:
+"LIMIT"
+,
+"time"
+:
+1660046774413
+,
+"updateTime"
+:
+1660046780000
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+بله
+STRING
+نام نماد
+orderId
+بله
+LONG
+شناسه سفارش
+origClientOrderId
+خیر
+STRING
+در حال حاضر پشتیبانی نمی‌شود
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+در حال حاضر فقط 
+orderId
+ پشتیبانی می‌شود.
+لغو سفارش اهرم حرفه ای
+DELETE https://api1.tabdeal.org/fapi/v1/order [TRADE]
+لغو یک سفارش اهرم حرفه ای. پارامترها را می‌توان در query string یا در body درخواست ارسال کرد.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+order
+=
+client
+.
+cancel_order
+(
+symbol
+=
+'BTCUSDT'
+,
+order_id
+=
+5001
+)
+نمونه خروجی:
+{
+"orderId"
+:
+5001
+,
+"symbol"
+:
+"BTCUSDT"
+,
+"status"
+:
+"CANCELED"
+,
+"clientOrderId"
+:
+""
+,
+"price"
+:
+"39700.00"
+,
+"avgPrice"
+:
+"0"
+,
+"origQty"
+:
+"0.100"
+,
+"executedQty"
+:
+"0.000"
+,
+"cumQty"
+:
+"0.000"
+,
+"cumQuote"
+:
+"0"
+,
+"timeInForce"
+:
+"GTC"
+,
+"type"
+:
+"LIMIT"
+,
+"reduceOnly"
+:
+false
+,
+"closePosition"
+:
+false
+,
+"side"
+:
+"BUY"
+,
+"positionSide"
+:
+"BOTH"
+,
+"stopPrice"
+:
+"0"
+,
+"workingType"
+:
+"MARK_PRICE"
+,
+"priceProtect"
+:
+false
+,
+"origType"
+:
+"LIMIT"
+,
+"time"
+:
+1660046774413
+,
+"updateTime"
+:
+1660046790000
+}
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+بله
+STRING
+نام نماد
+orderId
+بله
+LONG
+شناسه سفارش
+origClientOrderId
+خیر
+STRING
+در حال حاضر پشتیبانی نمی‌شود
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+در حال حاضر لغو تنها با 
+orderId
+ پشتیبانی می‌شود.
+سفارشات باز اهرم حرفه ای
+GET https://api1.tabdeal.org/r/fapi/v1/openOrders [TRADE]
+لیست سفارشات باز اهرم حرفه ای. در صورت ارسال 
+symbol
+ فقط سفارشات همان نماد بازگردانده می‌شوند.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+# تمام سفارشات باز
+open_orders
+=
+client
+.
+get_open_orders
+()
+# فقط سفارشات باز یک نماد
+open_orders
+=
+client
+.
+get_open_orders
+(
+symbol
+=
+'BTCUSDT'
+,
+limit
+=
+100
+)
+نمونه خروجی:
+[
+{
+"orderId"
+:
+5002
+,
+"symbol"
+:
+"BTCUSDT"
+,
+"status"
+:
+"NEW"
+,
+"clientOrderId"
+:
+""
+,
+"price"
+:
+"39600.00"
+,
+"avgPrice"
+:
+"0"
+,
+"origQty"
+:
+"0.050"
+,
+"executedQty"
+:
+"0.000"
+,
+"cumQty"
+:
+"0.000"
+,
+"cumQuote"
+:
+"0"
+,
+"timeInForce"
+:
+"GTC"
+,
+"type"
+:
+"LIMIT"
+,
+"reduceOnly"
+:
+false
+,
+"closePosition"
+:
+false
+,
+"side"
+:
+"SELL"
+,
+"positionSide"
+:
+"BOTH"
+,
+"stopPrice"
+:
+"0"
+,
+"workingType"
+:
+"MARK_PRICE"
+,
+"priceProtect"
+:
+false
+,
+"origType"
+:
+"LIMIT"
+,
+"time"
+:
+1660046800000
+,
+"updateTime"
+:
+1660046800000
+},
+{
+"orderId"
+:
+5001
+,
+"symbol"
+:
+"BTCUSDT"
+,
+"status"
+:
+"NEW"
+,
+"clientOrderId"
+:
+""
+,
+"price"
+:
+"39700.00"
+,
+"avgPrice"
+:
+"0"
+,
+"origQty"
+:
+"0.100"
+,
+"executedQty"
+:
+"0.000"
+,
+"cumQty"
+:
+"0.000"
+,
+"cumQuote"
+:
+"0"
+,
+"timeInForce"
+:
+"GTC"
+,
+"type"
+:
+"LIMIT"
+,
+"reduceOnly"
+:
+false
+,
+"closePosition"
+:
+false
+,
+"side"
+:
+"BUY"
+,
+"positionSide"
+:
+"BOTH"
+,
+"stopPrice"
+:
+"0"
+,
+"workingType"
+:
+"MARK_PRICE"
+,
+"priceProtect"
+:
+false
+,
+"origType"
+:
+"LIMIT"
+,
+"time"
+:
+1660046774413
+,
+"updateTime"
+:
+1660046774413
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+خیر
+STRING
+در صورت ارسال، فقط سفارشات همان نماد
+limit
+خیر
+INT
+تعداد (پیش‌فرض 50، حداقل 1، حداکثر 100)
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+در صورت عدم ارسال 
+symbol
+، سفارشات باز تمام نمادها بازگردانده می‌شوند.
+تمام سفارشات اهرم حرفه ای
+GET https://api1.tabdeal.org/r/fapi/v1/allOrders [TRADE]
+لیست تمام سفارشات (باز و بسته) برای یک نماد اهرم حرفه ای. با 
+startTime
+ و 
+endTime
+ می‌توان سفارشات را بر اساس زمان ایجاد فیلتر کرد.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+orders
+=
+client
+.
+get_all_orders
+(
+symbol
+=
+'BTCUSDT'
+,
+start_time
+=
+1660046700000
+,
+end_time
+=
+1660046900000
+,
+limit
+=
+100
+)
+نمونه خروجی:
+[
+{
+"orderId"
+:
+5003
+,
+"symbol"
+:
+"BTCUSDT"
+,
+"status"
+:
+"FILLED"
+,
+"clientOrderId"
+:
+""
+,
+"price"
+:
+"39750.00"
+,
+"avgPrice"
+:
+"39750.00"
+,
+"origQty"
+:
+"0.020"
+,
+"executedQty"
+:
+"0.020"
+,
+"cumQty"
+:
+"0.020"
+,
+"cumQuote"
+:
+"795.00"
+,
+"timeInForce"
+:
+"GTC"
+,
+"type"
+:
+"LIMIT"
+,
+"reduceOnly"
+:
+false
+,
+"closePosition"
+:
+false
+,
+"side"
+:
+"BUY"
+,
+"positionSide"
+:
+"BOTH"
+,
+"stopPrice"
+:
+"0"
+,
+"workingType"
+:
+"MARK_PRICE"
+,
+"priceProtect"
+:
+false
+,
+"origType"
+:
+"LIMIT"
+,
+"time"
+:
+1660046850000
+,
+"updateTime"
+:
+1660046855000
+},
+{
+"orderId"
+:
+5002
+,
+"symbol"
+:
+"BTCUSDT"
+,
+"status"
+:
+"CANCELED"
+,
+"clientOrderId"
+:
+""
+,
+"price"
+:
+"39600.00"
+,
+"avgPrice"
+:
+"0"
+,
+"origQty"
+:
+"0.050"
+,
+"executedQty"
+:
+"0.000"
+,
+"cumQty"
+:
+"0.000"
+,
+"cumQuote"
+:
+"0"
+,
+"timeInForce"
+:
+"GTC"
+,
+"type"
+:
+"LIMIT"
+,
+"reduceOnly"
+:
+false
+,
+"closePosition"
+:
+false
+,
+"side"
+:
+"SELL"
+,
+"positionSide"
+:
+"BOTH"
+,
+"stopPrice"
+:
+"0"
+,
+"workingType"
+:
+"MARK_PRICE"
+,
+"priceProtect"
+:
+false
+,
+"origType"
+:
+"LIMIT"
+,
+"time"
+:
+1660046800000
+,
+"updateTime"
+:
+1660046810000
+}
+]
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+بله
+STRING
+نام نماد
+orderId
+خیر
+LONG
+در حال حاضر توسط سرور استفاده نمی‌شود
+startTime
+خیر
+LONG
+سفارشات بعد از این زمان (میلی‌ثانیه)
+endTime
+خیر
+LONG
+سفارشات قبل از این زمان (میلی‌ثانیه)
+isActive
+خیر
+INT
+فیلتر وضعیت فعال بودن (1=فعال، سایر=بسته، خالی=بدون فیلتر)
+isDone
+خیر
+INT
+فیلتر وضعیت انجام شده (1=انجام شده، 0=کنسل شده، خالی=بدون فیلتر)
+limit
+خیر
+INT
+تعداد (پیش‌فرض 50، حداقل 1، حداکثر 100)
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+در صورت ارسال 
+startTime
+ و 
+endTime
+، تنها سفارشات ایجادشده در این بازه زمانی بازگردانده می‌شوند.
+ریسک پوزیشن (Position Risk)
+GET https://api1.tabdeal.org/r/fapi/v3/positionRisk [TRADE]
+دریافت اطلاعات پوزیشن‌های باز اهرم حرفه ای کاربر.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+positions
+=
+client
+.
+position_risk
+(
+symbol
+=
+"BTCUSDT"
+)
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+خیر
+STRING
+در صورت ارسال، فقط پوزیشن همان نماد
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"BTCUSDT"
+,
+"positionAmt"
+:
+"0.5"
+,
+"entryPrice"
+:
+"39700.00"
+,
+"markPrice"
+:
+"0"
+,
+"unRealizedProfit"
+:
+"0"
+,
+"liquidationPrice"
+:
+"0"
+,
+"leverage"
+:
+"10"
+,
+"marginType"
+:
+"cross"
+,
+"positionSide"
+:
+"BOTH"
+}
+]
+اهرم (Leverage)
+دریافت اهرم
+GET https://api1.tabdeal.org/r/fapi/v1/leverage [TRADE]
+دریافت اهرم فعلی برای یک نماد.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+leverage
+=
+client
+.
+get_leverage
+(
+symbol
+=
+"BTCUSDT"
+)
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+بله
+STRING
+نام نماد
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+{
+"leverage"
+:
+10
+,
+"symbol"
+:
+"BTCUSDT"
+}
+تنظیم اهرم
+POST https://api1.tabdeal.org/fapi/v1/leverage [TRADE]
+تنظیم اهرم برای یک نماد اهرم حرفه ای.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+updated
+=
+client
+.
+change_leverage
+(
+symbol
+=
+"BTCUSDT"
+,
+leverage
+=
+10
+)
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+بله
+STRING
+نام نماد
+leverage
+بله
+INT
+مقدار اهرم (حداقل 1)
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+حساب اهرم حرفه ای (Account)
+GET https://api1.tabdeal.org/r/fapi/v3/account [TRADE]
+اطلاعات حساب اهرم حرفه ای: دارایی‌ها و پوزیشن‌ها.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+account
+=
+client
+.
+account
+()
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+{
+"canTrade"
+:
+true
+,
+"canDeposit"
+:
+true
+,
+"canWithdraw"
+:
+true
+,
+"assets"
+:
+[
+{
+"asset"
+:
+"USDT"
+,
+"walletBalance"
+:
+"10000.00"
+,
+"unrealizedProfit"
+:
+"0"
+,
+"marginBalance"
+:
+"10000.00"
+,
+"availableBalance"
+:
+"9500.00"
+,
+"crossWalletBalance"
+:
+"10000.00"
+,
+"crossUnPnl"
+:
+"0"
+}
+],
+"positions"
+:
+[
+{
+"symbol"
+:
+"BTCUSDT"
+,
+"positionAmt"
+:
+"0.1"
+,
+"entryPrice"
+:
+"39700.00"
+,
+"markPrice"
+:
+"0"
+,
+"unRealizedProfit"
+:
+"0"
+,
+"liquidationPrice"
+:
+"0"
+,
+"leverage"
+:
+"10"
+,
+"marginType"
+:
+"cross"
+,
+"positionSide"
+:
+"BOTH"
+}
+]
+}
+موجودی اهرم حرفه ای (Balance)
+GET https://api1.tabdeal.org/r/fapi/v3/balance [TRADE]
+موجودی کیف پول اهرم حرفه ای به تفکیک دارایی.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+balances
+=
+client
+.
+balance
+()
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+[
+{
+"asset"
+:
+"USDT"
+,
+"walletBalance"
+:
+"10000.00"
+,
+"availableBalance"
+:
+"9500.00"
+,
+"crossWalletBalance"
+:
+"10000.00"
+,
+"crossUnPnl"
+:
+"0"
+}
+]
+انتقال بین کیف اسپات و اهرم حرفه ای (Transfer)
+POST https://api1.tabdeal.org/fapi/v1/transfer [TRADE]
+انتقال دارایی بین کیف پول اصلی (اسپات) و کیف اهرم حرفه ای.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+result
+=
+client
+.
+transfer
+(
+transfer_type
+=
+1
+,
+amount
+=
+"200"
+,
+asset
+=
+"USDT"
+)
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+type
+بله
+INT
+2
+ = از کیف اصلی به اهرم حرفه ای، 
+1
+ = از اهرم حرفه ای به کیف اصلی
+amount
+بله
+DECIMAL
+مقدار انتقال
+asset
+بله
+STRING
+نماد دارایی (مثلاً USDT)
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+{
+"tranId"
+:
+0
+}
+تاریخچه انتقال
+GET https://api1.tabdeal.org/r/fapi/v1/transfer [TRADE]
+دریافت تاریخچه انتقال بین کیف اصلی و کیف اهرم حرفه ای.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+history
+=
+client
+.
+transfer_history
+(
+transfer_type
+=
+1
+,
+start_time
+=
+1660046700000
+,
+end_time
+=
+1660046900000
+,
+limit
+=
+50
+)
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+type
+خیر
+INT
+2
+ = انتقال به اهرم حرفه ای، 
+1
+ = انتقال از اهرم حرفه ای
+startTime
+خیر
+LONG
+رکوردهای بعد از این زمان (میلی‌ثانیه)
+endTime
+خیر
+LONG
+رکوردهای قبل از این زمان (میلی‌ثانیه)
+limit
+خیر
+INT
+تعداد (پیش‌فرض 50، حداقل 1، حداکثر 100)
+purpose
+خیر
+INT
+فیلتر نوع کاربرد انتقال
+revoked
+خیر
+BOOLEAN
+در حال حاضر توسط سرور استفاده نمی‌شود
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+[
+{
+"tranId"
+:
+101
+,
+"asset"
+:
+"USDT"
+,
+"amount"
+:
+"200.0"
+,
+"type"
+:
+1
+,
+"status"
+:
+"CONFIRMED"
+,
+"timestamp"
+:
+1660047000000
+,
+"purpose"
+:
+1
+,
+"revoked"
+:
+false
+}
+]
+معاملات کاربر (User Trades)
+GET https://api1.tabdeal.org/r/fapi/v1/userTrades [TRADE]
+لیست معاملات انجام‌شده توسط کاربر در اهرم حرفه ای برای یک نماد.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+trades
+=
+client
+.
+user_trades
+(
+symbol
+=
+"BTCUSDT"
+,
+start_time
+=
+1660046700000
+,
+end_time
+=
+1660046900000
+,
+limit
+=
+50
+)
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+بله
+STRING
+نام نماد
+startTime
+خیر
+LONG
+معاملات بعد از این زمان (میلی‌ثانیه)
+endTime
+خیر
+LONG
+معاملات قبل از این زمان (میلی‌ثانیه)
+fromId
+خیر
+LONG
+در حال حاضر توسط سرور استفاده نمی‌شود
+limit
+خیر
+INT
+تعداد (پیش‌فرض 50، حداقل 1، حداکثر 100)
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"BTCUSDT"
+,
+"id"
+:
+2001
+,
+"orderId"
+:
+5001
+,
+"price"
+:
+"39700.00"
+,
+"qty"
+:
+"0.1"
+,
+"quoteQty"
+:
+"3970.00"
+,
+"commission"
+:
+"3.97"
+,
+"commissionAsset"
+:
+"USDT"
+,
+"time"
+:
+1660046774413
+,
+"buyer"
+:
+true
+,
+"maker"
+:
+false
+}
+]
+سوابق درآمد (Income)
+GET https://api1.tabdeal.org/r/fapi/v1/income [TRADE]
+سوابق تغییرات موجودی اهرم حرفه ای (کارمزد، انتقال، سود/زیان و غیره).
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+income_rows
+=
+client
+.
+income
+(
+symbol
+=
+"BTCUSDT"
+,
+income_type
+=
+"TradePNL"
+,
+start_time
+=
+1660046700000
+,
+end_time
+=
+1660046900000
+,
+limit
+=
+100
+)
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+خیر
+STRING
+فیلتر بر اساس نماد
+incomeType
+خیر
+STRING
+نوع درآمد: 
+Transfer
+, 
+TakerCommission
+, 
+MakerCommission
+, 
+TradePNL
+, 
+AdlPNL
+, 
+Liquidation
+, 
+InsuranceFund
+startTime
+خیر
+LONG
+رکوردهای بعد از این زمان (میلی‌ثانیه)
+endTime
+خیر
+LONG
+رکوردهای قبل از این زمان (میلی‌ثانیه)
+limit
+خیر
+INT
+تعداد (پیش‌فرض 100، حداقل 1، حداکثر 100)
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+[
+{
+"symbol"
+:
+"BTCUSDT"
+,
+"incomeType"
+:
+"TakerCommission"
+,
+"income"
+:
+"-3.97"
+,
+"asset"
+:
+"USDT"
+,
+"time"
+:
+1660046774413
+}
+]
+سفارشات اجباری (فروش اجباری / لیکویید)
+GET https://api1.tabdeal.org/r/fapi/v1/forceOrders [TRADE]
+لیست سفارشات اجباری (فروش اجباری / لیکوییداسیون) کاربر. حداکثر ۱۰۰ رکورد بازگردانده می‌شود.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+force_orders
+=
+client
+.
+force_orders
+(
+symbol
+=
+"BTCUSDT"
+)
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+خیر
+STRING
+فیلتر بر اساس نماد
+startTime
+خیر
+LONG
+در حال حاضر توسط سرور استفاده نمی‌شود
+endTime
+خیر
+LONG
+در حال حاضر توسط سرور استفاده نمی‌شود
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+[
+{
+"orderId"
+:
+3001
+,
+"symbol"
+:
+"BTCUSDT"
+,
+"status"
+:
+"FILLED"
+,
+"price"
+:
+"39500.00"
+,
+"time"
+:
+1660046774413
+}
+]
+تاریخچه پوزیشن (Position)
+GET https://api1.tabdeal.org/r/fapi/v1/position [TRADE]
+دریافت تاریخچه پوزیشن‌ها (باز و بسته) با فیلترهای اختیاری.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+positions
+=
+client
+.
+get_positions
+(
+symbol
+=
+"BTCUSDT"
+,
+is_active
+=
+1
+,
+start_time
+=
+1660046700000
+,
+end_time
+=
+1660046900000
+,
+limit
+=
+50
+)
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+خیر
+STRING
+فیلتر بر اساس نماد
+side
+خیر
+STRING
+سمت پوزیشن (
+BUY
+ یا 
+SELL
+)
+state
+خیر
+INT
+وضعیت داخلی پوزیشن
+isActive
+خیر
+INT
+1
+ = فقط پوزیشن فعال، 
+0
+ = فقط پوزیشن بسته
+startTime
+خیر
+LONG
+رکوردهای بعد از این زمان (میلی‌ثانیه)
+endTime
+خیر
+LONG
+رکوردهای قبل از این زمان (میلی‌ثانیه)
+limit
+خیر
+INT
+تعداد (پیش‌فرض 50، حداقل 1، حداکثر 100)
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+[
+{
+"id"
+:
+7001
+,
+"symbol"
+:
+"BTCUSDT"
+,
+"side"
+:
+"BUY"
+,
+"positionAmt"
+:
+"0.100"
+,
+"entryPrice"
+:
+"39700.00"
+,
+"avgExitPrice"
+:
+"0"
+,
+"realizedPnl"
+:
+"0"
+,
+"status"
+:
+"ACTIVE"
+,
+"createdTime"
+:
+1660046774413
+,
+"updateTime"
+:
+1660046774413
+}
+]
+بستن پوزیشن (Position)
+DELETE https://api1.tabdeal.org/fapi/v1/position [TRADE]
+بستن تمام پوزیشن باز برای یک نماد (از طریق سفارش مارکت). پارامترها را می‌توان در query string یا در body درخواست ارسال کرد.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+result
+=
+client
+.
+close_position
+(
+symbol
+=
+"BTCUSDT"
+)
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+symbol
+بله
+STRING
+نام نماد
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+{
+"msg"
+:
+"success"
+}
+تنظیم حدضرر/حدسود پوزیشن (Position SL/TP)
+POST https://api1.tabdeal.org/fapi/v1/positionSlTp [TRADE]
+تنظیم یا بروزرسانی حدضرر (
+slPrice
+) و حدسود (
+tpPrice
+) برای یک پوزیشن مشخص.
+ارسال درخواست با کتابخانه پایتونی:
+from
+tabdeal.future
+import
+Future
+client
+=
+Future
+(
+api_key
+,
+api_secret
+)
+result
+=
+client
+.
+position_sl_tp
+(
+position_id
+=
+7001
+,
+symbol
+=
+"BTCUSDT"
+,
+sl_price
+=
+"39000"
+,
+tp_price
+=
+"41000"
+,
+working_type
+=
+"MARK_PRICE"
+)
+پارامترها:
+پارامتر
+الزامی
+نوع
+توضیحات
+positionId
+بله
+LONG
+شناسه پوزیشن
+symbol
+خیر
+STRING
+در صورت ارسال، برای اعتبارسنجی بیشتر روی همان نماد
+slPrice
+خیر
+DECIMAL
+قیمت حدضرر (حداقل یکی از 
+slPrice
+ یا 
+tpPrice
+ باید ارسال شود)
+tpPrice
+خیر
+DECIMAL
+قیمت حدسود (حداقل یکی از 
+slPrice
+ یا 
+tpPrice
+ باید ارسال شود)
+workingType
+خیر
+STRING
+MARK_PRICE
+ یا 
+CONTRACT_PRICE
+timestamp
+بله
+LONG
+زمان ارسال درخواست
+signature
+بله
+STRING
+رشته‌ی رمزشده
+نمونه خروجی:
+{
+"msg"
+:
+"success"
+}
+وب‌سوکت اهرم حرفه ای
+وب‌سوکت‌های اهرم حرفه ای در دو مسیر جداگانه در دسترس هستند و برای دریافت لحظه‌ای اردربوک و معاملات بازارهای اهرم حرفه ای استفاده می‌شوند.
+مسیرهای وب‌سوکت اهرم حرفه ای با پیشوند از مسیر وب‌سوکت بازار (
+stream/
+) جدا هستند.
+دو نوع اتصال
+مسیر
+پروتکل
+کاربرد
+wss://api1.tabdeal.org/special_margin/stream/
+JSON (متد و params)
+subscribe به اردربوک (depth) با دوره‌های زمانی مختلف
+wss://api1.tabdeal.org/special_margin/broadcast/
+متن ساده (نماد بازار)
+معاملات اخیر و به‌روزرسانی لحظه‌ای معاملات و سفارشات
+وب‌سوکت Stream (اردربوک با دوره زمانی)
+wss://api1.tabdeal.org/special_margin/stream/
+این وب‌سوکت با ارسال JSON و متد 
+SUBSCRIBE
+ امکان subscribe به اردربوک (depth) بازارهای اهرم حرفه ای را با دوره‌های زمانی مشخص فراهم می‌کند.
+باید در نظر داشته باشید با توجه به محدودیت وب سوکت لازم و بهینه تر می باشد برای دریافت دیتای بیش از ۵۰ مارکت وب سوکت جداگانه ای باز شود. اگر کاربر از یک وب سوکت برای دریافت دیتای بیشت از ۵۰ مارکت استفاده نماید امکان قطع اتصال وب سوکت وجود دارد.
+پارامترهای درخواست
+پارامتر
+الزامی
+توضیحات
+method
+بله
+فقط مقدار 
+SUBSCRIBE
+id
+بله
+شناسه عددی یکتای درخواست (عدد صحیح مثبت)
+params
+بله
+آرایه‌ای از topicها برای subscribe
+قالب topic (params)
+برای اردربوک اهرم حرفه ای هر آیتم در 
+params
+ باید به این شکل باشد:
+special_margin@[SYMBOL]@depth@[PERIOD]
+SYMBOL
+: نماد بازار با underscore (مثال: 
+BTC_USDT
+)
+PERIOD
+: یکی از مقادیر 
+100ms
+, 
+200ms
+, 
+1000ms
+, 
+5000ms
+نمونه درخواست ارسالی:
+{
+"method"
+:
+"SUBSCRIBE"
+,
+"params"
+:
+[
+"special_margin@BTC_USDT@depth@1000ms"
+],
+"id"
+:
+1
+}
+نمونه درخواست برای چند بازار و چند دوره:
+{
+"method"
+:
+"SUBSCRIBE"
+,
+"params"
+:
+[
+"special_margin@BTC_USDT@depth@1000ms"
+,
+"special_margin@ETH_USDT@depth@5000ms"
+],
+"id"
+:
+1
+}
+نمونه کلاینت پایتون (کتابخانه Tabdeal)
+کلاس 
+FutureWebsocketClient
+ در 
+tabdeal.websocket_client
+ به‌طور پیش‌فرض به 
+wss://api1.tabdeal.org/special_margin/stream/
+ وصل می‌شود و پس از اتصال، همان بدنهٔ JSON 
+SUBSCRIBE
+ را ارسال می‌کند.
+import
+json
+from
+tabdeal.websocket_client
+import
+FutureWebsocketClient
+def
+on_message
+(
+message
+:
+str
+):
+payload
+=
+json
+.
+loads
+(
+message
+)
+print
+(
+payload
+)
+client
+=
+FutureWebsocketClient
+()
+client
+.
+subscribe
+(
+callback
+=
+on_message
+,
+payload
+=
+{
+"method"
+:
+"SUBSCRIBE"
+,
+"id"
+:
+1
+,
+"params"
+:
+[
+"special_margin@BTC_USDT@depth@1000ms"
+],
+},
+)
+# در پایان برنامه:
+# client.stop()
+پاسخ تأیید subscribe
+در صورت موفقیت، پاسخ به این شکل بازمی‌گردد:
+{
+"result"
+:
+null
+,
+"id"
+:
+1
+}
+پیام‌های stream (اردربوک)
+پس از subscribe، سرور به‌صورت دوره‌ای (مطابق period انتخاب‌شده) پیام‌هایی با ساختار زیر ارسال می‌کند:
+{
+"stream"
+:
+"special_margin-BTC_USDT-depth-1000ms"
+,
+"data"
+:
+{
+"e"
+:
+"depthUpdate"
+,
+"E"
+:
+1657530675579
+,
+"s"
+:
+"BTCUSDT"
+,
+"b"
+:
+[
+[
+"39792.23"
+,
+"8.27169"
+],
+[
+"39792.18"
+,
+"0.33006"
+]
+],
+"a"
+:
+[
+[
+"39792.24"
+,
+"1.27040"
+],
+[
+"39792.27"
+,
+"0.00850"
+]
+]
+}
+}
+فیلد
+توضیح
+stream
+نام کانال (topic)
+data.e
+نوع رویداد: 
+depthUpdate
+data.E
+زمان (timestamp) به میلی‌ثانیه
+data.s
+نماد بازار (بدون underscore)
+data.b
+آرایه پیشنهادات خرید (قیمت، مقدار)
+data.a
+آرایه پیشنهادات فروش (قیمت، مقدار)
+مقدار 
+data
+ به صورت رشته JSON ارسال می‌شود؛ روی کلاینت آن را parse کنید تا به آبجکت با فیلدهای بالا برسید.
+در صورت ارسال topic نامعتبر (نماد یا period اشتباه)، خطا با 
+code
+ و 
+msg
+ بازگردانده می‌شود و آن topic نادیده گرفته می‌شود؛ درخواست در کل بسته نمی‌شود مگر خطای دیگر.
+برای دریافت پاسخ موفق (
+result: null
+) حداقل یک topic معتبر در 
+params
+ لازم است. اگر 
+params
+ ارسال نشود یا خالی باشد، پاسخ تأیید ارسال نمی‌شود.
+وب‌سوکت Broadcast (معاملات لحظه‌ای)
+wss://api1.tabdeal.org/special_margin/broadcast/
+این وب‌سوکت 
+متن ساده (text)
+ می‌فرستد و می‌گیرد (نه JSON با method). بلافاصله پس از اتصال، یک رشته متنی ارسال کنید تا به کانال مربوط به آن بازار وصل شوید.
+نحوه subscribe
+پس از برقراری اتصال، یکی از دو قالب زیر را به‌صورت 
+یک رشته متنی
+ ارسال کنید:
+فقط یک بازار (معاملات آن بازار)
+[BASE]_[QUOTE]
+مثال:
+BTC_USDT
+در این حالت سرور به‌روزرسانی‌های لحظه‌ای ارسال می‌شوند:
+   - 
+{"trade": {...}}
+ برای هر معامله جدید
+اطلاعات همه بازارها (market information)
+رشته باید با 
+_
+ به چهار بخش تقسیم شود: 
+BASE
+، 
+QUOTE
+، 
+market
+، 
+information
+ (مطابق consumer سرور).
+مثال: 
+BTC_USDT_market_information
+در این حالت فقط به کانال «اطلاعات بازار» اضافه می‌شوید و پیام اولیه معاملات ارسال نمی‌شود.
+نمونه استفاده (یک بازار)
+اتصال به 
+wss://api1.tabdeal.org/special_margin/broadcast/
+ارسال متن: 
+BTC_USDT
+دریافت پیام 
+trades
+خطا
+در صورت ارسال قالب نامعتبر، سرور یک JSON با کلید 
+"error": "Invalid params"
+ برمی‌گرداند و اتصال بسته می‌شود.
+نمونه کلاینت پایتون (متن خام)
+سرور در این endpoint فقط 
+متن ساده
+ می‌پذیرد (مثلاً 
+BTC_USDT
+). کلاس 
+FutureBroadcastWebsocketClient
+ در کتابخانهٔ پایتون همان مسیر 
+special_margin/broadcast/
+ را استفاده می‌کند، اما 
+subscribe
+ برای ارسال JSON طراحی شده است؛ برای subscribe صحیح به broadcast، از همان پکیج 
+websocket-client
+ که کتابخانه Tabdeal استفاده می‌کند، مستقیماً پس از 
+on_open
+ متن را بفرستید:
+import
+json
+import
+websocket
+def
+on_message
+(
+ws
+,
+message
+):
+try
+:
+data
+=
+json
+.
+loads
+(
+message
+)
+print
+(
+data
+)
+except
+json
+.
+JSONDecodeError
+:
+print
+(
+message
+)
+def
+on_open
+(
+ws
+):
+# یک بازار: معاملات
+ws
+.
+send
+(
+"BTC_USDT"
+)
+# یا فقط اطلاعات بازار:
+# ws.send("BTC_USDT_market_information")
+ws_app
+=
+websocket
+.
+WebSocketApp
+(
+"wss://api1.tabdeal.org/special_margin/broadcast/"
+,
+on_open
+=
+on_open
+,
+on_message
+=
+on_message
+,
+)
+ws_app
+.
+run_forever
+()
+اگر فقط URL پایهٔ broadcast را می‌خواهید با همان کلاس‌های Tabdeal نگه دارید، می‌توانید 
+FutureBroadcastWebsocketClient(base_url="wss://api1.tabdeal.org/special_margin/broadcast/")
+ را instantiate کنید؛ برای ارسال متن خام هنوز باید یا thread سفارشی بسازید یا مثل بالا از 
+WebSocketApp
+ استفاده کنید.
+خلاصه تفاوت با وب‌سوکت بازار
+مورد
+وب‌سوکت بازار (
+stream/
+)
+وب‌سوکت اهرم حرفه ای
+URL
+wss://api1.tabdeal.org/stream/
+wss://api1.tabdeal.org/special_margin/stream/
+ و 
+.../special_margin/broadcast/
+بازارها
+اسپات (مثلاً btcusdt, usdtirt)
+اهرم حرفه ای (مثلاً BTC_USDT)
+قالب topic (stream)
+symbol@depth@...
+special_margin@SYMBOL@depth@PERIOD
+دوره‌های مجاز (stream)
+2000ms
+100ms, 200ms, 1000ms, 5000ms
+خطاها
+در تمامی درخواست های ارسال شده اگر به هر دلیلی امکان پردازش درخواست وجود نداشته باشد خطایی بازگردانده می شود. این پاسخ به فرمت json و شامل کلیدهای 
+code
+ و 
+msg
+ می باشد.
+نمونه خطای ارسال شده:
+{
+"code"
+:
+errorCode
+,
+"msg"
+:
+"errorMessage"
+}
+خطای سرور
+این دسته از خطاها مربوط به سرور هستند.
+کد
+توضیحات
+1000
+خطای سرور (نامشخص)
+1001
+خطای سرور (نامشخص)
+1002
+تراکم بالای سفارشات
+1003
+ویژگی مورد نظر موجود نیست
+خطای احراز هویت
+درخواست های فرستاده شده به درستی احراز هویت نمی شوند.
+کد
+توضیحات
+1100
+signature
+ یا 
+timestamp
+ یا 
+api_key
+ داده نشده است و یا اینکه 
+api_key
+ وجود ندارد
+1101
+timestamp
+ نامعتبر است و یا اینکه 
+60
+ ثانیه از سرور جلوتر است و یا اینکه خارج از 
+receive window
+ است
+1102
+receive window
+ نامعتبر است یا اینکه از 
+60000
+ بزرگ تر است
+1103
+signature
+ نامعتبر است
+خطا در ارسال درخواست
+پارامترهای ارسالی نامعتبر است.
+کد
+توضیحات
+1200
+خطای نامعلوم سمت 
+client
+، با پشتیبانی تماس بگیرید
+1201
+پارامترهای ارسالی نامعتبر است
+1202
+اطلاعات فرستاده شده فرمت 
+json
+ درستی ندارند
+1203
+پارامترهای الزامی باید ارسال شوند
+1204
+سفارش مورد نظر پیدا نشد
+1205
+OCO
+ مورد نظر پیدا نشد
+1206
+بازار مورد نظر پیدا نشد
+1207
+اختلاف بین 
+startTime
+ و 
+endTime
+ حداکثر باید 
+90
+ روز باشد
+1208
+ارسال سفارش باید منطبق بر قوانین بازار باشد
+1209
+قیمت گذاری 
+OCO
+ اشتباه است
+1210
+timestamp
+ باید به میلی ثانیه باشد
+1211
+ساختار نمادهای (بازار) ارسالی اشتباه است
+1212
+ارز مورد نظر پیدا نشد
+1213
+با این 
+clientOrderId
+ قبلا سفارش ثبت شده است
+1214
+listenKey
+ پیدا نشد
+1215
+سفارش قبلا لغو شده است
+1216
+تعداد درخواست های ارسالی از حد مجاز بیشتر شده است
+1217
+اجازه ارسال درخواست به این endpoint با این HTTP متد وجود ندارد
+1218
+اعتبار کافی نیست
+خطاهای API اهرم حرفه ای (FAPI)
+در وب سوکت های 
+fapi
+ اگر متنی با مضمون 
+connection closed ok
+دریافت نمودید، این بدان معناست که باید کانکشن وب سوکت را بسته و دوباره باز کنید. این موضوع معمولا ساعتی ۱ بار رخ خواهد داد. 
+این کدها در endpointهای با پیشوند 
+fapi
+ استفاده می‌شوند.
+کد
+توضیحات
+1207
+اهرم حرفه ای در پلتفرم غیرفعال است (در برخی endpointها، کد 1207 برای خطای بازه زمانی startTime/endTime هم برمی‌گردد).
+1208
+نماد یا دارایی نامعتبر است
+1209
+خطای اعتبار، مقدار سفارش یا قیمت (موجودی کافی نیست، مقدار/قیمت نامعتبر، حداقل/حداکثر مقدار و غیره)
+1203
+پارامتر الزامی ارسال نشده یا نامعتبر است (مثلاً نوع سفارش فقط LIMIT و MARKET)
+1204
+سفارش مورد نظر پیدا نشد
+1300
+خطای سرور (نامشخص)
+خطای معامله اهرم‌دار
+این دسته از خطاها مربوط به معامله اهرم‌دار هستند.
+کد
+توضیحات
+5000
+حساب معامله تعهدی شما غیرفعال است.
+5001
+مقدار بیش از حد مجاز است.
+5002
+لطفا مقادیر بزرگ‌تر از صفر وارد نمایید.
+10013
+مقدار وارد شده از وجه تضمین شما بیشتر است.
+5004
+اعطای اعتبار در بازار به سقف خود رسیده است.
+3027
+ارز انتخاب شده، معامله تعهدی ندارد.
+3028
+این بازار از معامله تعهدی پشتیبانی نمی‌کند.
+5007
+شما مجاز به انتقال وجه به این اکانت معامله تعهدی نیستید.
+5008
+امکان انتقال ارز به خارج اکانت معامله تعهدی، امکان‌پذیر نیست.
+3006
+شما به سقف دریافت اعتبار رسیده‌اید.
+5010
+شما مجاز به گرفتن اعتبار نیستید.
+10008
+گرفتن اعتبار بر روی این ارز ممکن نیست.
+3015
+مقدار بازپرداخت از مقدار اعتبار بیشتر است.
+21007
+شما در حال لیکویید شدن هستید.
+5014
+مقدار واردشده، بیش از حداکثر مقدار قابل جابه‌جایی است.
+5015
+شما در حال حاضر پوزیشن باز ندارید.
+5016
+سفارش شما پر نشده و پوزیشن بازی ندارید. امکان فعال‌سازی حدضرر و قیمت هدف فقط در پوزیشن باز وجود دارد.
+5017
+شما می‌توانید برای هر پوزیشن تنها یک حدضرر فعال نمایید.
+5018
+شما می‌توانید برای هر پوزیشن تنها یک حدضرر فعال نمایید.
+5019
+قیمت وارد شده معتبر نمی‌باشد.
+5020
+برای این پوزیشن حد ضرر/قیمت هدف فعال ندارید.
+تغییرات
+ورژن 
+0.6.0
+ مرداد ۱۴۰۱
+اضافه شده
+اضافه شدن 
+POST r/api/v1/account
+ برای دریافت اطلاعات کاربر
+اضافه شدن وب سوکت برای دریافت اطلاعات کاربر در لحظه
+اضافه شدن وب سوکت orderbook برای مشاهده لیست سفارشات بازارها در لحظه
+ورژن 
+0.7.0
+ دی ۱۴۰۲
+اضافه شده
+اضافه شدن معامله اهرم‌دار برای ثبت سفارش در بازارهای معامله اهرم‌دار
+اضافه شدن فیلتر شناسه سفارش برای سرویس معاملات من
+ورژن 
+0.8.0
+ اردیبهشت ۱۴۰۳
+اضافه شده
+اضافه شدن سفارشات باز صفحه بندی شده برای مشاهده سفارشات باز به صورت صفحه بندی شده با سرعت بیشتر
+اضافه شدن تمام سفارشات منقضی نشده برای گرفتن تمام سفارشات غیر کنسلی و موفقیت آمیز یا در حال انجام.
+ورژن 
+0.9.0
+ اردیبهشت ۱۴۰۵
+اضافه شده
+اضافه شدن API های مربوط به اهرم حرفه ای
+اضافه شدن وب سوکت های های مربوط به اهرم حرفه ای

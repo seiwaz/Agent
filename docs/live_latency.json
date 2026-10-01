@@ -1,0 +1,26 @@
+{
+ "samples": 140,
+ "trade_receive_to_webui_update_ms": {
+  "p50": 7,
+  "p90": 10,
+  "p99": 20,
+  "max": 32
+ },
+ "chart_created": 1,
+ "same_minute_candle_before": [
+  1790608020,
+  83037.6,
+  83047.3,
+  82987.4,
+  82987.4,
+  "82,987.4"
+ ],
+ "same_minute_candle_after": [
+  1790608020,
+  83037.6,
+  83047.3,
+  82987.4,
+  82995.6,
+  "82,995.6"
+ ]
+}
