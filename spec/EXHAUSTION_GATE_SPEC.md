@@ -1,6 +1,8 @@
 # Exhaustion Gate Specification V5 (rev 5.5)
 
-Purpose: reject late-trend/climactic Spike entries without reducing every large breakout to a simple ATR cutoff.
+> **V6.0 (2026-10-01): ADVISORY ONLY — not a gate.** Everything below is still evaluated and recorded (exhaustion_snapshots), but a REJECT or UNKNOWN result never rejects a setup: the snapshot is stored as PASS with sub-reason `ADVISORY_WOULD_REJECT` (or `ADVISORY_UNKNOWN`) plus the original trigger sub-reasons, so analytics can still ask "would exhaustion have rejected?". `SetupState.REJECTED_EXHAUSTION` remains only for historical rows.
+
+Purpose (V5): reject late-trend/climactic Spike entries without reducing every large breakout to a simple ATR cutoff.
 
 Evaluate after Context Engine and before every initial/replacement E1 submit. Use only finalized data available at evaluation time.
 

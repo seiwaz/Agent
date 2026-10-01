@@ -52,4 +52,4 @@ E1 → PullbackStart → Fill → E2 → single TP / SL
 8. `BACKTEST_SHADOW_SPEC.md`
 9. remaining documents
 
-If any contradiction remains, Claude must report a BLOCKER instead of resolving it by intuition.
+If any contradiction remains, decide the sensible option and record the decision with its rationale in `DECISIONS.md` (V6.0 governance, owner-approved 2026-10-01). Live-only runtime-validation blockers (B22, B40–B42, B44, B45, B50, B51) are exchange facts, not choices, and stay open until proven by the runtime probes; Live automation stays disabled.

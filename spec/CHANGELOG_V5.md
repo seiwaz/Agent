@@ -61,3 +61,6 @@ B39 (Shadow restart = journal replay; `AMBIGUOUS_DATA_GAP`), B40–B45 (Live/val
 
 ## V5.12 (2026-09-30)
 - `spec.version` 5.11 → 5.12. `pgap.qualification.enforced` = false: the V5.9 P-Gap quality filter is no longer a rule (measured and recorded only). See DECISIONS.md, section V5.12.
+
+## V6.0 (2026-10-01)
+- `spec.version` 5.12 → 6.0. Context replaced by the website's rule: `context.gate` (NetTP AND any of LevelBreak / ChannelEdge / HTFAligned). Regime, RangeMiddle, HTF-opposite, RoomToTP and Liquidity become informational. `exhaustion.gating` = false (advisory). `indicators.context_warmup_m5_bars` 150 → 30. The "no guess / report a BLOCKER" governance rule is replaced by "decide and record in DECISIONS.md". See DECISIONS.md, section V6.0.

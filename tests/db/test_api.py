@@ -57,7 +57,7 @@ def test_overview_reports_spec_live_and_wallet(client):
     c, eng = client
     o = c.get("/api/overview").json()
     assert o["live"]["status"] == "LIVE_AUTOMATION_DISABLED"
-    assert o["spec"]["version"] == "5.12" and len(o["spec"]["rules_sha256"]) == 64
+    assert o["spec"]["version"] == "6.0" and len(o["spec"]["rules_sha256"]) == 64
     assert D(o["wallet"]["balance"]) == eng.wallet_balance().quantize(D("1e-18"))
 
 

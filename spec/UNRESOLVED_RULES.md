@@ -1,13 +1,14 @@
 # Unresolved / Blockers V5 (rev 5.5)
 
-Claude must NOT guess these:
+Exchange facts that only runtime probes can settle (they block **Live only**; V6.0: these are not
+strategy choices and are never decided by assumption):
 1. Current Tabdeal native SL/TP trigger execution semantics.
 2. Exact same-symbol position aggregation / positionId behavior after E2.
 3. Tabdeal maintenance-margin/liquidation formula.
 4. Whether raw trade stream is complete enough for exact historical intrabar replay.
 5. Exchange-specific behavior when cancel acknowledgement races a fill.
 
-All strategy math, boundaries and Context/Exhaustion definitions are otherwise frozen in V5.
+Strategy ambiguities are no longer blockers (V6.0 governance): decide the sensible option and record the decision with its rationale in `DECISIONS.md` (V6.0 governance, owner-approved 2026-10-01). Live-only runtime-validation blockers (B22, B40–B42, B44, B45, B50, B51) are exchange facts, not choices, and stay open until proven by the runtime probes; Live automation stays disabled.
 
 ## V5.1 status
 Items 1–5 block **Live only** (B22) and are closed by runtime probes (RUNTIME_VALIDATION_CHECKLIST.md).

@@ -1,7 +1,7 @@
 spec:
   name: SP2L_V5
-  version: "5.12"
-  resolutions: "V5.1 = V5.0 + B01-B26; V5.2 = V5.1 + B27-B32; V5.3 = V5.2 + B27/B33/B34 revisions; V5.4 = V5.3 + B37/B38 (B10 reworded); V5.5 = V5.4 + B39-B45 (2026-09-26); V5.6 = V5.5 + market-data integrity (2026-09-27, data contract only, no strategy rule changed); V5.7 = V5.6 + continuous REST reconciliation and history-based warmup (2026-09-27, data contract only); V5.8 = V5.7 + three-tier recovery with validated Tabdeal chart history, execution certainty separated from indicator continuity, exact 10x strategy leverage and the Live LEVERAGE_MISMATCH blocker (2026-09-28); V5.9 = V5.8 + Core P-Gap qualification (strong directional impulse C2, strong gap) and the display-only live forming M1 (2026-09-28); V5.10 = V5.9 + Liquidity decided by volume when the trade count is unknown and volume is not low (2026-09-29); V5.11 = V5.10 + net-at-TP rule: no E1 unless E1 alone exited at TP is profitable after costs (2026-09-29); V5.12 = V5.11 + the V5.9 P-Gap quality filter removed as a rule: every strict geometric P-Gap qualifies, quality is only measured (2026-09-30); see DECISIONS.md"
+  version: "6.0"
+  resolutions: "V5.1 = V5.0 + B01-B26; V5.2 = V5.1 + B27-B32; V5.3 = V5.2 + B27/B33/B34 revisions; V5.4 = V5.3 + B37/B38 (B10 reworded); V5.5 = V5.4 + B39-B45 (2026-09-26); V5.6 = V5.5 + market-data integrity (2026-09-27, data contract only, no strategy rule changed); V5.7 = V5.6 + continuous REST reconciliation and history-based warmup (2026-09-27, data contract only); V5.8 = V5.7 + three-tier recovery with validated Tabdeal chart history, execution certainty separated from indicator continuity, exact 10x strategy leverage and the Live LEVERAGE_MISMATCH blocker (2026-09-28); V5.9 = V5.8 + Core P-Gap qualification (strong directional impulse C2, strong gap) and the display-only live forming M1 (2026-09-28); V5.10 = V5.9 + Liquidity decided by volume when the trade count is unknown and volume is not low (2026-09-29); V5.11 = V5.10 + net-at-TP rule: no E1 unless E1 alone exited at TP is profitable after costs (2026-09-29); V5.12 = V5.11 + the V5.9 P-Gap quality filter removed as a rule: every strict geometric P-Gap qualifies, quality is only measured (2026-09-30); V6.0 = V5.12 + website-based Context: NetTP AND any of LevelBreak / ChannelEdge / HTFAligned, Exhaustion advisory, 30-bar M5 warmup, no-guess rule removed (2026-10-01); see DECISIONS.md"
   authoritative: true
   supersedes: [V1, V2, V3, V4]
   runtime_learning: false
@@ -78,7 +78,7 @@ market_data:                      # B05, B25, B31
     only_reset_by: [UNRECOVERED_GAP, INVALID_HISTORY]
     independent_of: [process_id, run_id, restart_count, socket_generation, ws_session, boot_time]  # V5.8
     bootstrap: [READ_CANONICAL_HISTORY, FIND_LAST_TRUSTED_MINUTE, REPAIR_INTERVAL_RECENT_TRADES_THEN_HISTORY, REBUILD_M1_M5_INDICATORS, GO_LIVE]
-    ready_immediately_if_trusted_m5_at_least: 150
+    ready_immediately_if_trusted_m5_at_least: 30   # V6.0 (was 150)
   live_forming_candle:            # V5.9 UI / observability only
     source: CANONICAL_LIVE_TRADES_AS_RECEIVED
     ohlcv: "O first trade, H max, L min, C latest, V sum, N count (current minute)"
@@ -104,7 +104,7 @@ market_data:                      # B05, B25, B31
         exposed_setup: AMBIGUOUS_DATA_GAP
     retroactive_setups: false
     context_readiness:
-      PRICE_CONTEXT_READY: "150 trusted M5 price bars (history bars count)"
+      PRICE_CONTEXT_READY: "30 trusted M5 price bars (history bars count; V6.0, was 150)"
       LIQUIDITY_CONTEXT_READY: "context bar and the 20 bars before it have a known trade count"
       unknown_trade_count: PASS_IF_VOLUME_NOT_LOW_ELSE_LIQUIDITY_UNKNOWN   # V5.10; never invented
     lineage_values: [LIVE_RECONCILED, RECENT_TRADES_REPAIRED, TABDEAL_HISTORY_REPAIRED, SYNTHETIC_NO_TRADE, UNRECOVERED, UNANCHORED, REVISED]
@@ -254,12 +254,14 @@ context:
   range_middle:
     min_inclusive: "1/3"          # B08 exact rational
     max_inclusive: "2/3"
-    reject_only_when_regime_range: true
+    reject_only_when_regime_range: true   # V6.0: informational measure only
     price_reference: E1_RAW       # B07; clamping is display-only
-  range_edge_origin:
+  range_edge_origin:               # V6.0: B ChannelEdge (no regime requirement)
     long_max_inclusive: "1/3"
     short_min_inclusive: "2/3"
     price_reference: ORIGIN_RAW
+    regime_required: NONE
+    flat_range: FALSE_NOT_INVALID
   breakout_level:                 # B09, B10, B32
     selection: HIGHEST_CROSSED_PRE_SPIKE_SWING_HIGH_LONG__LOWEST_CROSSED_PRE_SPIKE_SWING_LOW_SHORT   # B27
     candidates: "confirmed, setup-eligible M5 swing levels that existed before the Spike"
@@ -279,12 +281,24 @@ context:
     dual_pivot_eligible: true     # High for Long, Low for Short (B32)
     frozen_per_setup: true        # permanent after PullbackStart / first E1 fill
     setup_local_obstacle_removal: false   # B10 as reworded by B38: path-relative geometry only
+  # V6.0 (owner decision 2026-10-01): the website's three "best conditions" + net profit.
+  gate:
+    pass_iff: "net_tp AND (level_break OR channel_edge OR htf_aligned)"
+    net_tp: "abs(TP - E1) - E1*entry_fee_rate - TP*exit_fee_rate > 0"   # zero rejects
+    net_tp_evaluated: FIRST_EVEN_DURING_WARMUP
+    net_tp_costs_missing: CONTEXT_NET_TP_UNKNOWN                       # fail closed
+    level_break: BREAKOUT_CONTEXT          # strict Spike M1 close beyond an eligible level (below)
+    channel_edge: RANGE_EDGE_ORIGIN_ANY_REGIME
+    htf_aligned: M5_TREND_ALIGNED_ANY_REGIME
+    reason_order: [CONTEXT_NET_TP_NOT_POSITIVE, CONTEXT_NET_TP_UNKNOWN, CONTEXT_UNKNOWN_WARMUP, NO_VALID_CONTEXT]
+    no_other_gates: true
+  informational_only: [regime, range_middle, htf_opposite_without_breakout, room_to_tp, liquidity]
   require_any:
     - breakout_context
     - htf_alignment
     - range_edge_origin
-  htf_opposite_without_breakout: REJECT
-  room_to_tp_min_R: 1.0
+  htf_opposite_without_breakout: INFO      # V6.0 (was REJECT)
+  room_to_tp_min_R: 1.0                    # V6.0: informational measure only
   room_to_tp_reference: CURRENT_OR_PROSPECTIVE_E1   # B27
   room_to_tp_obstacle_path:       # B38 (B10 reworded)
     long: "E1 < level <= TP"
@@ -293,7 +307,7 @@ context:
     crossed_by_spike_earlier_but_back_in_path: OBSTACLE
     beyond_current_e1_in_trade_direction: NOT_OBSTACLE
   obstacles_include_dual_pivots: true                # B32
-  liquidity:
+  liquidity:                      # V6.0: informational measure only (never rejects)
     lookback_m5: 20
     volume_ratio_reject_below: 0.5
     tradecount_ratio_reject_below: 0.5
@@ -307,10 +321,11 @@ indicators:                       # B06, B06+
   runtime_implementation_switch: false
   anchor: FIXED_PER_SYMBOL
   reanchor_on_data_gap: true
-  context_warmup_m5_bars: 150
+  context_warmup_m5_bars: 30     # V6.0 (owner decision; was 150)
   zero_denominator: UNKNOWN_FAIL_CLOSED
 
 exhaustion:
+  gating: false                   # V6.0: advisory only (recorded; ADVISORY_WOULD_REJECT / ADVISORY_UNKNOWN)
   late_trend:
     trend_age_bars_gte: 20
     microchannel_len_gte: 8

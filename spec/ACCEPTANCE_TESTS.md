@@ -8,16 +8,16 @@
 - ADX uses Wilder smoothing
 - CHOP zero-range fails closed
 - Regime precedence RANGE before TREND
-- RangeMiddle boundaries 1/3 and 2/3 reject when RANGE
+- RangeMiddle boundaries 1/3 and 2/3 (V6.0: informational, never reject)
 - Breakout requires M1 close, not wick/equality
-- HTF opposite + no breakout rejects
+- HTF opposite + no breakout (V6.0: informational; opposite trend alone -> NO_VALID_CONTEXT)
 - no context passes => rejects
 - nearest obstacle ignores already-invalidated levels
-- no obstacle => infinite RoomToTP pass
-- RoomToTP exactly 1R passes
+- no obstacle => infinite RoomToTP (V6.0: informational)
+- RoomToTP exactly 1R (V6.0: informational, never rejects)
 - liquidity median excludes current M5 and uses average middle pair for N=20
 - liquidity equality at 0.5 passes
-- missing volume/tradecount fails closed Live
+- missing volume/tradecount (V6.0: informational, never rejects)
 - context rechecked before every zero-fill E1 replacement
 - context invalidation with zero fill/zero setup position cancels pending E1
 - E1 reprice allowed only when status=NEW, executedQty=0, setup_position_qty=0
@@ -39,7 +39,7 @@
 - threshold equalities trigger exhaustion components
 - FreshBreakout uses regime strictly before breakout M1 close
 - FreshBreakout age only current/prior M5 bucket
-- rejection expression exact
+- rejection expression exact (V6.0: advisory, recorded as ADVISORY_WOULD_REJECT, never gates)
 
 ## Execution
 - no retroactive fills
@@ -66,7 +66,7 @@
 - no second candidate from the same directional run; a sequence break re-arms (B03)
 - every sequence-continuing M1 before PullbackStart becomes LastSpikeCandle (B02)
 - zero-trade minute is missing; late trades never mutate finalized candles (B05)
-- TA-Lib ADX seeding; 150-bar warmup after re-anchor (B06)
+- TA-Lib ADX seeding; warmup after re-anchor (B06; V6.0: 30 bars)
 - RangeMiddle uses raw E1 RP with exact 1/3, 2/3 (B07, B08)
 - frozen breakout level (B09); obstacles are path-relative to E1/TP (B10 as reworded by B38)
 - a dual pivot fails closed only inside SH1/SH2/SL1/SL2 (B11)
@@ -137,3 +137,14 @@
 - the first P-Gap of a run spends the run whatever its measured quality; later P-Gaps of the run are log-only (NOT_FIRST_IN_RUN)
 - the measured quality (values, verdicts, reason codes) is still recorded with `enforced: false` and never appears as a rejection
 - equality (`Low[C3] == High[C1]`) is still not a P-Gap
+
+## V6.0 Context (website-based)
+- PASS iff NetTP > 0 AND (LevelBreak OR ChannelEdge OR HTFAligned); each of A, B, C alone passes; none -> NO_VALID_CONTEXT
+- NetTP exactly 0 rejects (CONTEXT_NET_TP_NOT_POSITIVE); tiny positive passes; costs missing -> CONTEXT_NET_TP_UNKNOWN
+- NetTP is evaluated and recorded while the M5 segment is still warming up
+- LevelBreak: wick-only and equality do not count (strict M1 close)
+- ChannelEdge: 1/3 and 2/3 inclusive on the raw (unclamped) origin RangePosition, both sides; works in TREND and RANGE regimes; flat range -> false
+- HTFAligned works in any regime; opposite trend + breakout passes; opposite trend alone -> NO_VALID_CONTEXT; dual-pivot trend -> C false, A/B can still pass
+- warm boundary at 30 finalized M5 bars (29 -> CONTEXT_UNKNOWN_WARMUP, 30 -> evaluated)
+- former hard rejects (middle of range, RoomToTP < 1R, low/unknown liquidity, regime) never reject but are recorded
+- Exhaustion never rejects at the gates level and records ADVISORY_WOULD_REJECT / ADVISORY_UNKNOWN

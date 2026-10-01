@@ -264,3 +264,23 @@ Owner brief: a WebSocket interruption must not needlessly invalidate 12.5 h of i
 - **Unchanged:** the directional sequence, run semantics, B03/B04, Origin, extension, E1/E2/SL/TP, Context, Exhaustion, Risk (including V5.11 net-at-TP), the V5.10 Liquidity rule, Shadow fills, costs, leverage, warmup/repair and Live blockers. The colour of C2 is again not required (SEQ-03 applies to every candle).
 - **Expected effect:** more Spike candidates than under V5.9 (weak-impulse and small-gap P-Gaps now qualify). Context, Exhaustion and the net-at-TP rule still filter them before any E1.
 - **History is never reinterpreted:** P-Gaps and candidates recorded before V5.12 keep their spec_version and their stored verdicts. A new Shadow session starts under 5.12.
+
+## V6.0 — Website-based Context; Exhaustion advisory; 30-bar warmup (2026-10-01)
+**Why.** The V5 Context over-rejected Spike candidates. It stacked gates that are not in the source strategy (poursamadi.com/sp2l-strategy): the ADX/CHOP regime, RangeMiddle, HTF-opposite, RoomToTP ≥ 1R, Liquidity, a 150-bar M5 warmup and a separate Exhaustion gate. The website names only three "best conditions": (A) the Spike breaks an important level, (B) it starts from the top/bottom edge of a channel, (C) it agrees with the higher-timeframe trend.
+
+**Owner decisions:**
+1. **Any of three.** Context passes iff at least one of A/B/C holds — AND (2).
+2. **Net profit in Context.** `|TP − E1| − E1·entry_fee_rate − TP·exit_fee_rate > 0` (zero rejects) is a Context condition, evaluated first and also during warmup; missing costs fail closed (`CONTEXT_NET_TP_UNKNOWN`). The Risk V5.11 check stays as a second layer.
+3. **No other gates.** Regime, RangeMiddle, HTF-opposite, RoomToTP and Liquidity are informational: still computed and recorded, never a reason.
+4. **Exhaustion advisory.** It is still evaluated and recorded; a REJECT/UNKNOWN is stored as PASS with sub-reason `ADVISORY_WOULD_REJECT` / `ADVISORY_UNKNOWN` (plus the original trigger sub-reasons). `REJECTED_EXHAUSTION` remains for historical rows only.
+5. **30-bar warmup** (`shadow.warmup_m5_bars`, `indicators.context_warmup_m5_bars`), was 150.
+6. **Governance:** the "do not guess / report a BLOCKER" rule is removed (README, UNRESOLVED_RULES, CLAUDE_CODE_MASTER_PROMPT). For an ambiguity, decide the sensible option and record the decision and rationale here. Live-only runtime-validation blockers (B22, B40–B42, B44, B45, B50, B51) are exchange facts and stay open; Live automation stays disabled.
+
+**Decisions made while implementing (recorded under the new governance):**
+- **B and C no longer require any regime.** A flat 14-bar range makes B false and NEUTRAL / INVALID_DUAL_PIVOT trends make C false instead of rejecting the whole Context (former `CONTEXT_INVALID_DATA` is no longer emitted).
+- **Status while undecidable.** With only `CONTEXT_NET_TP_UNKNOWN` and/or `CONTEXT_UNKNOWN_WARMUP` the status is UNKNOWN (fail closed, as V5 did for warmup); any definite failure makes it REJECT.
+- **No NO_VALID_CONTEXT while unwarm.** B and C cannot be evaluated without a warm segment, so the reason is `CONTEXT_UNKNOWN_WARMUP` only (A is still recorded).
+- **Field names kept.** A/B/C are stored under their V5 names (`breakout_context`, `range_edge_origin`, `htf_alignment`) so existing columns, history and analytics stay valid; `level_break`, `channel_edge`, `htf_aligned` are read-only aliases. The new NetTP fields live in the snapshot's exact JSON (no migration).
+- **Exhaustion keeps its trigger.** When advisory turns a REJECT/UNKNOWN into PASS, the original reason code is appended to the sub-reasons so nothing is lost.
+- **Warmup has one source.** `indicators.m5_state.DEFAULT_WARMUP` = 30 is the code default (engine, Shadow, feed report and API readiness); the config value overrides it for the engine.
+- **Git.** The working copy was not a git repository; it was initialised with a baseline commit of the V5.12 state and the work done on branch `context-v6`.

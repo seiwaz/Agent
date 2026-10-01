@@ -128,3 +128,7 @@ No strategy-rule questions (B01–B38) are open.
   - Stored as `TABDEAL_HISTORY_REPAIRED` / `CANDLE_HISTORY_REPAIR`: OHLCV only, trade count UNKNOWN, never fills or intrabar order. M5 is built from those M1 only.
   - Missing chart minutes: 1–2 minutes → synthetic no-trade minutes; longer → DATA_GAP (owner decision).
   - XAUT agreement: 95.97 % exact on 298 minutes; worst H/L 0.05 % (docs/tabdeal_history_source.md).
+
+## V6.0 update (2026-10-01)
+- Governance change (owner-approved): strategy ambiguities are no longer BLOCKERs. The sensible option is chosen and recorded in `spec/DECISIONS.md`. The Live-only runtime-validation blockers (B22, B40–B42, B44, B45, B50, B51) are exchange facts and remain open; Live automation stays disabled.
+- Context replaced by the website rule (NetTP AND any of LevelBreak / ChannelEdge / HTFAligned); Exhaustion advisory; 30-bar warmup. See `spec/DECISIONS.md`, section V6.0.

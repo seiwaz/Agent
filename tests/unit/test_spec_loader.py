@@ -18,7 +18,7 @@ def rules():
 
 
 def test_loads_pinned_rules(rules):
-    assert rules.version == "5.12"
+    assert rules.version == "6.0"
     assert rules.get("market.initial_symbol") == "BTCUSDT"
 
 
