@@ -2,7 +2,12 @@
 
 M5Gates evaluates Context, Exhaustion and (optionally) Risk from the live M5 state. All
 metrics are computed even when an earlier stage rejects, so every candidate record is
-complete. The terminal state follows stage order (Context -> Exhaustion -> Risk).
+complete. The terminal state follows stage order (Context -> Risk).
+
+V6.0: Exhaustion is ADVISORY. It is still evaluated and recorded (analytics: "would it have
+rejected?"), but a non-PASS result is turned into PASS with sub-reason ADVISORY_WOULD_REJECT
+(or ADVISORY_UNKNOWN), so it never gates a setup. The Context receives the configured cost
+rates for its NetTP condition.
 
 BaseSp2lGates is the canonical base SP2L with no Context/Exhaustion gates, used only for
 counterfactual simulation (B20). Its unit quantity makes results naturally expressed in R.
@@ -20,7 +25,11 @@ from sp2l.engine.setup_machine import GateResult
 from sp2l.indicators.m5_state import M5State
 from sp2l.strategy.context.engine import ContextInputs, evaluate_context
 from sp2l.strategy.context.levels import EligibleLevel, FrozenLevel, eligible_breakout_levels
-from sp2l.strategy.exhaustion.engine import ExhaustionInputs, evaluate_exhaustion
+from sp2l.strategy.exhaustion.engine import (
+    ExhaustionInputs,
+    ExhaustionSnapshot,
+    evaluate_exhaustion,
+)
 from sp2l.strategy.levels import SetupLevels
 from sp2l.strategy.risk.engine import (
     CostModel,
@@ -32,6 +41,22 @@ from sp2l.strategy.risk.engine import (
     size_setup,
 )
 from sp2l.strategy.spike import Spike
+
+ADVISORY_WOULD_REJECT = "ADVISORY_WOULD_REJECT"
+ADVISORY_UNKNOWN = "ADVISORY_UNKNOWN"
+
+
+def advisory(exh: ExhaustionSnapshot) -> ExhaustionSnapshot:
+    """V6.0: Exhaustion never gates. Its verdict is kept as a sub-reason (with the original
+    trigger sub-reasons) and the stage is recorded as PASS."""
+    if exh.status != "PASS":
+        exh.sub_reasons.append(
+            ADVISORY_WOULD_REJECT if exh.status == "REJECT" else ADVISORY_UNKNOWN
+        )
+        if exh.reason and exh.reason not in exh.sub_reasons:
+            exh.sub_reasons.append(exh.reason)
+        exh.status, exh.reason = "PASS", None
+    return exh
 
 
 @dataclass(slots=True)
@@ -69,9 +94,12 @@ class M5Gates:
                 spike.candles,
                 frozen,
                 self.consumed_obstacles,
+                self.costs,
             ),
         )
-        exh = evaluate_exhaustion(self.m5, ExhaustionInputs(side, eval_time, spike.candles, frozen))
+        exh = advisory(
+            evaluate_exhaustion(self.m5, ExhaustionInputs(side, eval_time, spike.candles, frozen))
+        )
         risk = None
         if with_risk:
             risk = size_setup(

@@ -362,7 +362,7 @@ def bootstrap_history(
 
     Unlike backfill_history (holes BETWEEN stored minutes, checked against the minutes before
     each hole), this also covers the region before the first stored minute - the cold start
-    that otherwise needs 150 live M5 bars. Fail closed: the response is trusted only if it
+    that otherwise needs a full live M5 warmup. Fail closed: the response is trusted only if it
     matches our own most recent live canonical minutes under the continuity model (the tier-3
     policy: >= min_overlap minutes, >= min_agreement exact, H/L within max_rel_diff).
     Without live minutes to compare there is nothing to validate against, so nothing is

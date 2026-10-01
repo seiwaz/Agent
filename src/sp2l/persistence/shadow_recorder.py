@@ -47,14 +47,17 @@ from sp2l.strategy.exhaustion.engine import ExhaustionSnapshot
 from sp2l.strategy.risk.engine import STRATEGY_LEVERAGE
 
 CONTEXT_THRESHOLDS = {
+    # V6.0 gate: NetTP AND (LevelBreak OR ChannelEdge OR HTFAligned)
+    "rule": "net_tp > 0 AND (level_break OR channel_edge OR htf_aligned)",
+    "net_tp": "|TP - E1| - E1*entry_fee_rate - TP*exit_fee_rate > 0",
     "range_bars": ctx_engine.RANGE_BARS,
-    "range_middle": ["1/3", "2/3"],
-    "room_to_tp_min_r": str(ctx_engine.ROOM_MIN_R),
-    "liquidity_lookback": ctx_engine.LIQ_LOOKBACK,
-    "liquidity_ratio_reject_below": str(ctx_engine.LIQ_RATIO),
-    "liquidity_unknown_trade_count": "PASS if volume not low, else LIQUIDITY_UNKNOWN (V5.10)",
-    "regime_range": "CHOP14 >= 61.8 AND ADX14 < 20",
-    "regime_trend": "CHOP14 <= 38.2 OR ADX14 >= 25",
+    "channel_edge": ["<= 1/3 (Long, OriginLow)", ">= 2/3 (Short, OriginHigh)"],
+    # informational only since V6.0 (never a reason)
+    "info_room_to_tp_min_r": str(ctx_engine.ROOM_MIN_R),
+    "info_liquidity_lookback": ctx_engine.LIQ_LOOKBACK,
+    "info_liquidity_ratio_below": str(ctx_engine.LIQ_RATIO),
+    "info_regime_range": "CHOP14 >= 61.8 AND ADX14 < 20",
+    "info_regime_trend": "CHOP14 <= 38.2 OR ADX14 >= 25",
 }
 EXHAUSTION_THRESHOLDS = {
     "trend_age_bars_gte": exh_engine.TREND_AGE_MIN,

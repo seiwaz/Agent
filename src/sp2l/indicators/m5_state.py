@@ -6,12 +6,13 @@
 - B33: bars with synthetic no-trade minutes are valid for indicators, range, liquidity and
   (if they contain at least one real trade) pivots. An all-synthetic bar can never be a
   pivot centre; it still acts as a neighbour for other bars (PROVISIONAL B37).
-- `warm` becomes true only once the segment holds `warmup_bars` (150) finalized bars.
+- `warm` becomes true only once the segment holds `warmup_bars` (V6.0 default 30; was 150)
+  finalized bars.
 - Pivots are confirmed two bars after the pivot bar. Their M5-close break index is tracked.
 - Trend per bar uses the last two confirmed swing highs and lows. A DUAL pivot among the
   pivots used makes the trend INVALID_DUAL_PIVOT (fail closed, B11).
 - The trend history supports TrendAgeBars.
-- V5.8 readiness is split: PRICE_CONTEXT_READY = the segment holds 150 price bars (TABDEAL
+- V5.8 readiness is split: PRICE_CONTEXT_READY = the segment holds `warmup_bars` price bars (TABDEAL
   HISTORY bars count: they carry OHLCV); LIQUIDITY_CONTEXT_READY = the context bar and the 20
   bars before it all have a KNOWN trade count (history bars do not; nothing is invented).
 """
@@ -32,7 +33,7 @@ from sp2l.indicators.trend import Trend, classify_trend
 from sp2l.indicators.wilder import AdxPoint
 from sp2l.marketdata.m5_aggregator import M5_STEP, M5Result, M5Status
 
-DEFAULT_WARMUP = 150
+DEFAULT_WARMUP = 30  # V6.0 (owner decision 2026-10-01); shadow.warmup_m5_bars overrides
 
 
 @dataclass(slots=True)
@@ -116,7 +117,7 @@ class M5State:
 
     @property
     def price_ready(self) -> bool:
-        """PRICE_CONTEXT_READY (the 150-bar warmup; unchanged)."""
+        """PRICE_CONTEXT_READY (the `warmup_bars` warmup)."""
         return self.warm
 
     LIQ_BARS = 21  # context bar L + the 20 reference bars before it (CE §12)

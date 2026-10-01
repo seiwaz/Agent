@@ -16,7 +16,7 @@ run-end rules. The symbol then returns to normal warmup/scanning.
 
 V5.6 repaired history (market-data integrity): a minute tagged REPAIRED_TABDEAL was rebuilt
 after the fact from recovered Tabdeal trades. It restores indicator/context continuity (no
-re-anchor, no 150-bar warmup), but it is history, never a live decision point:
+re-anchor, no new warmup), but it is history, never a live decision point:
   - no P-Gap is promoted on a repaired minute (no setup is ever created retroactively);
   - any setup or counterfactual still running when repaired history arrives is finalized /
     marked AMBIGUOUS_DATA_GAP (it cannot continue across minutes it never saw live; exposed
@@ -56,7 +56,7 @@ from sp2l.engine.model import SetupState
 from sp2l.engine.recording import NullRecorder, Recorder
 from sp2l.engine.setup_machine import MachineConfig, SetupMachine
 from sp2l.execution.shadow_broker import ShadowBroker
-from sp2l.indicators.m5_state import M5State
+from sp2l.indicators.m5_state import DEFAULT_WARMUP, M5State
 from sp2l.marketdata.m1_builder import (
     CANDLE_HISTORY_REPAIR,
     MINUTE,
@@ -104,7 +104,7 @@ class ShadowSymbolEngine:
         costs: CostModel,
         filters: ExchangeFilters,
         leverage: int = STRATEGY_LEVERAGE,
-        warmup_bars: int = 150,
+        warmup_bars: int = DEFAULT_WARMUP,
         initial_wallet: Decimal = SHADOW_INITIAL_WALLET,
         recorder: Recorder | None = None,
         session_id: str = "shadow",
@@ -548,8 +548,8 @@ class ShadowSymbolEngine:
     def reheal(self, m5_history: list[M5Result]) -> bool:
         """A break in the M5 series was later healed from validated Tabdeal history: rebuild
         the M5 state from the stored contiguous bars ending at the last bar this engine has
-        processed, instead of waiting for a new 150-bar warmup. Only while the engine is
-        still warming up and no setup is in progress (no decision is revisited); the 150-bar
+        processed, instead of waiting for a new warmup. Only while the engine is
+        still warming up and no setup is in progress (no decision is revisited); the warmup
         requirement itself is unchanged."""
         last = self.m5.last
         if self.m5.warm or self.active is not None or last is None or self.m5.segment is None:

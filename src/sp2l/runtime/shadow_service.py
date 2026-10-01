@@ -29,6 +29,7 @@ from sp2l.config import RuntimeConfig
 from sp2l.core.types import Candle
 from sp2l.engine.checkpoint import load_m1
 from sp2l.engine.symbol_engine import ShadowSymbolEngine
+from sp2l.indicators.m5_state import DEFAULT_WARMUP
 from sp2l.marketdata.m5_aggregator import M5_STEP, M5Result, M5Status
 from sp2l.marketdata.tabdeal_rest import provisional_filters
 from sp2l.persistence.market_store import MarketStore
@@ -146,7 +147,7 @@ class ShadowRunner:
             tick=filters.tick,
             costs=costs,
             filters=filters,
-            warmup_bars=int(cfg.section("shadow").get("warmup_m5_bars", 150)),
+            warmup_bars=int(cfg.section("shadow").get("warmup_m5_bars", DEFAULT_WARMUP)),
             recorder=recorder,
             session_id=str(session),
         )

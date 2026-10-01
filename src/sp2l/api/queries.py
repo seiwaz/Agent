@@ -13,6 +13,7 @@ from sqlalchemy import Engine, text
 
 from sp2l.api import presentation as px
 from sp2l.core.types import Candle
+from sp2l.runtime.feed_report import WARMUP_TARGET
 
 FILTERS: dict[str, tuple[str, ...]] = {
     "ACTIVE": (),
@@ -768,7 +769,7 @@ def continuity(engine: Engine, symbol: str) -> dict[str, Any]:
     """V5.8 Diagnostics: why Context is (not) ready. Everything comes from stored canonical
     data: the trusted contiguous M5 run, the last break and its cause, the last repair and
     which fields remain UNKNOWN. Independent of process, run, socket or boot identity."""
-    from sp2l.runtime.feed_report import WARMUP_TARGET, m5_segments
+    from sp2l.runtime.feed_report import m5_segments
 
     seg = m5_segments(engine, symbol)
     cur = seg["current"]
@@ -836,7 +837,7 @@ def continuity(engine: Engine, symbol: str) -> dict[str, Any]:
             " (UNKNOWN only if volume is below half its median)"
         )
     else:
-        why = "Context ready: 150 trusted M5 bars and a known trade count for Liquidity"
+        why = f"Context ready: {WARMUP_TARGET} trusted M5 bars"
     return {
         "trusted_m5": trusted,
         "warmup_target": WARMUP_TARGET,
@@ -1129,9 +1130,10 @@ def _x(s: dict[str, Any], key: str) -> str:
 
 
 CONTEXT_EXACT = {
+    "NetTP": ("net_tp_per_unit", "tp"),
+    "ChannelEdge": ("range_position_origin",),
     "Regime": ("chop14", "adx14"),
     "RangeMiddle (E1)": ("range_position_e1",),
-    "RangeEdgeOrigin": ("range_position_origin",),
     "RoomToTP": ("nearest_obstacle", "room_to_tp_r"),
     "Liquidity": ("volume_ratio", "tradecount_ratio"),
 }
@@ -1167,6 +1169,8 @@ def exhaustion_gates(s: dict[str, Any] | None) -> list[dict[str, Any]]:
 
 
 def _context_rows(s: dict[str, Any]) -> list[dict[str, Any]]:
+    """V6.0 gates first (NetTP, then any of LevelBreak / ChannelEdge / HTFAligned), then the
+    V5 measures as INFO rows (never a reason since V6.0)."""
     th = s.get("thresholds") or {}
     reasons = s.get("reasons") or []
     room = (
@@ -1174,69 +1178,49 @@ def _context_rows(s: dict[str, Any]) -> list[dict[str, Any]]:
         if s.get("room_to_tp_infinite")
         else _x(s, "room_to_tp_r")
     )
+    net = _raw(s, "net_tp_per_unit")
+    net_unknown = "CONTEXT_NET_TP_UNKNOWN" in reasons
     return [
         {
-            "gate": "Warmup / data validity",
-            "value": f"warm={_x(s, 'warm')}",
-            "threshold": "150 finalized M5 bars since anchor; no dual pivot in SH1/SH2/SL1/SL2",
+            "gate": "NetTP",
+            "value": f"net/unit={_x(s, 'net_tp_per_unit')}  TP={_x(s, 'tp')}",
+            "threshold": th.get("net_tp", "|TP − E1| − E1·entry_fee − TP·exit_fee > 0"),
             "result": "FAIL"
-            if {"CONTEXT_UNKNOWN_WARMUP", "CONTEXT_INVALID_DATA"} & set(reasons)
-            else "PASS",
-            "reason": next((r for r in reasons if r.startswith("CONTEXT_")), None),
+            if net_unknown or "CONTEXT_NET_TP_NOT_POSITIVE" in reasons
+            else ("N/A" if net is None else "PASS"),
+            "reason": next((r for r in reasons if r.startswith("CONTEXT_NET_TP")), None),
         },
         {
-            "gate": "Regime",
-            "value": f"{s.get('regime')}  CHOP14={_x(s, 'chop14')}  ADX14={_x(s, 'adx14')}",
-            "threshold": f"RANGE: {th.get('regime_range')} · TREND: {th.get('regime_trend')}",
-            "result": "INFO",
-            "reason": None,
+            "gate": "Warmup",
+            "value": f"warm={_x(s, 'warm')}",
+            "threshold": f"{WARMUP_TARGET} finalized M5 bars since anchor",
+            "result": "FAIL" if "CONTEXT_UNKNOWN_WARMUP" in reasons else "PASS",
+            "reason": "CONTEXT_UNKNOWN_WARMUP" if "CONTEXT_UNKNOWN_WARMUP" in reasons else None,
         },
         {
-            "gate": "M5 trend",
-            "value": s.get("trend"),
-            "threshold": "last two confirmed SH/SL",
-            "result": "INFO",
-            "reason": None,
-        },
-        {
-            "gate": "RangeMiddle (E1)",
-            "value": f"RP={_x(s, 'range_position_e1')}  "
-            f"range={_fmt(s.get('range_low'))}–{_fmt(s.get('range_high'))}",
-            "threshold": "reject iff RANGE and 1/3 ≤ RP ≤ 2/3",
-            "result": _res(s.get("range_middle_reject")),
-            "reason": "RANGE_MIDDLE" if s.get("range_middle_reject") else None,
-        },
-        {
-            "gate": "BreakoutContext",
+            "gate": "LevelBreak",
             "value": f"level={_fmt(s.get('breakout_level'))}",
-            "threshold": "Spike M1 close strictly beyond the frozen eligible level",
+            "threshold": "Spike M1 close strictly beyond a confirmed M5 swing level at origin",
             "result": _yn(s.get("breakout_context")),
             "reason": None,
         },
         {
-            "gate": "HTFAlignment",
-            "value": s.get("trend"),
-            "threshold": "aligned trend and not RANGE",
-            "result": _yn(s.get("htf_alignment")),
-            "reason": None,
-        },
-        {
-            "gate": "RangeEdgeOrigin",
+            "gate": "ChannelEdge",
             "value": f"RP(origin)={_x(s, 'range_position_origin')}",
-            "threshold": "RANGE and RP ≤ 1/3 (Long) / ≥ 2/3 (Short)",
+            "threshold": "RP ≤ 1/3 (Long) / ≥ 2/3 (Short) in the last 14 M5 bars",
             "result": _yn(s.get("range_edge_origin")),
             "reason": None,
         },
         {
-            "gate": "HTF opposite without breakout",
+            "gate": "HTFAligned",
             "value": s.get("trend"),
-            "threshold": "reject iff opposite trend and no BreakoutContext",
-            "result": _res(s.get("htf_opposite_no_breakout")),
-            "reason": "HTF_OPPOSITE_NO_BREAKOUT" if s.get("htf_opposite_no_breakout") else None,
+            "threshold": "M5 trend BULL (Long) / BEAR (Short)",
+            "result": _yn(s.get("htf_alignment")),
+            "reason": None,
         },
         {
             "gate": "Require one context",
-            "value": "breakout / HTF / range edge",
+            "value": "level break / channel edge / HTF aligned",
             "threshold": "at least one YES",
             "result": "FAIL"
             if "NO_VALID_CONTEXT" in reasons
@@ -1244,27 +1228,48 @@ def _context_rows(s: dict[str, Any]) -> list[dict[str, Any]]:
             "reason": "NO_VALID_CONTEXT" if "NO_VALID_CONTEXT" in reasons else None,
         },
         {
+            "gate": "CONTEXT RESULT",
+            "value": s.get("status"),
+            "threshold": "NetTP AND (A OR B OR C)",
+            "result": "PASS" if s.get("status") == "PASS" else "FAIL",
+            "reason": ", ".join(reasons) or None,
+        },
+        {
+            "gate": "Regime",
+            "value": f"{s.get('regime')}  CHOP14={_x(s, 'chop14')}  ADX14={_x(s, 'adx14')}",
+            "threshold": "info only",
+            "result": "INFO",
+            "reason": None,
+        },
+        {
+            "gate": "RangeMiddle (E1)",
+            "value": f"RP={_x(s, 'range_position_e1')}  "
+            f"range={_fmt(s.get('range_low'))}–{_fmt(s.get('range_high'))}",
+            "threshold": "info only",
+            "result": "INFO",
+            "reason": None,
+        },
+        {
+            "gate": "HTF opposite without breakout",
+            "value": _yn(s.get("htf_opposite_no_breakout")),
+            "threshold": "info only",
+            "result": "INFO",
+            "reason": None,
+        },
+        {
             "gate": "RoomToTP",
             "value": f"obstacle={_fmt(s.get('nearest_obstacle'))}  room={room}R",
-            "threshold": f"obstacle iff E1 < level ≤ TP (Long); pass iff ≥ {th.get('room_to_tp_min_r')}R",
-            "result": _res(s.get("room_pass"), bad_when=False),
-            "reason": "ROOM_TO_TP_INSUFFICIENT" if s.get("room_pass") is False else None,
+            "threshold": "info only",
+            "result": "INFO",
+            "reason": None,
         },
         {
             "gate": "Liquidity",
-            "value": f"vol={_x(s, 'volume_ratio')}  trades={_x(s, 'tradecount_ratio')}",
-            "threshold": f"reject iff both < {th.get('liquidity_ratio_reject_below')} × median(prev 20)",
-            "result": "N/A"
-            if s.get("liquidity_status") is None
-            else ("PASS" if s.get("liquidity_status") == "PASS" else "FAIL"),
-            "reason": None if s.get("liquidity_status") == "PASS" else s.get("liquidity_status"),
-        },
-        {
-            "gate": "CONTEXT RESULT",
-            "value": s.get("status"),
-            "threshold": "",
-            "result": "PASS" if s.get("status") == "PASS" else "FAIL",
-            "reason": ", ".join(reasons) or None,
+            "value": f"vol={_x(s, 'volume_ratio')}  trades={_x(s, 'tradecount_ratio')}"
+            f"  ({s.get('liquidity_status')})",
+            "threshold": "info only",
+            "result": "INFO",
+            "reason": None,
         },
     ]
 

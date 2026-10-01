@@ -209,7 +209,7 @@ async def history_bootstrap_task(
     """Once per collector start: as soon as enough live canonical minutes exist to validate
     against (`ready`), fill the stored series from Tabdeal's chart (history bootstrap). A
     fetch failure is retried a few times; a validation failure is final (fail closed: the
-    normal 150-bar warmup simply continues)."""
+    normal M5 warmup simply continues)."""
     tries = 0
     first = True
     while not stop.is_set():

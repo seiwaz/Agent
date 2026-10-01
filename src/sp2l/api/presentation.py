@@ -18,10 +18,14 @@ from typing import Any
 REASONS: dict[str, str] = {
     # Context
     "CONTEXT_UNKNOWN_WARMUP": "Not enough market history yet (Context warmup)",
+    "CONTEXT_NET_TP_NOT_POSITIVE": "Even a win at target would not cover trading costs",
+    "CONTEXT_NET_TP_UNKNOWN": "Trading costs unknown: net profit at target cannot be checked",
+    "ADVISORY_WOULD_REJECT": "Exhaustion would have rejected (advisory only, not a gate)",
+    "ADVISORY_UNKNOWN": "Exhaustion could not be evaluated (advisory only, not a gate)",
     "CONTEXT_INVALID_DATA": "Market structure data is inconsistent (conflicting swing points)",
     "RANGE_MIDDLE": "Setup formed in the middle of a range",
     "HTF_OPPOSITE_NO_BREAKOUT": "Against the higher-timeframe trend without a confirmed breakout",
-    "NO_VALID_CONTEXT": "No supporting context: no breakout, trend alignment or range edge",
+    "NO_VALID_CONTEXT": "No supporting context: no level break, channel edge or trend alignment",
     "ROOM_TO_TP_INSUFFICIENT": "Not enough space to target",
     "LOW_LIQUIDITY": "Market activity too low",
     "LIQUIDITY_UNKNOWN": "Market activity could not be measured",
@@ -126,8 +130,9 @@ STAGE_NAMES = {
 }
 STAGE_HELP = {
     "SPIKE": "A strong directional move (P-Gap) was confirmed",
-    "CONTEXT": "Is this a good location and market condition for SP2L?",
-    "EXHAUSTION": "Is the move already too stretched or too late?",
+    "CONTEXT": "Does a win cover costs, and does the spike break a level, start at a channel"
+    " edge or follow the trend?",
+    "EXHAUSTION": "Is the move already too stretched or too late? (advisory, not a gate)",
     "E1": "First entry order at the end of the spike",
     "PULLBACK": "Price came back to the entry",
     "E1_FILL": "First entry filled within its fill window",
@@ -664,69 +669,81 @@ def _row(name: str, value: str, tone: str, code: str | None = None) -> dict[str,
     return {"name": name, "value": value, "tone": tone, "code": code}
 
 
+def _snap(s: dict[str, Any], key: str) -> Any:
+    """A recorded snapshot value: its DB column, else the exact JSON (V6.0 fields)."""
+    if key in s and s[key] is not None:
+        return s[key]
+    return (s.get("exact") or {}).get(key)
+
+
 def context_summary(s: dict[str, Any] | None) -> dict[str, Any] | None:
+    """V6.0: NetTP AND (LevelBreak OR ChannelEdge OR HTFAligned). The V5 measures below
+    the result are INFO only (they never reject since V6.0)."""
     if s is None:
         return None
-    regime = s.get("regime")
-    rmid = s.get("range_middle_reject")
-    if rmid:
-        location = _row("Location", "Middle of the range", "bad", "RANGE_MIDDLE")
-    elif regime == "RANGE":
-        location = _row("Location", "Outside the range middle", "ok")
-    else:
-        location = _row("Location", "Not a range market", "neutral")
-    if s.get("room_to_tp_infinite"):
-        room = _row("Room to target", "No obstacle before target", "ok")
-    elif s.get("room_to_tp_r") is not None:
-        room = _row(
-            "Room to target",
-            f"{num(s.get('room_to_tp_r'))} R",
-            "ok" if s.get("room_pass") else "bad",
-            None if s.get("room_pass") else "ROOM_TO_TP_INSUFFICIENT",
+    yn = {True: "Yes", False: "No", None: "Not evaluated"}
+    net, pos = _snap(s, "net_tp_per_unit"), _snap(s, "net_tp_positive")
+    reasons_ = list(s.get("reasons") or [])
+    if net is None:
+        unknown = "CONTEXT_NET_TP_UNKNOWN" in reasons_
+        net_row = _row(
+            "Net profit at TP",
+            "Costs unknown" if unknown else "Not evaluated (recorded before V6.0)",
+            "bad" if unknown else "neutral",
+            "CONTEXT_NET_TP_UNKNOWN" if unknown else None,
         )
     else:
-        room = _row("Room to target", "Not measured", "neutral")
-    liq = s.get("liquidity_status")
-    by_volume = liq == "PASS" and s.get("tradecount_ratio") is None  # V5.10 volume-only pass
-    liquidity = _row(
-        "Liquidity",
-        "Normal (by volume; trade count unknown)"
-        if by_volume
-        else {"PASS": "Normal", "LOW_LIQUIDITY": "Too low"}.get(str(liq), "Unknown"),
-        {"PASS": "ok", "LOW_LIQUIDITY": "bad"}.get(str(liq), "warn"),
-        None if liq == "PASS" else liq,
+        net_row = _row(
+            "Net profit at TP",
+            f"{num(net, 4)} per unit after fees",
+            "ok" if pos else "bad",
+            None if pos else "CONTEXT_NET_TP_NOT_POSITIVE",
+        )
+
+    def cond(name: str, key: str) -> dict[str, Any]:
+        v = _snap(s, key)
+        return _row(name, yn.get(v, str(v)), "ok" if v else "neutral")
+
+    regime = s.get("regime")
+    room = (
+        "No obstacle before target"
+        if s.get("room_to_tp_infinite")
+        else f"{num(s.get('room_to_tp_r'))} R"
+        if s.get("room_to_tp_r") is not None
+        else "Not measured"
     )
-    yn = {True: "Yes", False: "No", None: "Not evaluated"}
-    opposite = s.get("htf_opposite_no_breakout")
+    liq = s.get("liquidity_status")
     rows = [
-        _row("Market regime", REGIME.get(str(regime), str(regime)), "neutral"),
+        net_row,
+        cond("Level break", "breakout_context"),
+        cond("Channel edge", "range_edge_origin"),
+        cond("HTF aligned", "htf_alignment"),
         _row(
-            "Higher-timeframe trend", TREND.get(str(s.get("trend")), str(s.get("trend"))), "neutral"
+            "Result",
+            "At least one condition and a positive net"
+            if s.get("status") == "PASS"
+            else ", ".join(reasons_) or str(s.get("status")),
+            "ok" if s.get("status") == "PASS" else "bad",
         ),
+        # INFO (V5 measures; never a gate since V6.0)
+        _row("Market regime (info)", REGIME.get(str(regime), str(regime)), "neutral"),
         _row(
-            "Breakout",
-            yn[s.get("breakout_context")],
-            "ok" if s.get("breakout_context") else "neutral",
+            "Higher-timeframe trend (info)",
+            TREND.get(str(s.get("trend")), str(s.get("trend"))),
+            "neutral",
         ),
+        _row("Middle of the range (info)", yn.get(s.get("range_middle_reject"), "—"), "neutral"),
         _row(
-            "Aligned with trend",
-            yn[s.get("htf_alignment")],
-            "ok" if s.get("htf_alignment") else "neutral",
+            "Against trend without breakout (info)",
+            yn.get(s.get("htf_opposite_no_breakout"), "—"),
+            "neutral",
         ),
+        _row("Room to target (info)", room, "neutral"),
         _row(
-            "Range edge origin",
-            yn[s.get("range_edge_origin")],
-            "ok" if s.get("range_edge_origin") else "neutral",
+            "Liquidity (info)",
+            {"PASS": "Normal", "LOW_LIQUIDITY": "Low"}.get(str(liq), "Unknown"),
+            "neutral",
         ),
-        location,
-        _row(
-            "Against trend without breakout",
-            yn[opposite],
-            "bad" if opposite else "ok" if opposite is False else "neutral",
-            "HTF_OPPOSITE_NO_BREAKOUT" if opposite else None,
-        ),
-        room,
-        liquidity,
     ]
     passed = s.get("status") == "PASS"
     return {
@@ -771,10 +788,16 @@ def exhaustion_summary(s: dict[str, Any] | None) -> dict[str, Any] | None:
         )
     )
     st = s.get("status")
-    label, tone = {
-        "PASS": ("Passed", "ok"),
-        "REJECT": ("Rejected — move looks exhausted", "bad"),
-    }.get(str(st), ("Unknown — could not evaluate", "warn"))
+    subs = list(s.get("sub_reasons") or [])
+    if "ADVISORY_WOULD_REJECT" in subs:  # V6.0: advisory, never a gate
+        label, tone = "Advisory: would have rejected (not a gate)", "warn"
+    elif "ADVISORY_UNKNOWN" in subs:
+        label, tone = "Advisory: could not evaluate (not a gate)", "warn"
+    else:
+        label, tone = {
+            "PASS": ("Passed (advisory, not a gate)", "ok"),
+            "REJECT": ("Rejected — move looks exhausted", "bad"),
+        }.get(str(st), ("Unknown — could not evaluate", "warn"))
     return {
         "question": STAGE_HELP["EXHAUSTION"],
         "result": {"code": st, "label": label, "tone": tone},

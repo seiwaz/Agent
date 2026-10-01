@@ -63,7 +63,7 @@ costs:
   evidence_id: "docs/cost_evidence.json@2026-09-30T08:26Z"
 
 shadow:
-  warmup_m5_bars: 150     # B06
+  warmup_m5_bars: 30      # V6.0 (was 150, B06): finalized M5 bars before Context is ready
 
 validation:
   server_time_max_offset_ms: 500    # B42 Live target: worst |server - local midpoint| offset

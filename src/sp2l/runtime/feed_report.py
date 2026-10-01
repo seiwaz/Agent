@@ -3,7 +3,7 @@
 Metrics: per-connection disconnects with exact close timestamps/reasons and reconnect
 durations; A/B close correlation; connection lifetimes; merged uncovered seconds; merged
 DATA_GAP minutes; duplicate rate; payload conflicts; longest continuous finalized M5 segment
-and whether >= 150 consecutive bars were reached (B46 acceptance target).
+and whether >= WARMUP_TARGET consecutive bars were reached (B46; V6.0 default 30).
 """
 
 from __future__ import annotations
@@ -13,7 +13,9 @@ from typing import Any
 
 from sqlalchemy import Engine, text
 
-WARMUP_TARGET = 150
+from sp2l.indicators.m5_state import DEFAULT_WARMUP
+
+WARMUP_TARGET = DEFAULT_WARMUP  # V6.0: 30 (single source: indicators.m5_state)
 CORRELATION_WINDOW_S = 10
 
 
