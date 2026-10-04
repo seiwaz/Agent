@@ -139,13 +139,65 @@ const LAYERS = [
   ["positions", "Positions", "--c-bull"],
 ];
 const prefs = loadPrefs();
-const state = { view: "chart", symbol: prefs.symbol || null, tf: prefs.tf || "15m",
+const state = { view: "chart", symbol: prefs.symbol || null, tf: prefs.tf || "15m", mode: prefs.mode || "focus",
   layers: Object.assign({ ob: true, fvg: true, structure: true, liquidity: true, pd: false, htf: true, positions: true }, prefs.layers || {}),
   markets: {}, symbols: [], chart: null, series: null, layer: null, data: [], times: [], byTime: new Map(), analysis: null,
   signals: [], allSignals: [], focus: null, overview: null, radar: null, live: null, lastPrice: null,
   sigFilter: "all", sigSym: "all", btSym: null, selectedSig: null, known: null, alerts: !!prefs.alerts, params: {} };
 function loadPrefs() { try { return JSON.parse(localStorage.getItem("smc-prefs") || "{}"); } catch { return {}; } }
-function savePrefs() { try { localStorage.setItem("smc-prefs", JSON.stringify({ symbol: state.symbol, tf: state.tf, layers: state.layers, alerts: state.alerts })); } catch { /* storage unavailable */ } }
+function savePrefs() { try { localStorage.setItem("smc-prefs", JSON.stringify({ symbol: state.symbol, tf: state.tf, mode: state.mode, layers: state.layers, alerts: state.alerts })); } catch { /* storage unavailable */ } }
+
+/* ---- focus view (display only) ---------------------------------------------------------------
+ * The backend returns every valid zone, break and liquidity level. "Focus" draws only what
+ * matters for the next decision: the zones nearest the price, overlapping zones merged, the
+ * latest breaks and the nearest liquidity. "All" draws everything the backend returned. */
+const zdist = (z, p) => (p > +z.top ? p - +z.top : p < +z.bottom ? +z.bottom - p : 0);
+function nearest(zones, price, perSide) {
+  const by = (a, b) => zdist(a, price) - zdist(b, price);
+  const inside = zones.filter((z) => zdist(z, price) === 0);
+  const above = zones.filter((z) => +z.bottom > price).sort(by).slice(0, perSide);
+  const below = zones.filter((z) => +z.top < price).sort(by).slice(0, perSide);
+  return [...inside, ...above, ...below];
+}
+function merged(zones) {
+  const groups = new Map();
+  for (const z of zones) {
+    const k = `${z.tf}|${z.kind}|${z.direction}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(z);
+  }
+  const out = [];
+  for (const list of groups.values()) {
+    list.sort((a, b) => +a.bottom - +b.bottom);
+    let cur = null;
+    for (const z of list) {
+      if (cur && +z.bottom <= +cur.top) {  // overlapping: one box for both
+        cur = { ...cur, top: String(Math.max(+cur.top, +z.top)), from: cur.from < z.from ? cur.from : z.from,
+          tested: cur.tested && z.tested, n: (cur.n || 1) + 1 };
+      } else { if (cur) out.push(cur); cur = { ...z }; }
+    }
+    if (cur) out.push(cur);
+  }
+  return out;
+}
+function shown() {
+  const a = state.analysis;
+  if (!a || !a.ready || state.mode === "all" || state.lastPrice === null) return a;
+  const p = state.lastPrice, pk = poiKinds();
+  const own = merged(a.zones || []);
+  const zones = [...nearest(own.filter((z) => z.kind === "OB"), p, 2), ...nearest(own.filter((z) => z.kind === "FVG"), p, 1)];
+  const htf = nearest(merged((a.htf_zones || []).filter((z) => pk.includes(z.kind))), p, 1);
+  const events = (a.events || []).slice(-3);
+  const bsl = (a.liquidity || []).filter((x) => x.kind === "BSL").sort((x, y) => +x.price - +y.price).slice(0, 1);
+  const ssl = (a.liquidity || []).filter((x) => x.kind === "SSL").sort((x, y) => +y.price - +x.price).slice(0, 1);
+  return { ...a, zones, htf_zones: htf, events, liquidity: [...bsl, ...ssl], focus: true };
+}
+function shownPositions() {
+  if (state.mode === "all") return state.signals;
+  const act = state.signals.filter((x) => x.state === "OPEN" || x.state === "PENDING");
+  const closed = state.signals.filter((x) => !(x.state === "OPEN" || x.state === "PENDING")).slice(0, 3);
+  return [...act, ...closed, ...state.signals.filter((x) => x.id === state.focus && !act.includes(x) && !closed.includes(x))];
+}
 
 /* ---- chart: SMC drawing layer (series primitive) -------------------------------------------- */
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -232,7 +284,8 @@ function drawZone(ctx, z, size, htf) {
   if (!s || y1 === null || y2 === null) return;
   const c = zoneColor(z);
   const h = Math.max(1, y2 - y1);
-  ctx.fillStyle = rgba(c, htf ? 0.08 : z.kind === "OB" ? 0.22 : 0.17);
+  const light = state.mode === "focus" && z.kind === "FVG";  // imbalance: outline only
+  ctx.fillStyle = rgba(c, htf ? 0.08 : z.kind === "OB" ? 0.22 : light ? 0.05 : 0.17);
   ctx.fillRect(s[0], y1, s[1] - s[0], h);
   if (htf) { ctx.fillStyle = hatch(ctx, c); ctx.fillRect(s[0], y1, s[1] - s[0], h); hatchCache = null; }
   ctx.strokeStyle = rgba(c, htf ? 0.95 : 0.8);
@@ -240,13 +293,13 @@ function drawZone(ctx, z, size, htf) {
   ctx.setLineDash(htf ? [6, 3] : z.kind === "FVG" ? [3, 2] : []);
   ctx.strokeRect(s[0], y1, s[1] - s[0], h);
   ctx.setLineDash([]);
-  const text = `${htf ? `${z.tf} ` : ""}${z.kind}${z.tested ? "" : " · fresh"}`;
+  const text = `${z.tested ? "" : "● "}${htf ? `${z.tf} ` : ""}${z.kind}${z.n > 1 ? ` ×${z.n}` : ""}`;
   // higher-timeframe labels sit at the right edge, own-timeframe labels at the zone's visible start
   if (htf) pill(ctx, text, s[1] - 4, y1 + 10, c, size, "right");
   else if (s[1] - s[0] > 30) pill(ctx, text, Math.max(s[0], 0) + 3, y1 + 10, c, size, "left");
 }
 function drawBelow(ctx, size) {
-  const a = state.analysis;
+  const a = shown();
   if (!a || !a.ready || !state.series) return;
   const W = size.width, L = state.layers;
   if (L.pd && a.range) {
@@ -268,7 +321,7 @@ function drawBelow(ctx, size) {
   }
 }
 function drawAbove(ctx, size) {
-  const a = state.analysis;
+  const a = shown();
   if (!state.series) return;
   const W = size.width, L = state.layers;
   if (a && a.ready && L.structure) {
@@ -290,7 +343,7 @@ function drawAbove(ctx, size) {
       plainLabel(ctx, `${lq.kind} ${pxs(lq.price)}`, W - 6, y + (lq.kind === "BSL" ? -9 : 9), "--c-liq", size, "right");
     }
   }
-  if (L.positions) for (const p of state.signals) drawPosition(ctx, p, size);
+  if (L.positions) for (const p of shownPositions()) drawPosition(ctx, p, size);
 }
 /** TradingView-style long/short position object: risk box, reward box, entry line, result. */
 function drawPosition(ctx, p, size) {
@@ -301,7 +354,7 @@ function drawPosition(ctx, p, size) {
   if (!s || ye === null || ys === null || yt === null) return;
   const x1 = s[0], x2 = Math.max(s[1], x1 + 24);
   const focus = state.focus === p.id;
-  const a = open || focus ? 1 : 0.55;
+  const a = open || focus ? 1 : state.mode === "focus" ? 0.3 : 0.55;  // history stays in the background
   ctx.fillStyle = rgba("--c-bull", 0.2 * a); ctx.fillRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
   ctx.fillStyle = rgba("--c-bear", 0.2 * a); ctx.fillRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
   ctx.lineWidth = focus ? 2 : 1.2;
@@ -462,7 +515,9 @@ function renderLegend() {
   if (state.layers.htf) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${css("--text-2")}` }), "Higher-TF zone (hatched, label on the right)"));
   if (state.layers.structure) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${css("--text-2")}` }), "BOS / CHoCH"));
   if (state.layers.liquidity) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${rgba("--c-liq", 1)}` }), "BSL / SSL liquidity"));
-  items.push(el("li", { class: "muted" }, "Invalid zones (OB closed through, FVG filled) are removed"));
+  items.push(el("li", { class: "muted" }, state.mode === "focus"
+    ? "Focus: nearest zones only, overlaps merged (×n), last 3 breaks, nearest liquidity · ● = untouched"
+    : "All valid zones · ● = untouched · invalid zones (OB closed through, FVG filled) are removed"));
   $("chart-legend").replaceChildren(...items);
 }
 function renderControls() {
@@ -472,7 +527,10 @@ function renderControls() {
       onclick: () => { if (state.tf !== tf) { state.tf = tf; savePrefs(); renderControls(); loadChart(false); } } },
     tf, role ? el("span", { class: "r" }, role.split(" ")[0][0]) : null);
   }));
-  $("layer-chips").replaceChildren(...LAYERS.map(([k, name, c]) => el("button", { type: "button", class: "chip", "aria-pressed": String(!!state.layers[k]),
+  const modeSeg = el("div", { class: "seg seg-mini", role: "tablist", "aria-label": "Chart detail" },
+    [["focus", "Focus"], ["all", "All"]].map(([k, l]) => el("button", { type: "button", role: "tab", "aria-selected": String(state.mode === k),
+      title: k === "focus" ? "Only what matters near the price" : "Every zone, break and level", onclick: () => { state.mode = k; savePrefs(); renderControls(); renderLegend(); if (state.layer) state.layer.update(); } }, l)));
+  $("layer-chips").replaceChildren(modeSeg, ...LAYERS.map(([k, name, c]) => el("button", { type: "button", class: "chip", "aria-pressed": String(!!state.layers[k]),
     onclick: () => { state.layers[k] = !state.layers[k]; savePrefs(); renderControls(); renderLegend(); if (state.layer) state.layer.update(); } },
   el("span", { class: "sw", style: `--c:${rgba(c, 0.9)}` }), name)));
   $("chart-symbol").textContent = `${symName(state.symbol)} · ${state.tf}`;

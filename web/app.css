@@ -263,3 +263,7 @@ body.has-max { overflow: hidden; }
   .sym-seg button { padding: 3px 8px; }
   .chart-tools { width: 100%; } .chart-tools .tf-seg { flex: 1; }
 }
+
+/* chart detail switch */
+.seg-mini button { min-height: 30px; padding: 3px 12px; font-size: 13px; }
+.chips .seg-mini { margin-right: 6px; }
