@@ -211,6 +211,7 @@ async def run_smc(runner: SmcRunner, stop: asyncio.Event, poll: float = 2.0) -> 
         ",".join(runner.params.poi_tfs),
         runner.params.trigger_tf,
     )
+    runner.heartbeat(datetime.now(UTC))  # visible as "loading history" right away
     while not stop.is_set():
         try:
             await asyncio.to_thread(runner.step)

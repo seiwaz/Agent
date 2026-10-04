@@ -3,7 +3,7 @@
 Every bar the engine analyses comes from one merged 1-minute series:
 - the canonical live candles (candles_1m, written by the collector) where they exist;
 - otherwise Tabdeal's chart history (the same data Tabdeal's own chart shows), fetched on
-  demand into `exchange_m1` for the whole lookback the analysis needs.
+  demand into `exchange_m1` for the whole lookback the analysis needs (in 2-day chunks).
 Higher timeframes are aggregated from that series in SQL at request time (`load_bars`), so any
 timeframe is available at any moment, complete back to the configured history depth.
 
@@ -27,6 +27,7 @@ from sp2l.smc.timeframes import EPOCH, MINUTE, bucket_start, length, offset
 
 log = logging.getLogger("sp2l.smc.history")
 SETTLE = timedelta(seconds=5)
+CHUNK = timedelta(days=2)  # one chart request (~6 s from the server)
 Fetch = Callable[[datetime, datetime], list[dict[str, Any]]]
 
 
@@ -77,21 +78,36 @@ def store_bars(db: Engine, symbol: str, raw: list[dict[str, Any]], requested: da
     return len(final)
 
 
+def fetch_range(
+    db: Engine, symbol: str, fetch: Fetch, start: datetime, end: datetime, now: datetime
+) -> int:
+    """[start, end) in CHUNK requests, oldest first; each chunk is stored as it arrives, so an
+    interrupted load resumes from what is already cached."""
+    n, t = 0, start
+    while t < end:
+        e = min(t + CHUNK, end)
+        n += store_bars(db, symbol, fetch(t, e + MINUTE), now)
+        if e - t > timedelta(hours=1):  # bulk loads only; the per-minute top-up stays quiet
+            log.info("history %s: cached up to %s", symbol, e.isoformat())
+        t = e
+    return n
+
+
 def ensure_history(
     db: Engine, symbol: str, fetch: Fetch, days: float, now: datetime | None = None
 ) -> dict[str, Any]:
-    """Make `exchange_m1` cover [now - days, now): the missing head in one request, then the
-    tail from the last cached minute (15-minute overlap so late corrections are picked up)."""
+    """Make `exchange_m1` cover [now - days, now): the missing head in chunks, then the tail
+    from the last cached minute (15-minute overlap so late corrections are picked up)."""
     now = now or datetime.now(UTC)
     want = _floor(now - timedelta(days=days))
     first, last = coverage(db, symbol)
     out: dict[str, Any] = {"from": want.isoformat(), "fetched": 0}
     if first is None or first > want + timedelta(minutes=30):
         end = first if first is not None else now
-        out["fetched"] += store_bars(db, symbol, fetch(want, end + MINUTE), now)
+        out["fetched"] += fetch_range(db, symbol, fetch, want, end, now)
         first, last = coverage(db, symbol)
     tail_from = (last - timedelta(minutes=15)) if last is not None else want
-    out["fetched"] += store_bars(db, symbol, fetch(tail_from, now + MINUTE), now)
+    out["fetched"] += fetch_range(db, symbol, fetch, tail_from, now, now)
     first, last = coverage(db, symbol)
     out["first"] = None if first is None else first.isoformat()
     out["last"] = None if last is None else last.isoformat()
