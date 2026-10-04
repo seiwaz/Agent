@@ -1,0 +1,17 @@
+[Unit]
+Description=SMC read-only API and WebUI (GET only, port 3000)
+After=network-online.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=smc
+WorkingDirectory=/home/smc/SMC
+ExecStart=/home/smc/SMC/.venv/bin/python -m sp2l --config config/server.yaml api --host 0.0.0.0 --port 3000
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

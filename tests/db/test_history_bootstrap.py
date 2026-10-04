@@ -9,13 +9,11 @@ from decimal import Decimal as D
 import pytest
 from sqlalchemy import text
 
-from sp2l.api import queries
 from sp2l.core.types import Candle
 from sp2l.marketdata.m1_builder import M1Result, M1Status, Quality
 from sp2l.marketdata.m5_aggregator import M5Aggregator
 from sp2l.persistence.market_store import MarketStore
 from sp2l.runtime.reconcile import bootstrap_history
-from sp2l.runtime.shadow_service import _contiguous_tail, load_m5
 
 pytestmark = pytest.mark.db
 MIN = timedelta(minutes=1)
@@ -104,17 +102,10 @@ def run(engine, fetch, apply=True):  # type: ignore[no-untyped-def]
 
 
 def test_cold_start_is_price_context_ready_right_after_the_bootstrap(engine, live):
-    assert not queries.continuity(engine, SYM)["price_context_ready"]  # 20 live minutes only
     out = run(engine, chart)
     assert out["applied"] and out["validation"]["ok"], out
     assert out["synthetic_no_trade_minutes"] == 3  # minutes 400, 700, 701
     assert out["gaps_left"] == [((BASE + 100 * MIN).isoformat(), (BASE + 102 * MIN).isoformat())]
-    cont = queries.continuity(engine, SYM)
-    assert cont["price_context_ready"] and cont["trusted_m5"] >= 150
-    # a new Shadow session primes from exactly this contiguous stored tail
-    last = BASE + (N - 5) * MIN
-    tail = _contiguous_tail(load_m5(engine, SYM, BASE, last), last)
-    assert len(tail) >= 150 and tail[0].open_time > BASE + 102 * MIN  # starts after the gap
     with engine.connect() as c:
         stitched = c.execute(
             text(
@@ -151,7 +142,6 @@ def test_validation_failure_writes_nothing(engine, live):
     out = run(engine, lambda a, b: chart(a, b, tamper=True))
     assert not out["applied"] and out["failure"] == "HISTORY_VALIDATION_FAILED"
     assert count(engine, "candles_1m") == before and count(engine, "gap_repairs") == 0
-    assert not queries.continuity(engine, SYM)["price_context_ready"]
 
 
 def test_fetch_failure_and_no_live_minutes_fail_closed(engine, live):

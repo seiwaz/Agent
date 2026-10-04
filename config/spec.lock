@@ -1,5 +1,0 @@
-# SHA-256 pin of spec/SP2L_RULES.yaml (V6.0, 2026-10-01: website-based Context - NetTP AND any of
-# LevelBreak / ChannelEdge / HTFAligned; Exhaustion advisory; 30-bar M5 warmup).
-# Changing the rules requires a new manually versioned spec, a regenerated
-# spec/MANIFEST_SHA256.json and an updated pin (GOV-01).
-sha256=5f3bd3f5fdcd90a34c7c7bc7c0e7adc7add895a516c46a4bb99317cbc76eb92d

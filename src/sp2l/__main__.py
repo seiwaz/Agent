@@ -1,15 +1,18 @@
-"""SP2L command line.
+"""Command line.
 
     python -m sp2l [--config PATH] collect [--duration S] [--log-file PATH]
-    python -m sp2l [--config PATH] shadow [--duration S] [--log-file PATH]
+    python -m sp2l [--config PATH] smc [--duration S] [--log-file PATH]
+    python -m sp2l [--config PATH] backtest [--days N] [--set key=value ...]
     python -m sp2l [--config PATH] api [--host 127.0.0.1] [--port 8765]
     python -m sp2l [--config PATH] validate-readonly [--only ITEM,ITEM]
     python -m sp2l [--config PATH] reconcile-history [--apply]
 
 `collect` runs the always-on Tabdeal market-data collector on the public stream (no API
-key): raw trades, candles, gaps and the market-event journal.
-`shadow` runs the Shadow engine as a separate process consuming that journal (V5.5 B39);
-it requires validated maker_fee / taker_fee / slippage_allowance (B16).
+key): raw trades, candles, gaps and the market-event journal (live chart + canonical M1).
+`smc` runs the Smart Money Concepts engine: it loads the full warmup from Tabdeal's chart
+history (no live warmup), analyses every timeframe and creates / tracks M1 signals.
+It requires validated maker_fee / taker_fee / slippage_allowance.
+`backtest` replays the same engine over the stored history and prints the statistics.
 `validate-readonly` performs authenticated READ-ONLY account checks and records the
 evidence in runtime_validation_runs. It never places, cancels or modifies anything.
 """
@@ -34,14 +37,13 @@ from sp2l.marketdata.history import HistoryPolicy
 from sp2l.persistence.market_store import MarketStore
 from sp2l.runtime.service import RunRecorder, heartbeat_loop, history_heal_loop, setup_logging
 from sp2l.runtime.sinks import FanoutSink, MarketStoreSink
-from sp2l.spec.loader import load_rules, verify_manifest
+from sp2l.smc.model import VERSION
 
 log = logging.getLogger("sp2l")
 
 
 async def collect(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
-    verify_manifest()
-    rules = load_rules()
+    params = cfg.smc_params()
     symbol = cfg.symbol
     db = create_engine(cfg.database_url, pool_pre_ping=True)
     store = MarketStore(db, symbol)
@@ -103,8 +105,8 @@ async def collect(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
         db,
         symbol=symbol,
         mode="COLLECT",
-        spec_version=rules.version,
-        spec_sha256=rules.sha256,
+        spec_version=VERSION,
+        spec_sha256=params.digest(),
     )
     store.run_id = runs.run_id
     stop = asyncio.Event()
@@ -119,7 +121,7 @@ async def collect(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
     loop.add_signal_handler(signal.SIGTERM, request_stop, "SIGTERM")
     if args.duration:
         loop.call_later(args.duration, request_stop, "DURATION_ELAPSED")
-    log.info("collecting %s (spec %s sha %s)", symbol, rules.version, rules.sha256[:12])
+    log.info("collecting %s (%s params %s)", symbol, VERSION, params.digest())
     hb = asyncio.create_task(
         heartbeat_loop(
             runs, lambda: collector.health(utcnow()), stop, float(c.get("heartbeat_s", 30))
@@ -198,31 +200,66 @@ async def collect(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
         runs.ended(reason["why"])
 
 
-async def shadow(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
-    from sp2l.runtime.shadow_service import run_shadow
+async def smc(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
+    from sp2l.marketdata.tabdeal_public import chart_history
+    from sp2l.marketdata.tabdeal_ws import ws_market
+    from sp2l.smc.runner import SmcRunner, run_smc
 
-    verify_manifest()
-    rules = load_rules()
+    params = cfg.smc_params()
+    costs = cfg.costs()
     db = create_engine(cfg.database_url, pool_pre_ping=True)
+    market = ws_market(cfg.symbol)
+    runner = SmcRunner(
+        db, cfg.symbol, params, costs, lambda a, b: chart_history(market, "1", a, b, timeout=180)
+    )
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, stop.set)
     loop.add_signal_handler(signal.SIGTERM, stop.set)
     if args.duration:
         loop.call_later(args.duration, stop.set)
-    await run_shadow(db, cfg, rules, stop)
+    await run_smc(runner, stop)
+
+
+def backtest(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
+    import json as _json
+    from datetime import UTC, datetime
+
+    from sp2l.marketdata.tabdeal_public import chart_history
+    from sp2l.marketdata.tabdeal_ws import ws_market
+    from sp2l.smc.backtest import run
+    from sp2l.smc.history import ensure_history, load_bars, series_end
+    from sp2l.smc.model import SmcParams
+
+    base = cfg.smc_params().as_dict()
+    for kv in args.set or []:
+        k, _, v = kv.partition("=")
+        base[k] = v
+    params = SmcParams.from_mapping(base)
+    db = create_engine(cfg.database_url)
+    mk = ws_market(cfg.symbol)
+    ensure_history(
+        db, cfg.symbol, lambda a, b: chart_history(mk, "1", a, b, timeout=300), args.days
+    )
+    upto = series_end(db, cfg.symbol) or datetime.now(UTC)
+    m1 = load_bars(db, cfg.symbol, "1m", int(args.days * 1440), upto)
+    res = run(m1, params, cfg.costs())
+    print(_json.dumps({"params": params.digest(), "bars": len(m1), **res["stats"]}, indent=2))
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(prog="sp2l")
+    p = argparse.ArgumentParser(prog="sp2l", description="SMC trading-signal system")
     p.add_argument("--config", default="config/runtime.yaml")
     sub = p.add_subparsers(dest="cmd", required=True)
     col = sub.add_parser("collect", help="run the market-data collector")
     col.add_argument("--duration", type=float, default=None, help="stop after N seconds")
     col.add_argument("--log-file", type=Path, default=None)
-    sh = sub.add_parser("shadow", help="run the Shadow engine on the market-event journal")
-    sh.add_argument("--duration", type=float, default=None, help="stop after N seconds")
-    sh.add_argument("--log-file", type=Path, default=None)
+    sm = sub.add_parser("smc", help="run the Smart Money Concepts engine (signals)")
+    sm.add_argument("--duration", type=float, default=None, help="stop after N seconds")
+    sm.add_argument("--log-file", type=Path, default=None)
+    bt = sub.add_parser("backtest", help="backtest the SMC engine on Tabdeal history")
+    bt.add_argument("--days", type=float, default=30.0)
+    bt.add_argument("--set", action="append", help="override a parameter: key=value")
     api = sub.add_parser("api", help="serve the read-only API and WebUI")
     api.add_argument("--host", default="127.0.0.1")
     api.add_argument("--port", type=int, default=8765)
@@ -256,9 +293,11 @@ def main() -> None:
         cfg = RuntimeConfig.load(Path(args.config))
         if args.cmd == "collect":
             asyncio.run(collect(args, cfg))
-        elif args.cmd == "shadow":
-            cfg.shadow_costs()  # fail fast with a clear message (B16)
-            asyncio.run(shadow(args, cfg))
+        elif args.cmd == "smc":
+            cfg.costs()  # fail fast with a clear message
+            asyncio.run(smc(args, cfg))
+        elif args.cmd == "backtest":
+            backtest(args, cfg)
         elif args.cmd == "api":
             import uvicorn
 

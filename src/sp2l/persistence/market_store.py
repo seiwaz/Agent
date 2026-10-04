@@ -276,9 +276,25 @@ class MarketStore:
         )
 
     def journal_m1(self, m1: M1Result) -> int:
-        from sp2l.engine.checkpoint import dump_m1
-
-        return self.journal("M1", datetime.now(UTC), dump_m1(m1))
+        c = m1.candle
+        payload: dict[str, object] = {
+            "t": m1.open_time.isoformat(),
+            "status": m1.status.value,
+            "candle": None
+            if c is None
+            else {
+                "t": c.open_time.isoformat(),
+                "o": str(c.open),
+                "h": str(c.high),
+                "l": str(c.low),
+                "c": str(c.close),
+                "v": str(c.volume),
+                "n": c.trade_count,
+                "syn": c.synthetic,
+            },
+            "quality": m1.quality.value if m1.quality else None,
+        }
+        return self.journal("M1", datetime.now(UTC), payload)
 
     def journal_gap(self, start: datetime, ts: datetime, reason: str) -> int:
         return self.journal("GAP", ts, {"start": start.isoformat(), "reason": reason})

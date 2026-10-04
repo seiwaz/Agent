@@ -1,31 +1,26 @@
-/* SP2L Dashboard — render-only client (UI-02).
- * Every state, label, tone, number and reason shown here is computed by the backend API.
- * This file holds NO strategy thresholds, gate math or state derivation: it fetches JSON,
- * formats it for people (local time, digit grouping, percent) and renders it.
+/* SMC Console — render-only client.
+ * Every zone, structure break, signal, state, reason and number shown here comes from the
+ * backend API. This file holds no strategy logic: it fetches JSON, maps prices and times to
+ * pixels, formats values for people and renders them. The only aggregation it does is folding
+ * live M1 ticks into the bar of the selected timeframe that is still forming (display only).
  */
 "use strict";
 
-/* ---- icons (Lucide-style strokes, static markup) ---------------------------------------- */
+/* ---- icons ------------------------------------------------------------------------------ */
 const ICONS = {
   check: '<path d="M20 6 9 17l-5-5"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
-  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
   dot: '<circle cx="12" cy="12" r="5"/>',
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
-  pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
-  play: '<path d="m6 3 14 9-14 9V3z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
   moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
-  lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-  dashboard: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
-  candidates: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
-  history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
-  analytics: '<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/>',
-  diagnostics: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
-  indicators: '<path d="M3 17l5-5 4 4 8-8"/><path d="M14 8h6v6"/>',
-  up: '<path d="m18 15-6-6-6 6"/>',
-  down: '<path d="m6 9 6 6 6-6"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  belloff: '<path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/>',
+  up: '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  down: '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+  flat: '<path d="M5 12h14"/>',
+  target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
 };
 function icon(name, cls) {
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -45,7 +40,8 @@ function el(tag, attrs, ...kids) {
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === null || v === undefined || v === false) continue;
     if (k === "class") n.className = v;
-    else if (k === "style") n.style.cssText = v;  // CSSOM: allowed under the page CSP
+    else if (k === "style") n.style.cssText = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
     else n.setAttribute(k, v === true ? "" : v);
   }
   for (const k of kids.flat()) {
@@ -57,17 +53,15 @@ function el(tag, attrs, ...kids) {
 const $ = (id) => document.getElementById(id);
 const show = (v) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
-/* ---- formatting (display only) ------------------------------------------------------------ */
+/* ---- formatting ---------------------------------------------------------------------------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-const fmtClock = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const fmtClock = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 const fmtDay = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
-const fmtHM = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 const fmtOffset = new Intl.DateTimeFormat("en-US", { timeZoneName: "shortOffset" });
 function tzText() {
   const part = fmtOffset.formatToParts(new Date()).find((p) => p.type === "timeZoneName");
   return `${TZ} (${part ? part.value.replace("GMT", "UTC") : "local"})`;
 }
-/** Local time with the day when it is not today; exact UTC in the tooltip. */
 function when(iso) {
   if (!iso) return el("span", {}, "—");
   const d = new Date(iso);
@@ -76,56 +70,47 @@ function when(iso) {
   return el("time", { datetime: d.toISOString(), title: `${d.toISOString().replace(".000", "")} UTC`, class: "num" },
     today ? fmtClock.format(d) : `${fmtDay.format(d)} ${fmtClock.format(d)}`);
 }
-/** Group the integer digits of an exact decimal string without converting it to a float. */
 function grp(v) {
   if (v === null || v === undefined || v === "") return "—";
   let s = String(v);
-  if (/^-?\d+\.\d*0$/.test(s)) s = s.replace(/0+$/, "").replace(/\.$/, "");  // storage padding
+  if (/^-?\d+\.\d*0$/.test(s)) s = s.replace(/0+$/, "").replace(/\.$/, "");
   if (!/^-?\d+(\.\d+)?$/.test(s)) return s;
   const [i, f] = s.split(".");
   return i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (f ? `.${f}` : "");
 }
+const px2 = (v) => (v === null || v === undefined ? "—" : grp((+v).toFixed(2)));
+function rText(v) { if (v === null || v === undefined) return "—"; const n = +v; return `${n > 0 ? "+" : ""}${n.toFixed(2)}R`; }
+function rEl(v) { return el("span", { class: `num ${v === null || v === undefined ? "" : +v > 0 ? "pos" : +v < 0 ? "neg" : ""}` }, rText(v)); }
 function pct(fraction, digits) {
   if (fraction === null || fraction === undefined) return "—";
-  return new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: digits ?? 2 }).format(fraction);
+  return new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: digits ?? 1 }).format(+fraction);
 }
 function ago(seconds) {
   if (seconds === null || seconds === undefined) return "—";
   if (seconds < 60) return `${seconds} s ago`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-  return `${Math.floor(seconds / 3600)} h ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
+  return `${Math.floor(seconds / 86400)} d ago`;
 }
-
-/* ---- tone tags: color is always paired with text and an icon ------------------------------- */
-const TONE_ICON = { ok: "check", bad: "x", warn: "alert", info: "dot", neutral: "clock" };
-function tag(tone, label, code) {
-  return el("span", { class: `tag-tone t-${tone || "neutral"}`, title: code ? `code: ${code}` : null },
-    icon(TONE_ICON[tone] || "dot"), show(label));
+function tag(tone, label, ic) { return el("span", { class: `tag-tone t-${tone}` }, icon(ic || { ok: "check", bad: "x", warn: "alert" }[tone] || "dot"), label); }
+function sideTag(side) {
+  const long = side === "LONG";
+  return el("span", { class: `side t-${long ? "ok" : "bad"}` }, icon(long ? "up" : "down"), long ? "Long" : "Short");
 }
-function sideTag(side) { return el("span", { class: "side" }, show(side)); }
-function codeEl(code) { return code ? el("code", {}, code) : null; }
-function table(target, headers, rowsData, rowFn, emptyText) {
+const TREND = { BULLISH: ["ok", "up", "Bullish"], BEARISH: ["bad", "down", "Bearish"], UNDEFINED: ["neutral", "flat", "Undefined"] };
+const STATE = { PENDING: ["info", "Pending entry"], OPEN: ["warn", "Open"], TP: ["ok", "Target hit"], SL: ["bad", "Stopped out"],
+  EXPIRED: ["neutral", "Expired"], MISSED: ["neutral", "Missed"], TIMEOUT: ["neutral", "Timed out"], CANCELLED: ["neutral", "Cancelled"] };
+const stateTag = (s) => { const [t, l] = STATE[s] || ["neutral", s]; return tag(t, l); };
+function table(target, headers, data, rowFn, emptyText) {
   const t = typeof target === "string" ? $(target) : target;
-  if (!t) return;
-  t.replaceChildren();
-  t.append(el("thead", {}, el("tr", {}, headers.map((h) => el("th", { scope: "col" }, h)))));
+  t.replaceChildren(el("thead", {}, el("tr", {}, headers.map((h) => el("th", { scope: "col" }, h)))));
   const body = el("tbody");
-  if (!rowsData || rowsData.length === 0) {
-    body.append(el("tr", {}, el("td", { colspan: headers.length, class: "empty" }, emptyText || "Nothing recorded yet")));
-  } else {
-    for (const r of rowsData) body.append(rowFn(r));
-  }
+  if (!data || !data.length) body.append(el("tr", {}, el("td", { colspan: headers.length, class: "empty" }, emptyText || "Nothing yet")));
+  else for (const r of data) body.append(rowFn(r));
   t.append(body);
 }
 function kv(target, pairs) {
-  $(target).replaceChildren(...pairs.flatMap(([k, v, cls]) => [el("dt", {}, k), el("dd", { class: cls || null }, v instanceof Node ? v : show(v))]));
-}
-function progress(p) {
-  const bar = el("div", { class: `progress${p.complete ? " done" : ""}`, role: "progressbar",
-    "aria-valuemin": "0", "aria-valuemax": String(p.target), "aria-valuenow": String(p.current),
-    "aria-label": "Context warmup" }, el("span"));
-  bar.firstChild.style.width = `${p.percent ?? 0}%`;  // backend-computed percent
-  return bar;
+  $(target).replaceChildren(...pairs.flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v instanceof Node ? v : show(v))]));
 }
 async function api(path) {
   const r = await fetch(path, { headers: { Accept: "application/json" } });
@@ -134,892 +119,646 @@ async function api(path) {
 }
 
 /* ---- state ---------------------------------------------------------------------------------- */
-const state = { view: "dashboard", bucket: null, selected: null, paused: false, overview: null,
-  candles: [], chart: null, series: null, priceLines: [], equity: {}, zones: [], zoneLayer: null,
-  data: null, byTime: new Map(), forming: new Map(), live: null, livePrice: null };
+const TFS = ["1m", "5m", "15m", "1h", "4h"];
+const TF_SEC = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400 };
+const TF_OFFSET = { "1m": 0, "5m": 0, "15m": 0, "1h": 1800, "4h": 1800 };  // Tabdeal's chart grid
+const TF_BARS = { "1m": 600, "5m": 500, "15m": 400, "1h": 300, "4h": 180 };
+const LAYERS = [
+  ["ob", "Order blocks", "--c-bull"], ["fvg", "Fair value gaps", "--c-fvg-bull"], ["structure", "BOS / CHoCH", "--c-text"],
+  ["liquidity", "Liquidity", "--c-liq"], ["pd", "Premium / discount", "--c-pd-hi"], ["htf", "Higher-TF zones", "--c-fvg-bear"],
+  ["positions", "Positions", "--c-bull"], ["mitigated", "Mitigated", "--c-text"],
+];
+const prefs = loadPrefs();
+const state = { view: "chart", tf: prefs.tf || "15m", layers: prefs.layers || { ob: true, fvg: true, structure: true, liquidity: true, pd: false, htf: true, positions: true, mitigated: false },
+  chart: null, series: null, layer: null, data: [], times: [], byTime: new Map(), analysis: null, signals: [], focus: null,
+  overview: null, radar: null, live: null, lastPrice: null, sigFilter: "all", selectedSig: null, known: null, alerts: !!prefs.alerts };
+function loadPrefs() { try { return JSON.parse(localStorage.getItem("smc-prefs") || "{}"); } catch { return {}; } }
+function savePrefs() { try { localStorage.setItem("smc-prefs", JSON.stringify({ tf: state.tf, layers: state.layers, alerts: state.alerts })); } catch { /* storage unavailable */ } }
 
-/* ---- routing: #/dashboard, #/candidates[/KEY], #/history, #/analytics, #/diagnostics --------- */
-const VIEWS = ["dashboard", "candidates", "history", "indicators", "analytics", "diagnostics"];
-function route() {
-  const parts = location.hash.replace(/^#\/?/, "").split("/");
-  const v = VIEWS.includes(parts[0]) ? parts[0] : "dashboard";
-  state.view = v;
-  if (v === "candidates" && parts[1]) state.selected = decodeURIComponent(parts[1]);
-  for (const name of VIEWS) $(`view-${name}`).hidden = name !== v;
-  for (const a of $("nav").querySelectorAll("a")) {
-    if (a.dataset.view === v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
-  }
-  const slot = $(v === "candidates" ? "chart-slot-candidates" : "chart-slot-dashboard");
-  if ($("chart").parentElement !== slot) slot.append($("chart"), $("go-live"));
-  refreshFast(); refreshSlow();
-}
-
-/* ---- dashboard: status ------------------------------------------------------------------------ */
-function renderStatus(sys) {
-  const tile = (name, s, extra) => el("div", { class: `status-tile t-${s.tone}` },
-    el("div", { class: "k" }, name),
-    el("div", { class: "v" }, icon(TONE_ICON[s.tone] || "dot"), s.label),
-    el("div", { class: "d", title: s.code ? `code: ${s.code}` : `state: ${s.state}` }, extra || show(s.detail)));
-  const sh = sys.shadow;
-  $("status-tiles").replaceChildren(
-    tile("Market data", sys.data),
-    tile("Strategy", sys.strategy),
-    tile("Shadow", sh, sh.activity_at ? el("span", {}, "Last recorded activity ", when(sh.activity_at)) : null),
-    tile("Real trading", sys.live));
-
-  const b = sys.blocker;
-  const box = $("blocker");
-  box.className = `blocker t-${b.tone}`;
-  const kids = [el("div", { class: "lead" }, icon(TONE_ICON[b.tone] || "info"),
-    el("div", {}, el("div", { class: "lbl" }, b.blocking ? "Current blocker" : "Right now"), el("b", { title: `code: ${b.code}` }, b.text)))];
-  const w = sys.feed.warmup;
-  if (!w.complete && b.code === "CONTEXT_WARMUP") {
-    kids.push(el("div", { class: "progress-row" }, progress(w),
-      el("span", { class: "muted small" }, `${w.current} / ${w.target} finalized M5 bars in the current unbroken segment`,
-        w.remaining_text ? ` · ${w.remaining_text}` : "")));
-  }
-  const more = [...sys.other_blockers, ...sys.notes];
-  if (more.length) {
-    kids.push(el("ul", {}, more.map((n) => el("li", { class: `t-${n.tone}`, title: `code: ${n.code}` },
-      icon(TONE_ICON[n.tone] || "info"), n.text))));
-  }
-  box.replaceChildren(...kids);
-}
-
-function renderMarketData(sys) {
-  const f = sys.feed;
-  const rows = [
-    ["Status", tag(sys.data.tone, sys.data.label, sys.data.state)],
-    ["Connections", `${f.connections_up} / ${f.connections_total}`, "num"],
-    ["Coverage", tag(f.coverage.tone, f.coverage.label)],
-    ["Warmup", f.warmup.complete ? tag("ok", "Context ready") : `${f.warmup.current} / ${f.warmup.target} M5 bars`],
-  ];
-  if (f.repair && f.repair.enabled) {
-    rows.push(["Gap repair (last hour)", f.repair.pending ? tag("info", "Repairing a short gap")
-      : `${f.repair.repaired_last_hour} repaired · ${f.repair.unrecovered_last_hour} unrecoverable`]);
-  }
-  if (f.connections_up < f.connections_total) {
-    for (const c of f.connections) rows.push([c.name, tag(c.tone, c.label)]);
-  }
-  if (f.conflicts.current_run) rows.push(["Payload conflicts (current run)", tag("warn", String(f.conflicts.current_run))]);
-  else if (f.conflicts.last_24h) rows.push(["Payload conflicts (last 24 h)", tag("warn", String(f.conflicts.last_24h))]);
-  const dl = el("dl", { class: "kv" });
-  dl.append(...rows.flatMap(([k, v, cls]) => [el("dt", {}, k), el("dd", { class: cls || null }, v)]));
-  $("market-data").replaceChildren(...[dl, f.warmup.complete ? null : el("div", { style: "margin-top:10px" }, progress(f.warmup))].filter(Boolean));
-}
-
-function renderChartHead(o) {
-  const m = o.market;
-  $("symbol").textContent = m.symbol;
-  $("chart-symbol").textContent = m.symbol;
-  $("chart-tf").textContent = m.timeframe;
-  if (!state.livePrice || Date.now() - state.livePrice.at > 30000) {  // the live feed wins
-    $("chart-price").textContent = grp(m.last_price);
-    $("chart-price").title = m.last_trade_at ? `last trade ${m.last_trade_at}` : "";
-  }
-  $("chart-age").replaceChildren("updated ", ago(m.age_s));
-  $("chart-quality").replaceChildren(tag(m.quality.tone, `Data: ${m.quality.label}`, `${m.quality.window}`));
-}
-
-function renderStrategySummary(o, list) {
-  const sys = o.system;
-  const active = o.active[0];
-  const box = $("strategy-summary");
-  if (active) {
-    box.replaceChildren(el("div", { class: "stack" },
-      el("div", { class: "pos-head" }, sideTag(active.side), tag(active.result.tone, active.result.label, active.status)),
-      el("div", {}, active.stage_label),
-      el("a", { class: "link", href: `#/candidates/${encodeURIComponent(active.setup_key)}` }, "Open setup details")));
-    return;
-  }
-  const last = list && list.items && list.items[0];
-  box.replaceChildren(el("div", { class: "stack" },
-    el("div", { class: "big" }, "No active setup"),
-    el("div", { class: "muted" }, sys.blocker.text),
-    last ? el("div", {}, el("h3", { style: "margin:4px 0 6px" }, "Last candidate"), candButton(last)) : null));
-}
-
-/* ---- setup (dashboard card + candidate detail) ------------------------------------------------- */
-function flowEl(flow) {
-  return el("ol", { class: "flow", "aria-label": "SP2L flow" }, flow.map((f) =>
-    el("li", { class: `t-${f.tone}`, title: `${f.help || ""}${f.help ? " · " : ""}state: ${f.status}` },
-      el("span", { class: "n" }, f.name),
-      el("span", { class: "s" }, icon(TONE_ICON[f.tone] || "dot"), f.label))));
-}
-function stopReason(d) {
-  const s = d.summary;
-  const failed = d.flow_human.find((f) => ["Rejected", "Expired", "Uncertain"].includes(f.label));
-  if (!failed && !s.reason_human) return null;
-  // every recorded reason of the stage that stopped it, besides the primary one
-  const stage = s.status === "REJECTED_EXHAUSTION" ? d.exhaustion_summary : s.status === "REJECTED_CONTEXT" ? d.context_summary : null;
-  const primary = s.reason_human ? s.reason_human.code : null;
-  const sub = (stage ? stage.reasons : []).filter((r) => r.code !== primary);
-  return el("div", { class: `stop-reason t-${s.result.tone}` },
-    el("span", { class: "h" }, failed ? `Stopped at ${failed.name}: ${failed.label}` : s.result.label),
-    s.reason_human ? el("span", {}, s.reason_human.label) : null,
-    sub.length ? el("span", { class: "small muted" }, s.status === "REJECTED_EXHAUSTION" ? "Because: " : "Also: ", sub.map((r) => r.label).join(" · ")) : null,
-    el("span", { class: "codes" }, "Internal codes: ",
-      ...[s.reason_human ? s.reason_human.code : s.status, ...sub.map((r) => r.code)].flatMap((c, i) => [i ? " · " : null, codeEl(c)])));
-}
-function gateCard(title, summary, gates, emptyText) {
-  if (!summary) return el("div", { class: "gate-card" }, el("h3", {}, title), el("p", { class: "empty small" }, emptyText));
-  const techRow = (g) => el("tr", { class: g.threshold === "" ? "final" : null },
-    el("td", {}, g.gate),
-    el("td", { class: "num", title: Object.keys(g.exact || {}).length ? `exact: ${JSON.stringify(g.exact)}` : null }, show(g.value)),
-    el("td", { class: "wrap" }, show(g.threshold)),
-    el("td", {}, show(g.result)),
-    el("td", {}, codeEl(g.reason)));
-  const tbl = el("table");
-  const wrap = el("div", { class: "table-wrap" }, tbl);
-  const details = el("details", { class: "tech" }, el("summary", {}, "Technical detail: raw values, rules, exact values, reason codes"), wrap);
-  const card = el("div", { class: "gate-card" },
-    el("div", { class: "card-head" }, el("h3", { style: "margin:0" }, title), tag(summary.result.tone, summary.result.label, summary.result.code)),
-    el("p", { class: "q" }, summary.question),
-    el("div", { class: "rows" }, summary.rows.map((r) => el("div", { class: "r" },
-      el("span", {}, r.name), el("span", { class: `v t-${r.tone}`, title: r.code ? `code: ${r.code}` : null }, r.value)))),
-    details);
-  table(tbl, ["Gate", "Raw value", "Rule", "Result", "Reason code"], gates, techRow, "not evaluated");
-  return card;
-}
-function levelsEl(d) {
-  const lv = d.levels || {};
-  const items = [["E1", lv.e1], ["E2 (toward stop)", lv.e2 ?? lv.e2_reference], ["Stop loss", lv.sl],
-    ["Target (single)", lv.tp], ["R (E1 to stop)", lv.r], ["Qty per entry", d.qty],
-    ["Breakout level", d.breakout_level ? d.breakout_level.price : null],
-    ["Origin", d.setup.side === "LONG" ? d.setup.origin_low : d.setup.origin_high]];
-  return el("div", { class: "levels-grid" }, items.filter(([, v]) => v !== null && v !== undefined)
-    .map(([k, v]) => el("div", { class: "lv" }, el("div", { class: "k" }, k), el("div", { class: "v num" }, grp(v)))));
-}
-function fillWindowEl(fw) {
-  if (!fw) return null;
-  return el("div", { style: "margin-top:16px" }, el("h3", { style: "margin-top:0" }, `Fill window · candle ${fw.candle} of ${fw.of}`),
-    el("div", { class: "fw", "aria-label": `candle ${fw.candle} of ${fw.of}` },
-      Array.from({ length: fw.of }, (_, i) => el("span", { class: i < fw.candle ? "on" : null }))),
-    el("div", { class: "small muted", style: "margin-top:4px" }, "Pullback started ", when(fw.pullback_minute)));
-}
-/* P-Gap quality card: backend values and verdicts rendered as-is (V5.9) */
-function pgapQualityEl(q) {
-  if (!q) return null;
-  const head = el("div", { class: "pq-head" }, el("h3", {}, "P-Gap quality"),
-    q.measured ? tag(q.valid ? "ok" : "warn", q.valid ? "Valid" : "Rejected", (q.reason_codes || []).join(", ") || "PGAP_VALID")
-      : tag("neutral", "Not measured"));
-  if (!q.measured) return el("div", { class: "pq" }, head, el("p", { class: "muted small" }, q.text));
-  return el("div", { class: "pq" }, head,
-    el("dl", { class: "kv pq-rows" }, ...q.rows.flatMap((r) => [el("dt", {}, r.label),
-      el("dd", { class: r.ok ? "" : "pq-bad" }, el("span", { class: "num" }, r.value),
-        r.required ? el("span", { class: "muted small" }, ` · required ${r.required}`) : null)])),
-    el("div", { class: `pq-result ${q.valid ? "ok" : "bad"}`, title: (q.reason_codes || []).length ? `code: ${q.reason_codes.join(", ")}` : null },
-      el("span", { class: "muted small" }, "Result "), el("b", {}, q.result)));
-}
-function setupBody(d) {
-  const s = d.summary;
-  return [
-    el("div", { class: "detail-head" }, sideTag(s.side), tag(s.result.tone, s.result.label, s.status),
-      el("span", { class: "muted small" }, "Detected ", when(s.created_at)),
-      el("code", { class: "small", title: "setup key" }, s.setup_key)),
-    flowEl(d.flow_human),
-    stopReason(d),
-    pgapQualityEl(d.pgap_quality),
-    levelsEl(d),
-    fillWindowEl(d.fill_window),
-    el("div", { class: "setup-grid" },
-      gateCard("Context", d.context_summary, d.context_gates, "Not evaluated for this candidate"),
-      gateCard("Exhaustion", d.exhaustion_summary, d.exhaustion_gates, "Not evaluated (Context did not pass first)")),
-  ].filter(Boolean);
-}
-function technical(d) {
-  const sec = (title, id) => el("details", { class: "tech" }, el("summary", {}, title), el("div", { class: "table-wrap" }, el("table", { id })));
-  const box = $("detail-tech");
-  box.replaceChildren(sec("E1 revision history", "t-rev"), sec("Orders", "t-orders"), sec("Fills", "t-fills"),
-    sec("Event log", "t-events"), sec("Counterfactual (hypothetical, never affects Shadow)", "t-cf"));
-  table("t-rev", ["Rev", "E1", "SL", "TP", "E2", "R", "Qty", "Worst loss", "Costs", "At"], d.e1_revisions, (r) =>
-    el("tr", {}, ...[r.revision, r.e1, r.sl, r.tp, r.e2_reference, r.r, r.qty, r.modeled_worst_loss, r.modeled_costs]
-      .map((v) => el("td", { class: "num" }, grp(v))), el("td", {}, when(r.created_at))), "Entry was never placed");
-  table("t-orders", ["Leg", "Rev", "Price", "Qty", "Status", "Executed", "Updated"], d.orders, (o) =>
-    el("tr", {}, el("td", {}, o.leg), el("td", { class: "num" }, show(o.revision_id)), el("td", { class: "num" }, grp(o.price)),
-      el("td", { class: "num" }, grp(o.qty)), el("td", {}, codeEl(o.status)), el("td", { class: "num" }, grp(o.executed_qty)),
-      el("td", {}, when(o.updated_at))), "No orders");
-  table("t-fills", ["Leg", "Time", "Price", "Qty", "Fee"], d.fills, (f) =>
-    el("tr", {}, el("td", {}, f.leg), el("td", {}, when(f.ts)), el("td", { class: "num" }, grp(f.price)),
-      el("td", { class: "num" }, grp(f.qty)), el("td", { class: "num" }, grp(f.fee))), "No fills");
-  table("t-events", ["Time", "Event", "Payload"], [...d.events].reverse(), (e) =>
-    el("tr", {}, el("td", {}, when(e.ts)), el("td", {}, codeEl(e.event_type)), el("td", { class: "wrap mono small" }, JSON.stringify(e.payload))), "No events");
-  const cf = d.counterfactual;
-  table("t-cf", ["Stage", "Outcome", "Result (R, gross)", "E2 filled"], cf ? [cf] : [], (c) =>
-    el("tr", {}, el("td", {}, show(c.rejection_stage)), el("td", {}, codeEl(c.outcome)), el("td", { class: "num" }, show(c.result_r)),
-      el("td", {}, show(c.e2_filled))), "No counterfactual for this candidate");
-}
-
-function renderDashboardSetup(d) {
-  // candidate-specific panels only when there is an active setup (the empty state lives in
-  // the Strategy card, so nothing is repeated)
-  $("setup-card").hidden = !d;
-  if (d) $("setup-body").replaceChildren(...setupBody(d));
-}
-
-/* ---- shadow ------------------------------------------------------------------------------------ */
-function kpis(stats, wallet) {
-  const k = (name, v, tone, d) => el("div", { class: "kpi" }, el("div", { class: "k" }, name),
-    el("div", { class: `v num${tone ? ` t-${tone}` : ""}` }, v), d ? el("div", { class: "d" }, d) : null);
-  return el("div", { class: "kpi-grid" },
-    k("Shadow wallet", wallet && wallet.balance !== null ? `${grp(wallet.balance)}` : "—", null, "USDT"),
-    k("Net PnL", stats.net_pnl === null ? "—" : grp(stats.net_pnl), stats.net_pnl_tone, "USDT · confirmed"),
-    k("Confirmed trades", String(stats.trades), null, `${stats.wins} won · ${stats.losses} lost`),
-    k("Win rate", stats.win_rate_pct === null ? "—" : `${stats.win_rate_pct}%`, null, "confirmed trades"),
-    k("Expectancy", stats.expectancy === null ? "—" : grp(stats.expectancy), null, "USDT per trade"),
-    k("Max drawdown", grp(stats.max_drawdown), null, `USDT · ${show(stats.max_drawdown_pct)}% of peak`));
-}
-function renderPosition(p) {
-  const card = $("position-card");
-  if (!p) { card.hidden = true; return; }
-  card.hidden = false;
-  const rows = [["E1", grp(p.e1)], ["E2", p.e2_state], ["Average entry", grp(p.avg_entry)], ["Quantity", grp(p.qty)],
-    ["Stop loss", grp(p.sl)], ["Target", grp(p.tp)], ["Current price", grp(p.last_price)],
-    ["Move from E1", p.move_r === null ? "—" : `${p.move_r} R`], ["Open for", p.duration], ["Liquidation", p.liquidation]];
-  const dl = el("dl", { class: "kv" });
-  dl.append(...rows.flatMap(([k, v]) => [el("dt", {}, k), el("dd", { class: "num" }, show(v))]));
-  $("position-body").replaceChildren(
-    el("div", { class: "pos-head" }, sideTag(p.side), el("span", { class: `pnl num t-${p.unrealized_tone || "neutral"}` },
-      p.unrealized_pnl === null ? "—" : `${grp(p.unrealized_pnl)} USDT`), el("span", { class: "muted small" }, "unrealized")),
-    dl, el("a", { class: "link", href: `#/candidates/${encodeURIComponent(p.setup_key)}` }, "Setup details"));
-}
-function tradesTable(id, trades, empty) {
-  table(id, ["Closed", "Side", "Result", "Net PnL (USDT)", "Setup"], trades, (t) =>
-    el("tr", {}, el("td", {}, when(t.exit_at)), el("td", {}, sideTag(t.side)),
-      el("td", {}, tag(t.exit_kind === "TP" ? "ok" : t.exit_kind === "SL" ? "bad" : "neutral",
-        t.exit_kind === "TP" ? "Target hit" : t.exit_kind === "SL" ? "Stop hit" : show(t.exit_kind), t.exit_kind)),
-      el("td", { class: "num" }, grp(t.net_pnl_display)),
-      el("td", {}, el("a", { class: "link", href: `#/candidates/${encodeURIComponent(t.setup_key)}` }, "details"))), empty);
-}
-function renderShadow(o) {
-  const p = o.performance;
-  const box = $("shadow-body");
-  if (!p || !p.session) {
-    box.replaceChildren(el("div", { class: "card" }, el("p", { class: "empty" }, el("b", {}, "Shadow has not started. "),
-      o.system.shadow.detail || "", ". Results appear here once a Shadow session is running.")));
-    return;
-  }
-  box.replaceChildren(kpis(p.stats, o.wallet),
-    el("div", { class: "shadow-grid" },
-      el("section", { class: "card" }, el("h2", {}, "Recent confirmed trades"), el("div", { class: "table-wrap" }, el("table", { id: "recent-trades" }))),
-      el("section", { class: "card" }, el("h2", {}, "Equity · confirmed trades"), el("div", { class: "equity", id: "equity-dash", role: "img", "aria-label": "Confirmed Shadow equity curve" }))));
-  tradesTable("recent-trades", p.recent_trades.slice(0, 8), "No confirmed trades yet");
-  drawEquity("equity-dash", p.stats.equity);
-}
-
-/* ---- charts ------------------------------------------------------------------------------------ */
+/* ---- chart: SMC drawing layer (series primitive) -------------------------------------------- */
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+const rgba = (v, a) => `rgba(${css(v)},${a})`;
+const secs = (iso) => Math.floor(Date.parse(iso) / 1000);
+
+/** x pixel of an epoch-seconds time, between/after bars as well (gaps keep their spacing). */
+function xOf(t) {
+  const ts = state.chart.timeScale();
+  const T = state.times;
+  if (!T.length) return null;
+  const step = TF_SEC[state.tf];
+  let lo = 0, hi = T.length - 1;
+  if (t <= T[0]) return ts.logicalToCoordinate((t - T[0]) / step);
+  if (t >= T[hi]) return ts.logicalToCoordinate(hi + (t - T[hi]) / step);
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m] <= t) lo = m; else hi = m; }
+  return ts.logicalToCoordinate(lo + (t - T[lo]) / (T[hi] - T[lo]));
+}
+class SmcLayer {
+  constructor() { this.views = [new LayerView(this, "bottom"), new LayerView(this, "top")]; }
+  attached(p) { this.series = p.series; this.request = p.requestUpdate; }
+  detached() { this.request = null; }
+  paneViews() { return this.views; }
+  updateAllViews() {}
+  update() { if (this.request) this.request(); }
+}
+class LayerView {
+  constructor(src, z) { this.src = src; this.z = z; }
+  zOrder() { return this.z; }
+  renderer() { return { draw: (target) => target.useMediaCoordinateSpace(({ context, mediaSize }) => (this.z === "bottom" ? drawBelow : drawAbove)(context, mediaSize)) }; }
+}
+const yOf = (p) => state.series.priceToCoordinate(+p);
+function span(from, to, width) {
+  const x1 = from ? xOf(secs(from)) : 0;
+  const x2 = to ? xOf(secs(to)) : width;
+  if (x1 === null || x2 === null) return null;
+  return [Math.max(-10, x1), Math.min(width + 10, x2)];
+}
+function label(ctx, text, x, y, color, align, bg) {
+  ctx.font = "500 11px 'IBM Plex Sans', sans-serif";
+  ctx.textAlign = align || "left";
+  ctx.textBaseline = "middle";
+  if (bg) {
+    const w = ctx.measureText(text).width + 8;
+    const bx = align === "right" ? x - w : align === "center" ? x - w / 2 : x;
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(bx, y - 8, w, 16, 3); ctx.fill();
+    ctx.fillStyle = color; ctx.fillText(text, align === "right" ? x - 4 : align === "center" ? x : x + 4, y);
+    return;
+  }
+  ctx.fillStyle = color; ctx.fillText(text, x, y);
+}
+function zoneColor(z) {
+  if (z.kind === "OB") return z.direction === "LONG" ? "--c-bull" : "--c-bear";
+  return z.direction === "LONG" ? "--c-fvg-bull" : "--c-fvg-bear";
+}
+function drawZone(ctx, z, W, htf) {
+  const s = span(z.from, z.to, W);
+  const y1 = yOf(z.top), y2 = yOf(z.bottom);
+  if (!s || y1 === null || y2 === null) return;
+  const dead = z.status === "MITIGATED" || z.status === "EXPIRED";
+  const c = zoneColor(z);
+  ctx.fillStyle = rgba(c, dead ? 0.05 : htf ? 0.10 : z.kind === "OB" ? 0.16 : 0.13);
+  ctx.fillRect(s[0], y1, s[1] - s[0], y2 - y1);
+  ctx.strokeStyle = rgba(c, dead ? 0.25 : htf ? 0.9 : 0.55);
+  ctx.lineWidth = htf ? 1.5 : 1;
+  ctx.setLineDash(z.kind === "FVG" || dead ? [4, 3] : []);
+  ctx.strokeRect(s[0], y1, s[1] - s[0], y2 - y1);
+  ctx.setLineDash([]);
+  if (s[1] - s[0] > 34) label(ctx, `${htf ? `${z.tf} ` : ""}${z.kind}${z.tested ? "" : " ●"}`, s[0] + 2, y1 + 8, rgba(c, dead ? 0.5 : 1));
+}
+function drawBelow(ctx, size) {
+  const a = state.analysis;
+  if (!a || !a.ready || !state.series) return;
+  const W = size.width, L = state.layers;
+  if (L.pd && a.range) {
+    const s = span(a.range.from, null, W), yh = yOf(a.range.high), ye = yOf(a.range.eq), yl = yOf(a.range.low);
+    if (s && yh !== null && yl !== null) {
+      ctx.fillStyle = rgba("--c-pd-hi", 0.05); ctx.fillRect(s[0], yh, s[1] - s[0], ye - yh);
+      ctx.fillStyle = rgba("--c-pd-lo", 0.05); ctx.fillRect(s[0], ye, s[1] - s[0], yl - ye);
+      ctx.strokeStyle = rgba("--c-text", 0.35); ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.moveTo(s[0], ye); ctx.lineTo(s[1], ye); ctx.stroke(); ctx.setLineDash([]);
+      label(ctx, "Premium", W - 60, yh + 10, rgba("--c-pd-hi", 0.8), "right");
+      label(ctx, "Equilibrium", W - 60, ye - 8, rgba("--c-text", 0.6), "right");
+      label(ctx, "Discount", W - 60, yl - 10, rgba("--c-pd-lo", 0.8), "right");
+    }
+  }
+  if (L.htf) for (const z of a.htf_zones || []) if ((z.kind === "OB" && L.ob) || (z.kind === "FVG" && L.fvg)) drawZone(ctx, z, W, true);
+  for (const z of a.zones || []) {
+    if ((z.kind === "OB" && !L.ob) || (z.kind === "FVG" && !L.fvg)) continue;
+    if ((z.status === "MITIGATED" || z.status === "EXPIRED") && !L.mitigated) continue;
+    drawZone(ctx, z, W, false);
+  }
+}
+function drawAbove(ctx, size) {
+  const a = state.analysis;
+  if (!state.series) return;
+  const W = size.width, L = state.layers;
+  if (a && a.ready && L.structure) {
+    for (const e of a.events || []) {
+      const s = span(e.from, e.to, W), y = yOf(e.level);
+      if (!s || y === null) continue;
+      const c = e.direction === "LONG" ? "--c-bull" : "--c-bear";
+      ctx.strokeStyle = rgba(c, 0.85); ctx.lineWidth = 1; ctx.setLineDash(e.kind === "CHOCH" ? [5, 3] : [2, 2]);
+      ctx.beginPath(); ctx.moveTo(s[0], y); ctx.lineTo(s[1], y); ctx.stroke(); ctx.setLineDash([]);
+      label(ctx, e.kind === "CHOCH" ? "CHoCH" : "BOS", (s[0] + s[1]) / 2, y + (e.direction === "LONG" ? -8 : 8), rgba(c, 1), "center");
+    }
+  }
+  if (a && a.ready && L.liquidity) {
+    for (const q of a.liquidity || []) {
+      const s = span(q.from, null, W), y = yOf(q.price);
+      if (!s || y === null) continue;
+      ctx.strokeStyle = rgba("--c-liq", 0.8); ctx.setLineDash([1, 3]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(s[0], y); ctx.lineTo(s[1], y); ctx.stroke(); ctx.setLineDash([]);
+      label(ctx, `${q.kind} ${px2(q.price)}`, s[0] + 4, y + (q.kind === "BSL" ? -8 : 8), rgba("--c-liq", 1));
+    }
+  }
+  if (L.positions) for (const p of state.signals) drawPosition(ctx, p, W);
+}
+/** TradingView-style long/short position object: risk box, reward box, entry line, result. */
+function drawPosition(ctx, p, W) {
+  const open = p.state === "PENDING" || p.state === "OPEN";
+  const s = span(p.created_at, open ? null : p.closed_at, W);
+  const ye = yOf(p.entry), ys = yOf(p.sl), yt = yOf(p.tp);
+  if (!s || ye === null || ys === null || yt === null) return;
+  const x1 = s[0], x2 = Math.max(s[1], x1 + 24);
+  const focus = state.focus === p.id;
+  const a = open || focus ? 1 : 0.55;
+  ctx.fillStyle = rgba("--c-bull", 0.17 * a); ctx.fillRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
+  ctx.fillStyle = rgba("--c-bear", 0.17 * a); ctx.fillRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
+  ctx.lineWidth = focus ? 2 : 1;
+  ctx.strokeStyle = rgba("--c-bull", 0.7 * a); ctx.strokeRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
+  ctx.strokeStyle = rgba("--c-bear", 0.7 * a); ctx.strokeRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
+  ctx.strokeStyle = rgba("--c-text", 0.9 * a); ctx.setLineDash(p.state === "PENDING" ? [4, 3] : []); ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x1, ye); ctx.lineTo(x2, ye); ctx.stroke(); ctx.setLineDash([]);
+  if (p.filled_at) {
+    const xf = xOf(secs(p.filled_at));
+    if (xf !== null) { ctx.fillStyle = rgba("--c-text", a); ctx.beginPath(); ctx.arc(xf, ye, 3.5, 0, Math.PI * 2); ctx.fill(); }
+  }
+  if (p.exit_price && p.closed_at) {
+    const xx = xOf(secs(p.closed_at)), yx = yOf(p.exit_price);
+    if (xx !== null && yx !== null) { ctx.strokeStyle = rgba("--c-text", a); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(xx - 4, yx - 4); ctx.lineTo(xx + 4, yx + 4); ctx.moveTo(xx + 4, yx - 4); ctx.lineTo(xx - 4, yx + 4); ctx.stroke(); }
+  }
+  const long = p.side === "LONG";
+  const head = `${long ? "Long" : "Short"} · ${p.net_rr ? `${(+p.net_rr).toFixed(2)}R` : ""}`;
+  const tail = open ? (p.state === "OPEN" ? ` · ${rText(p.open_r)}` : " · pending") : ` · ${STATE[p.state] ? STATE[p.state][1] : p.state} ${p.result_r !== null ? rText(p.result_r) : ""}`;
+  const yLab = long ? Math.min(yt, ye) - 10 : Math.max(yt, ye) + 10;
+  label(ctx, head + tail, x1, yLab, css("--surface"), "left", rgba(long ? "--c-bull" : "--c-bear", 0.95 * a));
+  if (open) {
+    label(ctx, `TP ${px2(p.tp)}`, x2 - 2, yt + (long ? 9 : -9), rgba("--c-bull", 1), "right");
+    label(ctx, `SL ${px2(p.sl)}`, x2 - 2, ys + (long ? -9 : 9), rgba("--c-bear", 1), "right");
+  }
+}
+
 function chartTheme() {
   return { layout: { background: { color: css("--surface") }, textColor: css("--text-2"), fontFamily: "IBM Plex Sans, sans-serif" },
     grid: { vertLines: { color: css("--border") }, horzLines: { color: css("--border") } },
     rightPriceScale: { borderColor: css("--border") },
-    localization: { timeFormatter: (t) => fmtClock.format(new Date(t * 1000)) },
-    // axis ticks in the same local time zone as the rest of the page (library default is UTC)
-    timeScale: { borderColor: css("--border"), timeVisible: true, secondsVisible: false,
-      tickMarkFormatter: (t, type) => (type < 3 ? fmtDay : fmtHM).format(new Date(t * 1000)) } };
+    crosshair: { mode: 0 },
+    localization: { timeFormatter: (t) => `${fmtDay.format(new Date(t * 1000))} ${fmtClock.format(new Date(t * 1000))}` },
+    timeScale: { borderColor: css("--border"), timeVisible: true, secondsVisible: false, rightOffset: 12,
+      tickMarkFormatter: (t, type) => (type < 3 ? fmtDay : fmtClock).format(new Date(t * 1000)) } };
 }
 function ensureChart() {
   if (state.chart || !window.LightweightCharts) return;
-  window.sp2lChartCreates = (window.sp2lChartCreates || 0) + 1;  // test hook: created once
   state.chart = LightweightCharts.createChart($("chart"), { autoSize: true, ...chartTheme() });
+  state.series = state.chart.addCandlestickSeries({
+    upColor: css("--ok"), borderUpColor: css("--ok"), wickUpColor: css("--ok"),
+    downColor: css("--bad"), borderDownColor: css("--bad"), wickDownColor: css("--bad"),
+    priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+  });
+  state.layer = new SmcLayer();
+  state.series.attachPrimitive(state.layer);
   state.chart.subscribeCrosshairMove(showOhlc);
   const ts = state.chart.timeScale();
   ts.subscribeVisibleLogicalRangeChange(() => { $("go-live").hidden = !(ts.scrollPosition() < -3); });
   $("go-live").addEventListener("click", () => ts.scrollToRealTime());
-  state.series = state.chart.addCandlestickSeries({
-    upColor: css("--ok"), borderUpColor: css("--ok"), wickUpColor: css("--ok"),
-    downColor: "rgba(0,0,0,0)", borderDownColor: css("--bad"), wickDownColor: css("--bad"),
-  });
 }
-const secs = (iso) => Math.floor(Date.parse(iso) / 1000);  // chart library needs epoch seconds
-/* candle lineage names (the backend's quality codes; the code stays in the tooltip) */
-const QUALITY = { LIVE_RECONCILED: "live, reconciled with Tabdeal",
-  RECENT_TRADES_REPAIRED: "repaired exactly from Tabdeal recent trades",
-  TABDEAL_HISTORY_REPAIRED: "restored from Tabdeal chart history (OHLCV only, trade count unknown)",
-  REST_REPAIRED: "repaired exactly from Tabdeal recent trades",
-  LIVE_WS_ONLY: "live, not reconciled (REST unavailable)", LIVE_PROVEN_RAW: "live trades (before reconciliation)",
-  SYNTHETIC_NO_TRADE: "no trades (proven quiet)", REPAIRED_TABDEAL: "repaired from Tabdeal",
-  LIVE_FORMING: "Live candle (forming — not final, never used by the strategy)",
-  CONFLICTED: "recorded before the multi-fill fix", DATA_GAP: "no data (unrecovered)" };
-const REPAIR_TYPE = { EXACT_RAW_REPAIR: "Exact (trades and order recovered)",
-  CANDLE_HISTORY_REPAIR: "Candle history (OHLCV only)" };
-const toBar = (c) => (c.missing ? { time: secs(c.open_time) }
-  : { time: secs(c.open_time), open: +c.open, high: +c.high, low: +c.low, close: +c.close });
-function setDataKeepView() {
-  // replacing the data never yanks a user who is inspecting older history back to "now"
+function restyle() {
+  if (!state.chart) return;
+  state.chart.applyOptions(chartTheme());
+  state.series.applyOptions({ upColor: css("--ok"), borderUpColor: css("--ok"), wickUpColor: css("--ok"),
+    downColor: css("--bad"), borderDownColor: css("--bad"), wickDownColor: css("--bad") });
+  state.layer.update();
+}
+const toBar = (c) => ({ time: secs(c.open_time), open: +c.open, high: +c.high, low: +c.low, close: +c.close });
+function setCandles(d, keepView) {
+  ensureChart();
+  if (!state.series) return;
+  state.byTime = new Map(d.items.map((c) => [secs(c.open_time), c]));
+  state.data = d.items.map(toBar);
+  state.times = state.data.map((b) => b.time);
   const ts = state.chart.timeScale();
-  const away = ts.scrollPosition() < -3;
+  const away = keepView && ts.scrollPosition() < -3;
   const r = away ? ts.getVisibleLogicalRange() : null;
   state.series.setData(state.data);
   if (r) ts.setVisibleLogicalRange(r);
+  if (state.data.length) setPrice(state.data[state.data.length - 1].close, false);
+  state.layer.update();
 }
-function renderCandles(d) {
-  ensureChart();
-  state.candles = d.items.filter((c) => !c.missing);
-  state.byTime = new Map(d.items.map((c) => [secs(c.open_time), c]));
-  // a minute without a canonical candle is drawn as an empty slot, never bridged
-  state.data = d.items.map(toBar);
-  const lastFinal = state.data.length ? state.data[state.data.length - 1].time : 0;
-  // live-delivered candles (forming or already final) newer than the stored series; once the
-  // stored series contains a minute, the stored canonical candle is used
-  for (const [t, c] of [...state.forming].sort((a, b) => a[0] - b[0])) {
-    if (t > lastFinal) { state.byTime.set(t, c); state.data.push(toBar(c)); } else state.forming.delete(t);
-  }
-  if (!state.series) return;
-  setDataKeepView();
+function bucketOf(t) { const s = TF_SEC[state.tf], o = TF_OFFSET[state.tf]; return Math.floor((t - o) / s) * s + o; }
+/** Fold a live M1 candle into the selected timeframe's forming bar (display only). */
+function applyMinute(m) {
+  if (!state.series || !state.data.length) return;
+  const b = bucketOf(secs(m.t));
+  const last = state.data[state.data.length - 1];
+  if (b < last.time) return;  // an older bucket: the next candle reload brings it
+  let bar;
+  if (b === last.time) bar = { time: b, open: last.open, high: Math.max(last.high, +m.h), low: Math.min(last.low, +m.l), close: +m.c };
+  else { bar = { time: b, open: +m.o, high: +m.h, low: +m.l, close: +m.c }; state.data.push(bar); state.times.push(b); }
+  state.data[state.data.length - 1] = bar;
+  state.series.update(bar);
+  state.byTime.set(b, { open_time: new Date(b * 1000).toISOString(), open: bar.open, high: bar.high, low: bar.low, close: bar.close, forming: true });
+  setPrice(+m.c, true);
+  state.layer.update();
 }
-/* ---- live chart (V5.9): backend candles applied as-is; display only --------------------------- */
-function upsertBar(c) {
-  const t = secs(c.open_time), bar = toBar(c);
-  state.byTime.set(t, c);
-  if (!state.series || !state.data) return;
-  const last = state.data.length ? state.data[state.data.length - 1].time : -1;
-  if (t >= last) {  // the common case: in-place update of the newest candle, no redraw
-    if (t === last) state.data[state.data.length - 1] = bar; else state.data.push(bar);
-    state.series.update(bar);
-    return;
-  }
-  const i = state.data.findIndex((b) => b.time >= t);  // an older minute (final/revision)
-  if (i >= 0 && state.data[i].time === t) state.data[i] = bar; else state.data.splice(i < 0 ? state.data.length : i, 0, bar);
-  setDataKeepView();
-}
-function livePrice(price) {
-  if (price === null || price === undefined) return;
-  state.livePrice = { price, at: Date.now() };
-  $("chart-price").textContent = grp(price);
-  $("chart-price").title = "latest canonical trade (live)";
-}
-function applyLive(ev) {
-  if (ev.type === "snapshot") {
-    for (const f of ev.forming || []) applyLive({ ...f, type: "trade" });
-    livePrice(ev.price);
-    return;
-  }
-  const t = secs(ev.t);
-  const cur = state.byTime ? state.byTime.get(t) : null;
-  if (ev.type === "trade") {
-    if (cur && !cur.live) return;  // the canonical final candle always wins
-    if (cur && cur.live && cur.trade_count > ev.n) return;  // never step back
-    const c = { open_time: ev.t, open: ev.o, high: ev.h, low: ev.l, close: ev.c, volume: ev.v,
-      trade_count: ev.n, quality: "LIVE_FORMING", live: true };
-    state.forming.set(t, c);
-    upsertBar(c);
-    if (ev.price) livePrice(ev.price);
-    if (ev.recv_ts) {  // trade receive -> browser update (same clock on the server test)
-      const lat = window.sp2lLatency || (window.sp2lLatency = []);
-      lat.push(Date.now() - Date.parse(ev.recv_ts));
-      if (lat.length > 5000) lat.shift();
-    }
-    return;
-  }
-  // final / revised: the canonical candle replaces the live one (kept until stored data has it)
-  const fin = ev.status === "OK" || ev.type === "revised"
-    ? { open_time: ev.t, open: ev.o, high: ev.h, low: ev.l, close: ev.c, volume: ev.v,
-      trade_count: ev.n, quality: ev.quality, revision: ev.revision }
-    : { open_time: ev.t, missing: true, quality: "DATA_GAP" };
-  state.forming.set(t, fin);
-  upsertBar(fin);
+function setPrice(p, live) {
+  if (p === null || p === undefined) return;
+  state.lastPrice = +p;
+  $("chart-price").textContent = px2(p);
+  $("chart-price").title = live ? "latest trade (live)" : "last close";
 }
 function startLive() {
   if (!window.EventSource || state.live) return;
-  const es = new EventSource("/api/live/stream");  // SP2L backend only, never Tabdeal
+  const es = new EventSource("/api/live/stream");
   state.live = es;
-  const mark = (up) => { $("chart-live").hidden = !up; };
+  const mark = (up) => { state.streamUp = up; $("chart-live").hidden = !(up && state.feedUp); };
   es.addEventListener("open", () => mark(true));
   es.addEventListener("error", () => mark(false));
-  es.addEventListener("snapshot", (e) => { mark(true); applyLive(JSON.parse(e.data)); });
-  es.addEventListener("message", (e) => applyLive(JSON.parse(e.data)));
+  es.addEventListener("snapshot", (e) => { const s = JSON.parse(e.data); for (const f of s.forming || []) applyMinute(f); if (s.price) setPrice(s.price, true); });
+  es.addEventListener("message", (e) => {
+    const ev = JSON.parse(e.data);
+    if (ev.o === undefined || ev.status === "DATA_GAP") return;
+    applyMinute(ev);
+    if (ev.price) setPrice(ev.price, true);
+  });
 }
 function showOhlc(param) {
   const box = $("chart-ohlc");
-  const c = param && param.time !== undefined && state.byTime ? state.byTime.get(param.time) : null;
+  const c = param && param.time !== undefined ? state.byTime.get(param.time) : null;
   if (!c) { box.textContent = ""; return; }
-  box.replaceChildren(fmtClock.format(new Date(c.open_time)), " · ",
-    c.missing ? "no candle (data gap)" : c.live ? `Live candle · O ${grp(c.open)}  H ${grp(c.high)}  L ${grp(c.low)}  C ${grp(c.close)}  V ${grp(c.volume)} · ${c.trade_count} trades so far` : `O ${grp(c.open)}  H ${grp(c.high)}  L ${grp(c.low)}  C ${grp(c.close)}  V ${grp(c.volume)} · ${c.trade_count === null ? "trade count unknown" : `${c.trade_count} trades`}`,
-    " · ", el("span", { title: `code: ${c.quality}${c.revision ? ` · revision ${c.revision}` : ""}` }, QUALITY[c.quality] || c.quality), c.revision ? " · revised" : "");
+  box.textContent = `${fmtDay.format(new Date(c.open_time))} ${fmtClock.format(new Date(c.open_time))} · O ${px2(c.open)}  H ${px2(c.high)}  L ${px2(c.low)}  C ${px2(c.close)}${c.forming ? " · forming" : ""}`;
 }
-const LINE_STYLE = { E1: ["--info", 0, "E1"], SL: ["--bad", 0, "Stop loss"], TP: ["--ok", 0, "Target"],
-  E2: ["--info", 2, "E2"], E1_PREV: ["--text-3", 1, "Earlier E1"], ORIGIN: ["--text-2", 2, "Origin"] };
-const MARKER_STYLE = { PGAP: ["--info", "P-Gap"], SPIKE: ["--info", "Spike"], PULLBACK: ["--warn", "Pullback"],
-  FILL: ["--ok", "Fill"], EXIT: ["--text", "Exit"] };
-function applyOverlays(ov) {
-  if (!state.series) return;
-  for (const p of state.priceLines) state.series.removePriceLine(p);
-  state.priceLines = [];
-  const legend = [];
-  const seen = new Set();
-  for (const l of (ov ? ov.lines : [])) {
-    const [c, style, name] = LINE_STYLE[l.kind] || ["--text-2", 2, l.kind];
-    state.priceLines.push(state.series.createPriceLine({ price: +l.price, color: css(c), lineWidth: l.kind === "E1_PREV" ? 1 : 2,
-      lineStyle: style, axisLabelVisible: l.kind !== "E1_PREV", title: l.label }));
-    if (!seen.has(l.kind)) { seen.add(l.kind); legend.push(el("li", {}, el("span", { class: `sw${style === 2 ? " dash" : style === 1 ? " dot" : ""}`, style: `--c:${css(c)}` }), name)); }
+function renderLegend() {
+  const items = [];
+  const sw = (c, b, text) => el("li", {}, el("span", { class: "sw", style: `--c:${rgba(c, 0.25)};--b:${rgba(c, 0.8)}` }), text);
+  if (state.layers.ob) items.push(sw("--c-bull", 0, "Bullish OB"), sw("--c-bear", 0, "Bearish OB"));
+  if (state.layers.fvg) items.push(sw("--c-fvg-bull", 0, "Bullish FVG"), sw("--c-fvg-bear", 0, "Bearish FVG"));
+  if (state.layers.structure) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${css("--text-2")}` }), "BOS / CHoCH (dashed)"));
+  if (state.layers.liquidity) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${rgba("--c-liq", 1)}` }), "BSL / SSL liquidity"));
+  items.push(el("li", { class: "muted" }, "● = untested zone"));
+  $("chart-legend").replaceChildren(...items);
+}
+function renderControls() {
+  $("tf-seg").replaceChildren(...TFS.map((tf) => {
+    const role = state.radar && state.radar.timeframes ? (state.radar.timeframes.find((x) => x.tf === tf) || {}).role : "";
+    return el("button", { type: "button", role: "tab", "aria-selected": String(tf === state.tf), title: role || null,
+      onclick: () => { if (state.tf !== tf) { state.tf = tf; savePrefs(); renderControls(); loadChart(false); } } },
+    tf, role ? el("span", { class: "r" }, role.split(" ")[0][0]) : null);
+  }));
+  $("layer-chips").replaceChildren(...LAYERS.map(([k, name, c]) => el("button", { type: "button", class: "chip", "aria-pressed": String(!!state.layers[k]),
+    onclick: () => { state.layers[k] = !state.layers[k]; savePrefs(); renderControls(); renderLegend(); if (state.layer) state.layer.update(); } },
+  el("span", { class: "sw", style: `--c:${rgba(c, 0.8)}` }), name)));
+}
+async function loadChart(keepView) {
+  const tf = state.tf;
+  $("chart-note").hidden = true;
+  try {
+    const [c, a, s] = await Promise.all([
+      api(`/api/market/candles?tf=${tf}&limit=${TF_BARS[tf]}`),
+      api(`/api/smc/analysis?tf=${tf}&bars=${TF_BARS[tf]}`),
+      api("/api/smc/signals?limit=100"),
+    ]);
+    if (tf !== state.tf) return;
+    state.analysis = a;
+    state.signals = s.items;
+    setCandles(c, keepView);
+    if (!c.items.length) { $("chart-note").textContent = "No market history yet — the engine loads it from Tabdeal on start."; $("chart-note").hidden = false; }
+  } catch (e) {
+    $("chart-note").textContent = "Chart data unavailable — retrying."; $("chart-note").hidden = false;
   }
-  const have = new Set(state.candles.map((c) => secs(c.open_time)));
-  const markers = (ov ? ov.markers : []).filter((m) => have.has(secs(m.time))).map((m) => {
-    const [c] = MARKER_STYLE[m.kind] || ["--text-2"];
-    return { time: secs(m.time), position: m.position === "above" ? "aboveBar" : "belowBar", color: css(c),
-      shape: m.kind === "FILL" ? "circle" : m.position === "above" ? "arrowDown" : "arrowUp", text: m.label };
-  });
-  state.series.setMarkers(markers);
-  for (const m of (ov ? ov.markers : [])) {
-    if (!seen.has(m.kind)) { seen.add(m.kind); const [c, name] = MARKER_STYLE[m.kind] || ["--text-2", m.kind]; legend.push(el("li", {}, el("span", { class: "sw", style: `--c:${css(c)}` }), name)); }
+}
+async function refreshAnalysis() {
+  const tf = state.tf;
+  const [a, s] = await Promise.all([api(`/api/smc/analysis?tf=${tf}&bars=${TF_BARS[tf]}`), api("/api/smc/signals?limit=100")]);
+  if (tf !== state.tf) return;
+  state.analysis = a;
+  state.signals = s.items;
+  notifyChanges(s.items);
+  if (state.layer) state.layer.update();
+}
+
+/* ---- side panels ---------------------------------------------------------------------------- */
+function renderKpis(o, r, perf) {
+  const k = (tone, label, value, detail, ic) => el("div", { class: `kpi t-${tone}` }, el("div", { class: "k" }, label),
+    el("div", { class: "v" }, ic ? icon(ic) : null, value), el("div", { class: "d" }, detail || " "));
+  const bias = (r && r.bias) || "UNDEFINED";
+  const [bt, bi, bl] = TREND[bias];
+  const act = state.signals.find((s) => s.state === "OPEN" || s.state === "PENDING");
+  const smc = o.smc || {}, run = smc.runner;
+  const hist = smc.history || {};
+  $("kpis").replaceChildren(
+    k("info", o.symbol_display || "Price", state.lastPrice !== null ? px2(state.lastPrice) : px2(o.market.last_price), o.market.age_s !== null ? `last trade ${ago(o.market.age_s)}` : "from exchange history"),
+    k(bt, `Bias · ${(r && r.timeframes && r.timeframes.find((x) => x.role.startsWith("Bias")) || {}).tf || ""}`, bl, "higher-timeframe structure", bi),
+    act ? k(act.side === "LONG" ? "ok" : "bad", "Position", `${act.side === "LONG" ? "Long" : "Short"} ${act.state === "OPEN" ? rText(act.open_r) : "pending"}`, `entry ${px2(act.entry)}`, act.side === "LONG" ? "up" : "down")
+      : k("neutral", "Position", "Flat", "waiting for a qualified trigger", "flat"),
+    k(+perf.total_r > 0 ? "ok" : +perf.total_r < 0 ? "bad" : "neutral", "Live result", rText(perf.total_r), `${perf.closed} closed · win ${pct(perf.win_rate)}`),
+    k(run && run.status === "RUNNING" ? "ok" : "bad", "Engine", run ? (run.status === "RUNNING" ? "Running" : "Stale") : "Not started", run ? `heartbeat ${ago(run.heartbeat_age_s)}` : "start: python -m sp2l smc", run && run.status === "RUNNING" ? "check" : "alert"),
+    k(hist.days >= hist.target_days - 1 ? "ok" : "warn", "History", hist.days !== null && hist.days !== undefined ? `${hist.days} d` : "—", `target ${hist.target_days} d · Tabdeal chart`),
+  );
+}
+function renderTicket() {
+  const act = state.signals.find((s) => s.state === "OPEN") || state.signals.find((s) => s.state === "PENDING");
+  const body = $("ticket-body");
+  if (!act) {
+    $("ticket-state").replaceChildren(tag("neutral", "Flat", "clock"));
+    const last = state.signals.find((s) => s.closed_at);
+    body.replaceChildren(el("div", { class: "ticket-empty" }, el("div", { class: "big" }, "No open position"),
+      el("p", { class: "muted small" }, "A position opens when an M1 break reacts inside a higher-timeframe zone aligned with the bias and the target pays the minimum R after fees."),
+      last ? el("p", { class: "small" }, "Last: ", sideTag(last.side), " ", stateTag(last.state), " ", rEl(last.result_r)) : null));
+    return;
   }
-  $("chart-legend").replaceChildren(...legend);
+  $("ticket-state").replaceChildren(stateTag(act.state));
+  const d = act.detail || {};
+  const risk = Math.abs(+act.entry - +act.sl), reward = Math.abs(+act.tp - +act.entry);
+  const tot = risk + reward || 1;
+  const factors = Object.entries(d.factors || {});
+  const ft = (state.radar && state.radar.factor_text) || {};
+  body.replaceChildren(
+    el("div", { class: "ticket-hero" }, el("div", {}, sideTag(act.side), " ", el("span", { class: "muted small" }, act.trigger_kind === "CHOCH" ? "M1 CHoCH" : "M1 BOS", act.poi_tf ? ` in ${act.poi_tf} ${(d.poi || {}).kind || "zone"}` : "")),
+      el("div", { class: "big num" }, act.state === "OPEN" ? rText(act.open_r) : "—")),
+    el("div", { class: "rr-bar", role: "img", "aria-label": `Risk ${risk.toFixed(2)}, reward ${reward.toFixed(2)}` },
+      el("span", { class: "loss", style: `width:${(risk / tot) * 100}%` }), el("span", { class: "win", style: `width:${(reward / tot) * 100}%` })),
+    el("div", { class: "rr-scale" }, el("span", {}, "Stop"), el("span", {}, `net ${act.net_rr ? (+act.net_rr).toFixed(2) : "—"}R after fees`), el("span", {}, "Target")),
+    el("div", { class: "levels" },
+      el("div", { class: "t-info" }, el("div", { class: "k" }, "Entry"), el("div", { class: "v num" }, px2(act.entry))),
+      el("div", { class: "t-bad" }, el("div", { class: "k" }, "Stop loss"), el("div", { class: "v num" }, px2(act.sl))),
+      el("div", { class: "t-ok" }, el("div", { class: "k" }, "Take profit"), el("div", { class: "v num" }, px2(act.tp)))),
+    el("dl", { class: "kv small" },
+      el("dt", {}, "Target"), el("dd", {}, show(act.tp_source)),
+      el("dt", {}, "Score"), el("dd", {}, `${act.score} / ${factors.length}`),
+      el("dt", {}, "Advisory size"), el("dd", { class: "num" }, act.qty ? `${grp((+act.qty).toFixed(3))} · ${px2(act.notional)} USDT · ${(+act.leverage).toFixed(1)}x` : "—"),
+      el("dt", {}, "Opened"), el("dd", {}, when(act.filled_at || act.created_at))),
+    el("div", { class: "factors" }, factors.map(([f, on]) => el("span", { class: `factor${on ? " on" : ""}`, title: ft[f] || f }, ft[f] || f))));
+}
+function renderRadar(r) {
+  if (!r || !r.ready) { $("ladder").replaceChildren(el("li", { class: "t-neutral" }, el("span", {}, "No data yet"))); return; }
+  const [bt, bic, bl] = TREND[r.bias];
+  $("ladder-bias").replaceChildren(tag(bt, `Bias ${bl.toLowerCase()}`, bic));
+  $("ladder").replaceChildren(...[...r.timeframes].reverse().map((t) => {
+    const [tone, ic, lab] = TREND[t.trend];
+    const ev = t.last_event;
+    return el("li", { class: `t-${tone}` }, el("span", { class: "tf" }, t.tf),
+      el("div", {}, el("div", { class: "role" }, t.role || "Context"), el("div", { class: "ev" }, ev ? `${ev.kind === "CHOCH" ? "CHoCH" : "BOS"} ${ev.direction === "LONG" ? "up" : "down"} @ ${px2(ev.level)} · ` : "no break yet", ev ? when(ev.time) : null)),
+      el("span", { class: "tr" }, icon(ic), lab));
+  }));
+  $("poi-list").replaceChildren(...(r.pois.length ? r.pois.map((z) => el("li", { class: `t-${z.direction === "LONG" ? "ok" : "bad"}`, title: "Show on chart",
+    onclick: () => { state.tf = z.tf; savePrefs(); renderControls(); loadChart(false); } },
+  el("div", {}, el("div", { class: "z" }, `${z.tf} ${z.kind === "OB" ? "Order block" : "Fair value gap"}`, z.tested ? "" : " · fresh"),
+    el("div", { class: "px num" }, `${px2(z.bottom)} – ${px2(z.top)}`)),
+  el("div", { class: "dist" }, z.distance !== null ? pct(z.distance, 2) : "—", el("div", { class: "px" }, "away")))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, r.bias === "UNDEFINED" ? "No bias, so no zones are tradable." : "No unmitigated zone with the bias right now."))]));
+  $("trig-list").replaceChildren(...(r.triggers.length ? r.triggers.map((t) => el("li", { class: `t-${t.accepted ? "ok" : "neutral"}` },
+    el("div", { class: "top" }, sideTag(t.direction), el("b", {}, t.kind === "CHOCH" ? "CHoCH" : "BOS"), when(t.time), t.accepted ? tag("ok", "Qualified") : null,
+      t.poi_tf ? el("span", { class: "muted" }, `in ${t.poi_tf} zone`) : null),
+    el("div", { class: "why" }, t.accepted ? `Score ${t.score} · net ${t.net_rr}R` : t.reasons.map((x) => x.text).join(" · ")))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, "No M1 structure break in the window."))]));
+}
+
+/* ---- alerts ----------------------------------------------------------------------------------- */
+function beep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 880; g.gain.value = 0.05; o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.18);
+  } catch { /* audio unavailable */ }
+}
+function toast(tone, title, text) {
+  const t = el("div", { class: `toast t-${tone}` }, el("b", {}, title), el("span", {}, text));
+  $("toasts").append(t);
+  setTimeout(() => t.remove(), 9000);
+  if (state.alerts) {
+    beep();
+    if (window.Notification && Notification.permission === "granted") { try { new Notification(title, { body: text }); } catch { /* not allowed */ } }
+  }
+}
+function notifyChanges(items) {
+  const now = new Map(items.map((s) => [s.id, s.state]));
+  if (state.known) {
+    for (const s of items) {
+      const before = state.known.get(s.id);
+      if (before === s.state) continue;
+      const side = s.side === "LONG" ? "Long" : "Short";
+      if (before === undefined) toast(s.side === "LONG" ? "ok" : "bad", `New ${side} signal`, `Entry ${px2(s.entry)} · SL ${px2(s.sl)} · TP ${px2(s.tp)}`);
+      else if (s.state === "OPEN") toast("info", `${side} filled`, `Entry ${px2(s.entry)}`);
+      else toast(s.state === "TP" ? "ok" : s.state === "SL" ? "bad" : "neutral", `${side} ${STATE[s.state] ? STATE[s.state][1].toLowerCase() : s.state}`, rText(s.result_r));
+    }
+  }
+  state.known = now;
+}
+function renderAlertBtn() {
+  const b = $("alert-btn");
+  b.replaceChildren(icon(state.alerts ? "bell" : "belloff"));
+  b.setAttribute("aria-pressed", String(state.alerts));
+}
+
+/* ---- signals view ------------------------------------------------------------------------------ */
+async function renderSignals() {
+  const filters = [["all", "All"], ["active", "Active"], ["closed", "Closed"]];
+  $("sig-filter").replaceChildren(...filters.map(([k, l]) => el("button", { type: "button", role: "tab", "aria-selected": String(state.sigFilter === k),
+    onclick: () => { state.sigFilter = k; renderSignals(); } }, l)));
+  const d = await api(`/api/smc/signals?state=${state.sigFilter}&limit=300`);
+  table("sig-table", ["Created", "Side", "Trigger", "POI", "Entry", "SL", "TP", "Net R:R", "Score", "State", "Result"], d.items, (s) => {
+    const tr = el("tr", { class: "click", "aria-current": String(state.selectedSig === s.id), onclick: () => { state.selectedSig = s.id; renderSignals(); } },
+      el("td", {}, when(s.created_at)), el("td", {}, sideTag(s.side)), el("td", {}, s.trigger_kind === "CHOCH" ? "CHoCH" : "BOS"),
+      el("td", {}, s.poi_tf ? `${s.poi_tf} ${(s.detail.poi || {}).kind || ""}` : "—"),
+      el("td", { class: "num" }, px2(s.entry)), el("td", { class: "num" }, px2(s.sl)), el("td", { class: "num" }, px2(s.tp)),
+      el("td", { class: "num" }, s.net_rr ? `${s.net_rr}R` : "—"), el("td", { class: "num" }, s.score), el("td", {}, stateTag(s.state)),
+      el("td", {}, s.state === "OPEN" ? rEl(s.open_r) : rEl(s.result_r)));
+    return tr;
+  }, "No signals yet. They appear here the moment the engine creates one.");
+  const sel = d.items.find((s) => s.id === state.selectedSig);
+  if (!sel) return;
+  const ev = await api(`/api/smc/signals/${sel.id}/events`);
+  const ft = (state.radar && state.radar.factor_text) || {};
+  $("sig-detail").replaceChildren(
+    el("div", { class: "ticket-hero" }, el("div", {}, sideTag(sel.side), " ", stateTag(sel.state)), el("div", { class: "big num" }, sel.state === "OPEN" ? rText(sel.open_r) : rText(sel.result_r))),
+    el("div", { class: "levels" },
+      el("div", { class: "t-info" }, el("div", { class: "k" }, "Entry"), el("div", { class: "v num" }, px2(sel.entry))),
+      el("div", { class: "t-bad" }, el("div", { class: "k" }, "Stop loss"), el("div", { class: "v num" }, px2(sel.sl))),
+      el("div", { class: "t-ok" }, el("div", { class: "k" }, "Take profit"), el("div", { class: "v num" }, px2(sel.tp)))),
+    el("dl", { class: "kv small" }, el("dt", {}, "Target"), el("dd", {}, show(sel.tp_source)), el("dt", {}, "POI zone"),
+      el("dd", { class: "num" }, sel.detail.poi ? `${sel.detail.poi.tf} ${sel.detail.poi.kind} ${px2(sel.detail.poi.bottom)} – ${px2(sel.detail.poi.top)}` : "—"),
+      el("dt", {}, "Exit"), el("dd", { class: "num" }, px2(sel.exit_price))),
+    el("div", { class: "factors" }, Object.entries(sel.detail.factors || {}).map(([f, on]) => el("span", { class: `factor${on ? " on" : ""}` }, ft[f] || f))),
+    el("ol", { class: "timeline" }, ev.items.map((e) => el("li", { class: `t-${{ CREATED: "info", FILLED: "warn", TP: "ok", SL: "bad" }[e.kind] || "neutral"}` },
+      el("b", {}, e.kind), " ", when(e.ts), e.price ? el("span", { class: "num muted" }, ` @ ${px2(e.price)}`) : null,
+      e.detail && e.detail.result_r ? el("span", {}, " · ", rEl(e.detail.result_r)) : null))),
+    el("p", {}, el("button", { class: "btn", type: "button", onclick: () => showOnChart(sel) }, icon("target"), "Show on chart")));
+}
+function showOnChart(s) {
+  state.focus = s.id;
+  location.hash = "#/chart";
+  setTimeout(() => {
+    if (!state.chart) return;
+    const t = secs(s.created_at);
+    const i = state.times.findIndex((x) => x >= t);
+    if (i >= 0) state.chart.timeScale().setVisibleLogicalRange({ from: i - 60, to: i + 60 });
+    state.layer.update();
+  }, 300);
+}
+
+/* ---- performance view ------------------------------------------------------------------------- */
+function stats(target, d) {
+  const s = (k, v, tone) => el("div", { class: "stat" }, el("div", { class: "k" }, k), el("div", { class: `v num ${tone || ""}` }, v));
+  $(target).replaceChildren(
+    s("Closed trades", show(d.closed)), s("Win rate", pct(d.win_rate)), s("Total", rText(d.total_r), +d.total_r > 0 ? "pos" : +d.total_r < 0 ? "neg" : ""),
+    s("Average", rText(d.avg_r)), s("Profit factor", show(d.profit_factor)), s("Max drawdown", d.max_drawdown_r ? `${d.max_drawdown_r}R` : "—"));
 }
 function drawEquity(id, points) {
   const box = $(id);
-  if (!box || !window.LightweightCharts) return;
-  let c = state.equity[id];
-  if (!c || c.box !== box) {
-    const chart = LightweightCharts.createChart(box, { autoSize: true, ...chartTheme() });
-    c = state.equity[id] = { box, chart, series: chart.addLineSeries({ color: css("--info"), lineWidth: 2 }) };
-  }
-  // one point per second for the chart library (display only); exact balances are in History
-  const bySec = new Map();
-  for (const p of points) if (p.ts !== "start") bySec.set(secs(p.ts), +p.balance);
-  c.series.setData([...bySec.entries()].sort((a, b) => a[0] - b[0]).map(([time, value]) => ({ time, value })));
-  c.chart.timeScale().fitContent();
+  if (!points || points.length < 2) { box.replaceChildren(el("p", { class: "empty" }, "The equity curve appears after two closed trades.")); return; }
+  const W = 1000, H = 220, P = 24;
+  const ys = points.map((p) => +p.r);
+  const lo = Math.min(0, ...ys), hi = Math.max(0, ...ys);
+  const x = (i) => P + (i / (points.length - 1)) * (W - 2 * P);
+  const y = (v) => H - P - ((v - lo) / (hi - lo || 1)) * (H - 2 * P);
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("preserveAspectRatio", "none");
+  const zero = document.createElementNS(ns, "line");
+  zero.setAttribute("x1", P); zero.setAttribute("x2", W - P); zero.setAttribute("y1", y(0)); zero.setAttribute("y2", y(0));
+  zero.setAttribute("stroke", css("--border-strong")); zero.setAttribute("stroke-dasharray", "4 4");
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", ys.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(""));
+  path.setAttribute("fill", "none"); path.setAttribute("stroke", ys[ys.length - 1] >= 0 ? css("--ok") : css("--bad")); path.setAttribute("stroke-width", "2");
+  path.setAttribute("vector-effect", "non-scaling-stroke");
+  svg.append(zero, path);
+  box.replaceChildren(svg);
 }
-/* ---- support / resistance zones -------------------------------------------------------------------
-   Drawn exactly as /api/market/zones returns them (swing-pivot zones on 15m / 30m / 4h, computed in
-   the backend; display only - no strategy code reads them). Resistance red, support green; the
-   longer the timeframe, the stronger the fill. Each timeframe can be hidden (kept per viewer). */
-const ZONE_ALPHA = { "15m": 0.12, "30m": 0.18, "4h": 0.26 };
-function zonePrefs() {
-  try { return JSON.parse(localStorage.getItem("sp2l-zones") || "{}"); } catch (_) { return {}; }
+function bars(target, entries, tones) {
+  const max = Math.max(1, ...entries.map(([, n]) => n));
+  $(target).replaceChildren(...entries.map(([k, n, label]) => el("div", { class: `bar-row t-${(tones && tones[k]) || "info"}` },
+    el("span", {}, label || k), el("div", { class: "track" }, el("div", { class: "fill", style: `width:${(n / max) * 100}%` })), el("span", { class: "n" }, n))));
 }
-function zoneOn(tf) { const p = zonePrefs(); return p[tf] !== false; }
-class ZoneLayer {
-  constructor() { this.zones = []; this.chart = null; this.series = null; this.req = null; }
-  attached(p) { this.chart = p.chart; this.series = p.series; this.req = p.requestUpdate; }
-  detached() { this.chart = null; this.series = null; this.req = null; }
-  set(zones) { this.zones = zones; if (this.req) this.req(); }
-  updateAllViews() {}
-  paneViews() {
-    const layer = this;
-    return [{ zOrder: () => "bottom", renderer: () => ({ draw: (target) => layer.draw(target) }) }];
-  }
-  draw(target) {
-    if (!this.series || !this.chart) return;
-    const ts = this.chart.timeScale();
-    const res = css("--bad"), sup = css("--ok"), txt = css("--text-2");
-    let drawn = 0;
-    target.useBitmapCoordinateSpace(({ context: ctx, bitmapSize, horizontalPixelRatio: hr, verticalPixelRatio: vr }) => {
-      for (const z of this.zones) {
-        if (!zoneOn(z.timeframe)) continue;
-        const yTop = this.series.priceToCoordinate(+z.top), yBot = this.series.priceToCoordinate(+z.bottom);
-        if (yTop === null || yBot === null) continue;
-        const x = ts.timeToCoordinate(secs(z.since));
-        const x0 = x === null ? 0 : Math.round(x * hr);
-        const y0 = Math.round(yTop * vr), h = Math.max(Math.round((yBot - yTop) * vr), 2 * vr);
-        const color = z.kind === "RESISTANCE" ? res : sup;
-        ctx.globalAlpha = ZONE_ALPHA[z.timeframe] || ZONE_ALPHA["15m"];
-        ctx.fillStyle = color;
-        ctx.fillRect(x0, y0, bitmapSize.width - x0, h);
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(1, Math.round(vr));
-        ctx.setLineDash(z.timeframe === "4h" ? [] : [4 * hr, 3 * hr]);
-        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(bitmapSize.width, y0);
-        ctx.moveTo(x0, y0 + h); ctx.lineTo(bitmapSize.width, y0 + h); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = txt;
-        ctx.font = `${Math.round(11 * vr)}px IBM Plex Sans, sans-serif`;
-        ctx.fillText(z.label, x0 + 6 * hr, y0 + Math.min(h, 12 * vr) - 2 * vr);
-        drawn += 1;
-      }
-    });
-    window.sp2lZonesDrawn = drawn;  // test hook
-  }
-}
-function renderZones(d) {
-  if (!state.series) return;
-  if (!state.zoneLayer) { state.zoneLayer = new ZoneLayer(); state.series.attachPrimitive(state.zoneLayer); }
-  state.zones = d.zones || [];
-  state.zoneLayer.set(state.zones);
-  const bar = $("zone-bar");
-  const count = (tf) => state.zones.filter((z) => z.timeframe === tf).length;
-  bar.replaceChildren(el("span", { title: d.note || "" }, "Support / resistance:"), ...(d.timeframes || []).map((tf) => {
-    const b = el("button", { type: "button", "aria-pressed": String(zoneOn(tf)), title: `${tf} swing zones (${count(tf)} shown)` },
-      el("span", { class: "zs", style: `--a:${ZONE_ALPHA[tf] * 3}` }), `${tf} · ${count(tf)}`);
-    b.addEventListener("click", () => {
-      const p = zonePrefs(); p[tf] = !zoneOn(tf);
-      try { localStorage.setItem("sp2l-zones", JSON.stringify(p)); } catch (_) { /* storage unavailable */ }
-      b.setAttribute("aria-pressed", String(zoneOn(tf)));
-      state.zoneLayer.set(state.zones);
-    });
-    return b;
-  }));
-}
-function restyleCharts() {
-  if (state.chart) state.chart.applyOptions(chartTheme());
-  for (const c of Object.values(state.equity)) c.chart.applyOptions(chartTheme());
+async function renderPerformance() {
+  const p = await api("/api/smc/performance");
+  stats("live-stats", p);
+  drawEquity("live-equity", p.equity);
+  $("bt-meta").textContent = "running…";
+  const b = await api("/api/smc/backtest?days=30");
+  if (!b.ready) { $("bt-meta").textContent = "no history yet"; return; }
+  $("bt-meta").textContent = `${fmtDay.format(new Date(b.from))} – ${fmtDay.format(new Date(b.to))} · ${grp(b.bars)} M1 bars · ${b.seconds}s`;
+  $("bt-note").textContent = +b.total_r < 0
+    ? `With the current parameters and fees this backtest loses ${rText(b.total_r)} over ${b.closed} trades. Treat live signals as experimental until the parameters show a positive expectancy here.`
+    : "";
+  stats("bt-stats", b);
+  drawEquity("bt-equity", b.equity);
+  const reasons = (state.params && state.params.reasons) || {};
+  const st = b.stats;
+  bars("bt-funnel", [["TRIGGERS", st.triggers, "M1 triggers"], ...Object.entries(st.rejections).map(([k, n]) => [k, n, reasons[k] || k]), ["ACCEPTED", st.accepted, "Qualified"], ["TRADED", st.signals, "Traded (capacity, one per POI)"]],
+    { TRIGGERS: "neutral", ACCEPTED: "ok", TRADED: "ok" });
+  bars("bt-outcomes", Object.entries(st.states).map(([k, n]) => [k, n, STATE[k] ? STATE[k][1] : k]), { TP: "ok", SL: "bad", OPEN: "warn", PENDING: "info", EXPIRED: "neutral", MISSED: "neutral", TIMEOUT: "neutral" });
+  table("bt-trades", ["Created", "Side", "POI", "Entry", "SL", "TP", "Score", "State", "Result"], [...b.trades].reverse().slice(0, 60), (t) => el("tr", {},
+    el("td", {}, when(t.created_at)), el("td", {}, sideTag(t.side)), el("td", {}, show(t.poi_tf)), el("td", { class: "num" }, px2(t.entry)),
+    el("td", { class: "num" }, px2(t.sl)), el("td", { class: "num" }, px2(t.tp)), el("td", { class: "num" }, t.score), el("td", {}, stateTag(t.state)), el("td", {}, rEl(t.result_r))));
 }
 
-/* ---- candidates view --------------------------------------------------------------------------- */
-const PRIMARY = [[null, "All", "ALL"], ["ACTIVE", "Active", "ACTIVE"], ["TRADED", "Traded", "TRADED"], ["REJECTED", "Rejected", "REJECTED"]];
-const MORE = { REJECTED_CONTEXT: "Rejected at Context", REJECTED_EXHAUSTION: "Rejected at Exhaustion",
-  REJECTED_RISK: "Rejected at risk check", EXPIRED: "Expired", AMBIGUOUS_DATA_GAP: "Uncertain (data gap)", ERROR_HOLD: "On hold (error)",
-  SESSION_ENDED: "Session ended" };
-function candButton(c) {
-  const b = el("button", { class: "cand", type: "button", "aria-current": String(state.selected === c.setup_key) },
-    el("span", { class: "top" }, el("span", { class: "when" }, when(c.created_at)), sideTag(c.side), tag(c.result.tone, c.result.label, c.status)),
-    el("span", { class: "stage" }, c.stage_label),
-    c.reason_human ? el("span", { class: "why", title: `code: ${c.reason_human.code}` }, c.reason_human.label) : null);
-  b.addEventListener("click", () => { location.hash = `#/candidates/${encodeURIComponent(c.setup_key)}`; });
-  return b;
-}
-function renderCandidateList(d) {
-  const counts = d.counts || {};
-  $("primary-filters").replaceChildren(...PRIMARY.map(([key, name, ck]) => {
-    const b = el("button", { type: "button", role: "tab", "aria-selected": String(state.bucket === key) }, name, el("b", {}, show(counts[ck])));
-    b.addEventListener("click", () => { state.bucket = key; $("more-filters").value = ""; refreshFast(); });
-    return b;
-  }));
-  const sel = $("more-filters");
-  if (!sel.options.length) {
-    sel.append(el("option", { value: "" }, "—"), ...Object.entries(MORE).map(([k, v]) => el("option", { value: k }, v)));
-    sel.addEventListener("change", () => { state.bucket = sel.value || null; refreshFast(); });
-  }
-  for (const o of sel.options) if (o.value) o.textContent = `${MORE[o.value]} (${show(counts[o.value])})`;
-  const list = $("cand-list");
-  list.replaceChildren(...(d.items.length ? d.items.map((c) => el("li", {}, candButton(c)))
-    : [el("li", { class: "empty" }, state.bucket ? "No candidates in this filter" : "No candidates detected yet")]));
-}
-function renderCandidateDetail(d) {
-  $("detail-h").textContent = d ? "Candidate detail" : "Candidate detail";
-  if (!d) {
-    $("detail-body").replaceChildren(el("p", { class: "empty" }, "Select a candidate to see how it was evaluated."));
-    $("detail-tech").replaceChildren();
-    return;
-  }
-  $("detail-body").replaceChildren(...setupBody(d));
-  technical(d);
+/* ---- strategy view ----------------------------------------------------------------------------- */
+async function renderStrategy() {
+  const p = state.params || (state.params = await api("/api/smc/params"));
+  const v = Object.fromEntries(p.groups.flatMap((g) => g.items.map((i) => [i.key, i.value])));
+  $("strat-ver").textContent = `${p.version} · parameters ${p.params_hash}`;
+  const step = (tone, h, tfs, text) => el("li", { class: `t-${tone}` }, el("div", { class: "h" }, h), el("div", { class: "tfs" }, tfs), el("p", {}, text));
+  $("model-flow").replaceChildren(
+    step("info", "Bias", `${v.bias_tf} (+ ${v.confirm_bias_tf})`, "The trend of the bias timeframe's last BOS / CHoCH decides the only direction that can be traded."),
+    step("violet", "Point of interest", v.poi_tfs.join(" → "), "An unmitigated order block or fair value gap with the bias. Price has to react inside it."),
+    step("warn", "Trigger", v.trigger_tf, "An M1 BOS / CHoCH whose order block overlaps the zone confirms the reaction (liquidity sweep and displacement add score)."),
+    step("ok", "Execution", `${v.trigger_tf} · ${v.entry_mode}`, `Stop ${v.sl_mode === "poi" ? "beyond the zone" : "beyond the M1 block"}, target the nearest liquidity paying ≥ ${v.min_net_rr}R after fees.`));
+  $("param-grid").replaceChildren(...p.groups.map((g) => el("section", { class: "card" }, el("h2", {}, g.name),
+    el("dl", { class: "kv" }, g.items.flatMap((i) => [el("dt", {}, el("code", {}, i.key)), el("dd", { class: "num" }, Array.isArray(i.value) ? i.value.join(", ") || "—" : show(i.value))])))),
+  el("section", { class: "card" }, el("h2", {}, "Costs (from config)"), el("dl", { class: "kv" },
+    ...Object.entries(p.costs).flatMap(([k, x]) => [el("dt", {}, el("code", {}, k)), el("dd", { class: "num" }, pct(x, 3))]))));
+  kv("factor-list", Object.entries(p.factors).map(([k, t]) => [el("code", {}, k), t]));
+  kv("reason-list", Object.entries(p.reasons).map(([k, t]) => [el("code", {}, k), t]));
 }
 
-/* ---- history / analytics / diagnostics ------------------------------------------------------- */
-const LEDGER_KIND = { REALIZED_PNL: "Realized PnL", FEE: "Fee", INITIAL: "Starting balance", DEPOSIT: "Deposit" };
-function renderHistory(o, outcomes) {
-  const p = o.performance;
-  tradesTable("trades-table", p && p.session ? p.recent_trades : [], p && p.session ? "No confirmed trades yet" : "Shadow has not started");
-  table("outcomes-table", ["Detected", "Side", "Where", "Result", "Reason"], outcomes, (c) =>
-    el("tr", {}, el("td", {}, when(c.created_at)), el("td", {}, sideTag(c.side)), el("td", {}, c.stage_label),
-      el("td", {}, tag(c.result.tone, c.result.label, c.status)),
-      el("td", { class: "wrap", title: c.reason_human ? `code: ${c.reason_human.code}` : null }, c.reason_human ? c.reason_human.label : "—")),
-    "No expired, uncertain or held setups");
-  table("ledger-table", ["Time", "Entry", "Amount (USDT)", "Balance (USDT)", "Setup"], o.wallet.ledger, (l) =>
-    el("tr", {}, el("td", {}, when(l.ts)), el("td", { title: `code: ${l.kind}` }, LEDGER_KIND[l.kind] || show(l.kind)), el("td", { class: "num" }, grp(l.amount)),
-      el("td", { class: "num" }, grp(l.balance_after)), el("td", { class: "mono small" }, show(l.setup_key))), "No Shadow session yet");
-}
-/* display names for recorded enum values (the code stays in the tooltip) */
-const STAGE_NAME = { CONTEXT: "Context", EXHAUSTION: "Exhaustion", RISK: "Risk check", E1: "E1" };
-const OUTCOME = { TP: "Would hit target", SL: "Would hit stop", EXPIRED_NO_FILL: "Would expire unfilled",
-  EXPIRED_UNARMED: "Entry never placed", OPEN: "Still open", AMBIGUOUS: "Uncertain (data gap)", ERROR: "Error" };
-function renderAnalytics(o, cf) {
-  const p = o.performance;
-  $("perf-kpis").replaceChildren(p && p.session ? kpis(p.stats, o.wallet) : el("p", { class: "empty" }, "Shadow has not started — no confirmed results yet."));
-  if (p && p.session) drawEquity("equity-chart", p.stats.equity);
-  table("ambiguous-table", ["Detected", "Side", "Marked uncertain", "Reason"], p && p.session ? p.ambiguous : [], (a) =>
-    el("tr", {}, el("td", {}, when(a.created_at)), el("td", {}, sideTag(a.side)), el("td", {}, when(a.status_ts)),
-      el("td", { class: "wrap" }, "Result uncertain due to missing market data ", codeEl("AMBIGUOUS_DATA_GAP"))), "No uncertain results");
-  table("cf-table", ["Setup", "Rejected at", "Hypothetical outcome", "Result (R, gross)", "E2 filled"], cf.items, (c) =>
-    el("tr", {}, el("td", { class: "mono small" }, c.setup_key), el("td", { title: `code: ${c.rejection_stage}` }, STAGE_NAME[c.rejection_stage] || show(c.rejection_stage)),
-      el("td", {}, tag("neutral", OUTCOME[c.outcome] || show(c.outcome), c.outcome)),
-      el("td", { class: "num", title: c.result_r ? `exact: ${c.result_r}` : null }, show(c.result_r_display)), el("td", {}, c.e2_filled ? "Yes" : "No")),
-    "No counterfactual results yet");
-}
-function renderSources(col, ig) {
-  const d = (col.heartbeat && col.heartbeat.detail) || {};
-  const c = d.connections || {};
-  const r = d.rest || {};
-  const s = (x) => (x === null || x === undefined ? "—" : `${x} s`);
-  kv("diag-sources", [
-    ["WS A received", grp(c.A ? c.A.received : null), "num"], ["WS B received", grp(c.B ? c.B.received : null), "num"],
-    ["REST polls · errors", `${show(d.rest_polls)} · ${show(d.rest_errors)}`, "num"],
-    ["REST trades received", grp(d.rest_trades), "num"],
-    ["REST-only trades (WS never sent)", grp(d.rest_only), "num"],
-    ["WS-only trades (REST covered, never listed)", grp(d.ws_only), "num"],
-    ["Reconciliation", r.enabled ? tag(r.healthy ? "ok" : "warn", r.healthy ? "Running" : "REST unavailable") : tag("neutral", "Off")],
-    ["Poll interval", s(r.poll_interval_s), "num"],
-    ["REST window (50 trades) shortest / typical", `${s(r.window_span_s_min)} / ${s(r.window_span_s_p50)}`, "num"],
-    ["Maximum recoverable gap", s(r.max_recoverable_gap_s), "num"],
-    ["Candle finalization delay p50 / max", `${s(r.reconcile_latency_s_p50)} / ${s(r.reconcile_latency_s_max)}`, "num"],
-    ["Gaps repaired · unrecovered (run)", `${show(d.gaps_repaired)} · ${show(d.gaps_unrecovered)}`, "num"],
-    ["Candle revisions (all)", show(ig.revision_total), "num"],
-    ["Latest canonical minute", when(ig.latest_canonical_minute)],
-  ]);
-}
-const STAGE_LABEL = { ws_proof: "WebSocket coverage proof", rest_cover: "REST window proves the minute",
-  rest_request: "REST request (duration)", match: "Matching / dedup (duration)", finalize: "Canonical M1 final",
-  persist: "Persistence (duration)", strategy_eval: "Final → strategy evaluated", e1_decision: "Final → E1 decision" };
-function renderLatency(ig) {
-  table("diag-latency", ["Stage", "p50", "p90", "p99", "n"], ig.latency_1h || [], (r) =>
-    el("tr", {}, el("td", { title: `code: ${r.stage}` }, STAGE_LABEL[r.stage] || r.stage),
-      ...[r.p50, r.p90, r.p99, r.n].map((v) => el("td", { class: "num" }, grp(v)))), "No latency samples yet");
-}
-function renderPgaps(p) {
-  table("diag-pgaps", ["Impulse", "Side", "Body / candle", "Gap / body", "Gap", "Result"], p.items, (r) => {
-    const v = r.view, rows = v.rows || [];
-    const val = (i) => (rows[i] ? el("span", { class: rows[i].ok ? "" : "pq-bad" }, rows[i].value) : "—");
-    return el("tr", {}, el("td", {}, when(r.impulse_time)), el("td", {}, sideTag(r.side)),
-      el("td", { class: "num" }, val(1)), el("td", { class: "num" }, val(2)), el("td", { class: "num" }, val(3)),
-      el("td", { class: "wrap" }, tag(r.outcome.tone, r.outcome.label, r.outcome.code || "PROMOTED"),
-        v.measured && !v.valid ? el("div", { class: "muted small" }, v.result) : null));
-  }, "No P-Gap detected yet");
-}
-function renderIntegrity(ig) {
-  table("diag-repairs", ["Gap", "Duration", "Outcome", "Method", "Recovered trades", "Why"], ig.repairs, (r) =>
-    el("tr", {}, el("td", {}, when(r.gap_start), " → ", when(r.gap_end)),
-      el("td", { class: "num" }, `${Math.round((Date.parse(r.gap_end) - Date.parse(r.gap_start)) / 1000)} s`),
-      el("td", {}, tag(r.status === "REPAIRED" ? "ok" : "warn", r.status === "REPAIRED" ? "Repaired" : "Unrecovered", r.status)),
-      el("td", {}, codeEl(r.method)), el("td", { class: "num" }, show(r.trades_recovered)),
-      el("td", { class: "wrap" }, codeEl(r.failure || r.reason))), "No gap has needed repair yet");
-  table("diag-revisions", ["Candle", "Rev", "Quality", "Changed", "Reason"], ig.revisions, (r) => {
-    const ch = ["high", "low", "close", "volume", "trade_count"].filter((k) => String(r.old[k]) !== String(r.new[k]));
-    return el("tr", {}, el("td", {}, `${r.timeframe} · `, when(r.open_time)), el("td", { class: "num" }, r.revision),
-      el("td", {}, `${QUALITY[r.old_quality] || r.old_quality} → ${QUALITY[r.new_quality] || r.new_quality}`),
-      el("td", { class: "wrap num", title: JSON.stringify({ old: r.old, new: r.new }) }, ch.length ? ch.map((k) => `${k} ${grp(r.old[k])}→${grp(r.new[k])}`).join(" · ") : "lineage only"),
-      el("td", { class: "wrap" }, codeEl(r.reason)));
-  }, "No canonical candle has been revised");
-  table("diag-conflicts", ["Run", "Classification", "Rows", "Sequences"], ig.conflict_audit, (r) =>
-    el("tr", {}, el("td", { class: "num" }, show(r.run_id)),
-      el("td", {}, tag(r.classification === "TIMESTAMP_CONFLICT" ? "warn" : "neutral",
-        r.classification === "TIMESTAMP_CONFLICT" ? "Genuine conflict" : "Multi-fill (legitimate)", r.classification)),
-      el("td", { class: "num" }, r.n), el("td", { class: "num" }, r.sequences)), "No same-sequence payload differences");
-  kv("diag-lineage", ig.quality_24h.map((r) => [QUALITY[r.quality] || r.quality, show(r.n), "num"]));
-  const ct = ig.continuity || {};
-  const br = ct.last_break, cause = ct.last_break_cause || {}, lr = ct.last_repair;
-  kv("diag-continuity", [
-    ["Context", ct.price_context_ready && ct.liquidity_context_ready ? tag("ok", "Context ready")
-      : ct.price_context_ready ? tag("info", "Price ready · Liquidity unknown") : tag("neutral", "Warming up")],
-    ["Why", el("span", { class: "wrap" }, show(ct.ready_reason))],
-    ["Trusted M5 bars", `${show(ct.trusted_m5)} / ${show(ct.warmup_target)}`, "num"],
-    ["Last continuity break", br ? el("span", {}, when(br.from), " → ", when(br.until)) : "None in stored history"],
-    ["Break cause", br ? codeEl(cause.failure || "UNKNOWN") : "—"],
-    ["Last repair source", lr ? show(lr.source) : "—"],
-    ["Repair type", lr ? el("span", { title: `code: ${lr.repair_type}` }, REPAIR_TYPE[lr.repair_type] || show(lr.repair_type)) : "—"],
-    ["Repaired interval", lr ? el("span", {}, when(lr.interval[0]), " → ", when(lr.interval[1])) : "—"],
-    ["Remaining unknown fields", (ct.unknown_fields || []).length ? codeEl(ct.unknown_fields.join(", ")) : "None"],
-    ["Liquidity valid in", ct.liquidity_bars_missing ? `${ct.liquidity_bars_missing} M5 bars` : "Now", "num"]]);
-}
-function renderDiagnostics(o, feed, col, q, v) {
-  const hb = col.heartbeat || {};
-  const run = col.run || {};
-  kv("diag-collector", [["Status", codeEl(col.status)], ["Last heartbeat", ago(col.heartbeat_age_s)],
-    ["Coverage lag", hb.coverage_lag_ms === undefined || hb.coverage_lag_ms === null ? "—" : `${hb.coverage_lag_ms} ms`, "num"],
-    ["Trades (this run)", grp(hb.trades_total), "num"], ["Late trades", grp(hb.late_total), "num"],
-    ["Reconnects (this run)", grp(hb.reconnects), "num"], ["Run", show(run.id), "num"], ["PID", show(run.pid), "num"],
-    ["Host", show(run.host)], ["Run started", when(run.started_at)]]);
-  const lev = (o.system && o.system.leverage) || {};
-  kv("diag-leverage", [["Strategy leverage", `${show(lev.strategy)}x`, "num"],
-    ["Exchange leverage", lev.exchange === null || lev.exchange === undefined ? "Not read yet" : `${lev.exchange}x`, "num"],
-    ["Live", lev.live_blocker ? tag("bad", "Blocked — exchange leverage must be 10x", lev.live_blocker) : tag("ok", "Leverage matches")],
-    ["Checked", when(lev.checked_at)], ["Automatic leverage change", "Never (read-only)"],
-    ["Summary", el("span", { class: "wrap" }, show(lev.text))]]);
-  const d = feed.dedup || {};
-  const live = (feed.live && feed.live.detail) || {};
-  kv("diag-merged", [["Merged status (now)", codeEl(live.merged_status)],
-    ["Uncovered time", `${show(feed.merged_uncovered_seconds)} s`, "num"],
-    ["Data-gap minutes", show(feed.merged_data_gap_minutes), "num"],
-    ["Duplicate rate", pct(d.duplicate_rate), "num"],
-    ["Payload conflicts (24 h)", feed.conflicts ? tag("warn", String(feed.conflicts)) : "0"],
-    ["Payload conflicts (current run)", live.conflicts ? tag("warn", String(live.conflicts)) : show(live.conflicts ?? 0)],
-    ["Multi-fill sequences (legitimate)", show(feed.multi_fill_sequences), "num"],
-    ["Orphan trades", show(d.orphans), "num"],
-    ["Longest continuous M5 segment", feed.m5.longest ? `${feed.m5.longest.bars} bars` : "—", "num"],
-    ["Current M5 segment", `${feed.m5.current_bars} / ${feed.m5.warmup_target} bars`, "num"],
-    ["Warmup target ever reached", feed.m5.target_reached ? "Yes" : "No"]]);
-  const conns = live.connections || {};
-  const names = Array.from(new Set([...Object.keys(conns), ...Object.keys(feed.connections)])).sort();
-  table("diag-conn", ["Connection", "Now", "Coverage lag", "Sessions", "Disconnects", "Last close", "Close reason"], names, (n) => {
-    const c = conns[n] || {};
-    const h = feed.connections[n] || { disconnects: 0, closes: [] };
-    const last = h.closes[h.closes.length - 1] || {};
-    return el("tr", {}, el("td", {}, n), el("td", {}, tag(c.connected && c.confirmed ? "ok" : "warn", c.connected && c.confirmed ? "Connected" : "Reconnecting")),
-      el("td", { class: "num" }, c.coverage_lag_ms === undefined || c.coverage_lag_ms === null ? "—" : `${c.coverage_lag_ms} ms`), el("td", { class: "num" }, show(c.sessions)),
-      el("td", { class: "num" }, show(h.disconnects)), el("td", {}, when(last.ts)), el("td", { class: "wrap" }, codeEl(last.reason)));
-  }, "No connection data yet");
-  $("corr-win").textContent = String(feed.correlation_window_s);
-  table("diag-corr", ["First close", "Second close", "Apart"], feed.correlated_closes, (c) =>
-    el("tr", {}, el("td", {}, `${c.a.conn} · `, when(c.a.ts)), el("td", {}, `${c.b.conn} · `, when(c.b.ts)), el("td", { class: "num" }, `${c.delta_s} s`)),
-    "No correlated closes");
-  table("diag-gaps", ["Start", "End", "Duration", "Reason"], [...feed.merged_gaps].reverse(), (g) =>
-    el("tr", {}, el("td", {}, when(g.start)), el("td", {}, when(g.end)), el("td", { class: "num" }, `${g.seconds} s`), el("td", {}, codeEl(g.reason))),
-    "No merged coverage gaps");
-  $("dq-strip").replaceChildren(...q.timeline.map((m) => el("span", {
-    class: `dq ${{ OK: "ok", SYNTHETIC: "syn", DATA_GAP: "gap" }[m.status]}`,
-    title: `${new Date(m.minute).toLocaleTimeString()} · ${m.status}${m.trades !== null ? ` · ${m.trades} trades` : ""}` })));
-  table("diag-dq-gaps", ["Start", "End", "Reason", "Scope"], q.gaps, (g) =>
-    el("tr", {}, el("td", {}, when(g.gap_start)), el("td", {}, when(g.gap_end)), el("td", {}, codeEl(g.reason)), el("td", {}, show(g.timeframe))),
-    "No gaps recorded");
-  const dg = col.diagnostics;
-  const items = [...dg.host_sleeps.map((g) => ({ ...g, kind: "Host sleep" })), ...dg.long_gaps.map((g) => ({ ...g, kind: "Long coverage gap" }))]
-    .sort((a, b) => String(b.gap_start).localeCompare(String(a.gap_start)));
-  table("diag-sleep", ["Event", "Start", "End", "Duration", "Reason"], items, (g) =>
-    el("tr", {}, el("td", {}, g.kind), el("td", {}, when(g.gap_start)), el("td", {}, when(g.gap_end)),
-      el("td", { class: "num" }, `${show(g.seconds)} s`), el("td", {}, codeEl(g.reason))),
-    `No host sleep or coverage gap of ${dg.long_gap_threshold_s} s or longer`);
-  table("diag-runs", ["Run", "PID", "Mode", "Started", "Ended", "Exit"], col.runs, (r) =>
-    el("tr", {}, el("td", { class: "num" }, r.id), el("td", { class: "num" }, r.pid), el("td", {}, r.mode),
-      el("td", {}, when(r.started_at)), el("td", {}, when(r.ended_at)),
-      el("td", {}, tag(r.run_status === "UNCLEAN_EXIT" ? "bad" : r.run_status === "RUNNING" ? "info" : "neutral",
-        { RUNNING: "Running", CLEAN_EXIT: "Clean exit", UNCLEAN_EXIT: "Unclean exit" }[r.run_status] || r.run_status, r.exit_reason || r.run_status))),
-    "No runs");
-  table("diag-validation", ["Check", "Result", "Last run", "Notes"], v.items, (x) =>
-    el("tr", {}, el("td", {}, codeEl(x.item)), el("td", {}, x.passed === null ? tag("neutral", "Not run") : x.passed ? tag("ok", "Passed") : tag("bad", "Failed")),
-      el("td", {}, when(x.finished_at)), el("td", { class: "wrap" }, show(x.notes))), "No validation runs");
-  kv("diag-spec", [["Spec version", show(o.spec.version)], ["Rules sha256", el("code", { class: "small" }, o.spec.rules_sha256)],
-    ["Manifest", o.spec.manifest_ok ? tag("ok", "Verified") : tag("bad", "Mismatch")], ["Real trading", codeEl(o.live.status)],
-    ["Failing validation items", show((o.live.failing_items || []).length), "num"]]);
+/* ---- system view -------------------------------------------------------------------------------- */
+async function renderSystem() {
+  const [o, q] = await Promise.all([api("/api/overview"), api("/api/market/quality?minutes=180")]);
+  const run = o.smc.runner, h = o.smc.history;
+  kv("sys-runner", run ? [["Status", run.status === "RUNNING" ? tag("ok", "Running") : tag("bad", "Stale")], ["Heartbeat", ago(run.heartbeat_age_s)],
+    ["Started", when(run.started_at)], ["Last M1 analysed", when(run.last_m1)], ["Parameters", el("code", {}, show(run.params_hash))],
+    ["Config parameters", el("code", {}, o.smc.params_hash)], ["Costs", o.costs_problem ? tag("bad", "Missing") : tag("ok", "Configured")]]
+    : [["Status", tag("bad", "Not started")], ["Start", el("code", {}, "python -m sp2l smc")]]);
+  kv("sys-history", [["Source", "Tabdeal chart history (1-minute)"], ["From", when(h.first)], ["To", when(h.last)], ["Depth", h.days !== null ? `${h.days} days` : "—"],
+    ["Target", `${h.target_days} days`], ["Series lag", o.smc.series_lag_s !== null ? `${o.smc.series_lag_s} s` : "—"],
+    ["Last refresh", run && run.history && run.history.error ? tag("warn", "Retrying") : tag("ok", "OK")]]);
+  const c = o.collector;
+  kv("sys-collector", [["Status", c.status === "CONNECTED" ? tag("ok", "Connected") : tag(c.status === "NO_DATA" ? "neutral" : "warn", c.status)],
+    ["Heartbeat", ago(c.heartbeat_age_s)], ["Run started", when(c.run && c.run.started_at)], ["Last 60 min", o.market.quality.label]]);
+  $("dq-strip").replaceChildren(...q.timeline.map((m) => el("span", { class: m.status === "OK" ? "ok" : m.status === "SYNTHETIC" ? "syn" : "gap", title: `${fmtClock.format(new Date(m.minute))} ${m.status}` })));
+  table("sys-gaps", ["From", "To", "Reason", "Timeframe"], q.gaps, (g) => el("tr", {}, el("td", {}, when(g.gap_start)), el("td", {}, when(g.gap_end)), el("td", {}, show(g.reason)), el("td", {}, show(g.timeframe))), "No gaps recorded");
 }
 
-/* ---- header ------------------------------------------------------------------------------------ */
-function renderHeader(o) {
+/* ---- top bar, routing, refresh ----------------------------------------------------------------- */
+function renderTop(o) {
   $("symbol").textContent = o.symbol_display;
-  const disabled = o.live.status === "LIVE_AUTOMATION_DISABLED";
-  $("live-pill").replaceChildren(icon(disabled ? "lock" : "alert"), el("span", { class: "txt" }, disabled ? "Real trading disabled" : "Review real-trading status"));
-  $("live-pill").title = `code: ${o.live.status}`;
-  $("foot-spec").textContent = `SP2L spec ${o.spec.version} · rules ${o.spec.rules_sha256.slice(0, 12)}`;
+  $("chart-symbol").textContent = `${o.symbol_display} · ${state.tf}`;
+  const run = o.smc.runner;
+  const rp = $("runner-pill");
+  rp.style.setProperty("--tone", css(run && run.status === "RUNNING" ? "--ok" : "--bad"));
+  rp.replaceChildren(el("span", { class: "dot" }), run && run.status === "RUNNING" ? "Engine running" : "Engine stopped");
+  const fp = $("feed-pill");
+  fp.style.setProperty("--tone", css(o.collector.status === "CONNECTED" ? "--ok" : "--warn"));
+  fp.replaceChildren(el("span", { class: "dot" }), o.collector.status === "CONNECTED" ? "Live feed" : "History only");
+  fp.title = o.collector.status === "CONNECTED" ? "Live trades from the collector" : "No live collector: candles come from Tabdeal history, refreshed every minute";
+  state.feedUp = o.collector.status === "CONNECTED";
+  $("chart-live").hidden = !(state.streamUp && state.feedUp);
+  $("foot-ver").textContent = `SMC ${o.smc.params_hash}`;
 }
-
-/* ---- indicators (backend values rendered as-is; values change once per M5 close) ---------------- */
-function spark(values) {
-  // plot only: maps the backend's history to screen coordinates
-  const pts = values.map((v, i) => [i, v === null || v === undefined ? null : Number(v)]).filter((p) => p[1] !== null);
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("class", "spark"); svg.setAttribute("viewBox", "0 0 100 30");
-  svg.setAttribute("preserveAspectRatio", "none"); svg.setAttribute("aria-hidden", "true");
-  if (pts.length > 1) {
-    const ys = pts.map((p) => p[1]); const lo = Math.min(...ys), hi = Math.max(...ys);
-    const n = Math.max(values.length - 1, 1);
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-    line.setAttribute("points", pts.map(([i, y]) => `${(i * 100) / n},${hi === lo ? 15 : 28 - ((y - lo) * 26) / (hi - lo)}`).join(" "));
-    svg.append(line);
+function route() {
+  const v = (location.hash.replace("#/", "") || "chart").split("?")[0];
+  state.view = ["chart", "signals", "performance", "strategy", "system"].includes(v) ? v : "chart";
+  for (const s of document.querySelectorAll(".view")) s.hidden = s.id !== `view-${state.view}`;
+  for (const a of document.querySelectorAll("#nav a")) {
+    if (a.dataset.view === state.view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   }
-  return svg;
+  refreshView().catch(() => {});
 }
-function renderIndicators(d) {
-  state.indNext = d.available ? Date.parse(d.next_bar_close) : null;
-  tickCountdown();
-  if (!d.available) { $("ind-bar").replaceChildren(el("b", {}, d.text)); $("ind-grid").replaceChildren(); $("ind-states").replaceChildren(); return; }
-  const r = d.readiness;
-  $("ind-bar").replaceChildren(el("div", {}, el("span", { class: "muted small" }, "Latest finalized M5 bar "),
-    el("b", {}, when(d.bar_open), " – ", fmtClock.format(new Date(d.bar_close)))),
-    el("div", { class: "small" }, `Last price ${show(d.last_price)} · `,
-      r.price ? tag("ok", "Price context ready") : tag("neutral", `Warmup ${r.segment_bars} / ${r.warmup_target}`), " ",
-      r.liquidity ? tag("ok", "Liquidity ready") : tag("info", `Liquidity unknown · ${r.liquidity_bars_missing} bars`)));
-  $("ind-note").textContent = d.note;
-  $("ind-states").replaceChildren(...d.states.map((x) => el("div", { class: `status-tile t-${x.changed ? "info" : "neutral"}` },
-    el("div", { class: "k" }, x.label),
-    el("div", { class: "v", title: `code: ${x.value}` }, codeEl(x.value)),
-    el("div", { class: "d" }, x.changed ? `changed from ${x.previous}` : "unchanged since the previous bar",
-      x.key === "regime" ? ` · ${d.regime_rule}` : x.key === "trend" && d.trend_age_bars ? ` · ${d.trend_age_bars} bars` : ""))));
-  const prevBar = state.indBar;
-  state.indBar = d.bar_open;
-  $("ind-grid").replaceChildren(...d.items.map((x) => {
-    const tile = el("div", { class: `ind-tile${prevBar && prevBar !== d.bar_open && x.change && x.change !== "same" ? " flash" : ""}`, title: `exact: ${x.exact ?? "—"}` },
-      el("div", { class: "k" }, x.label),
-      el("div", { class: "v" }, x.display),
-      el("div", { class: `d ${x.change || "same"}` }, x.change === "up" || x.change === "down" ? icon(x.change) : null,
-        x.delta_display ? x.delta_display : x.change === "same" ? "no change" : "—",
-        x.previous_display ? el("span", { class: "muted" }, ` · was ${x.previous_display}`) : null),
-      spark(x.history),
-      el("div", { class: "m" }, x.meaning));
-    if (tile.classList.contains("flash")) setTimeout(() => tile.classList.remove("flash"), 2500);
-    return tile;
-  }));
-  const keys = ["atr14", "adx14", "chop14", "ema20", "range_position_close", "volume_ratio"];
-  const byKey = Object.fromEntries(d.items.map((x) => [x.key, x]));
-  const n = d.history_times.length;
-  const idx = Array.from({ length: Math.min(n, 12) }, (_, i) => n - 1 - i);
-  table("ind-history", ["Bar", ...keys.map((k) => byKey[k].label)], idx, (i) =>
-    el("tr", {}, el("td", {}, when(d.history_times[i])),
-      ...keys.map((k) => el("td", { class: "num" }, byKey[k].history_display[i]))), "No bars yet");
-}
-function tickCountdown() {
-  const box = $("ind-countdown");
-  if (!box) return;
-  if (!state.indNext) { box.textContent = "—"; return; }
-  const s = Math.max(0, Math.round((state.indNext - Date.now()) / 1000));
-  box.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
-/* ---- refresh ------------------------------------------------------------------------------------ */
 async function refreshFast() {
   try {
-    const o = await api("/api/overview");
+    const [o, perf] = await Promise.all([api("/api/overview"), api("/api/smc/performance")]);
     state.overview = o;
-    renderHeader(o);
-    const v = state.view;
-    if (v === "dashboard") {
-      renderStatus(o.system); renderMarketData(o.system); renderChartHead(o);
-      const list = await api("/api/setups?limit=1");
-      const active = o.active[0];
-      const d = active ? await api(`/api/setups/${encodeURIComponent(active.setup_key)}`) : null;
-      renderStrategySummary(o, list); renderDashboardSetup(d); renderShadow(o);
-      renderPosition(d ? d.position : null);
-      applyOverlays(d ? d.overlays : null);
-    } else if (v === "candidates") {
-      const q = state.bucket ? `?bucket=${encodeURIComponent(state.bucket)}` : "";
-      const list = await api(`/api/setups${q}`);
-      if (!state.selected && list.items.length) state.selected = list.items[0].setup_key;
-      renderCandidateList(list);
-      const d = state.selected ? await api(`/api/setups/${encodeURIComponent(state.selected)}`).catch(() => null) : null;
-      renderCandidateDetail(d);
-      applyOverlays(d ? d.overlays : null);
-    } else if (v === "indicators") {
-      renderIndicators(await api("/api/indicators?limit=48"));
-    } else if (v === "history") {
-      const parts = await Promise.all(["EXPIRED", "AMBIGUOUS_DATA_GAP", "ERROR_HOLD"].map((b) => api(`/api/setups?bucket=${b}`)));
-      renderHistory(o, parts.flatMap((p) => p.items).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))));
+    renderTop(o);
+    if (state.view === "chart") {
+      await refreshAnalysis();
+      renderKpis(o, state.radar, perf);
+      renderTicket();
+    } else {
+      const s = await api("/api/smc/signals?limit=100");
+      notifyChanges(s.items);
+      state.signals = s.items;
     }
-  } catch (e) { console.error(e); }
+  } catch { /* transient; next tick retries */ }
 }
 async function refreshSlow() {
   try {
-    const v = state.view;
-    if (v === "dashboard" || v === "candidates") {
-      renderCandles(await api("/api/market/candles?tf=1m&limit=240"));
-      renderZones(await api("/api/market/zones"));
+    if (state.view === "chart") {
+      state.radar = await api("/api/smc/radar");
+      renderRadar(state.radar);
+      renderControls();
     }
-    if (v === "analytics") { const [o, cf] = await Promise.all([api("/api/overview"), api("/api/counterfactuals?limit=100")]); renderAnalytics(o, cf); }
-    if (v === "diagnostics") {
-      const [o, feed, col, q, val, ig] = await Promise.all([api("/api/overview"), api("/api/feed?hours=24"), api("/api/collector"),
-        api("/api/market/quality?minutes=180"), api("/api/validation"), api("/api/integrity")]);
-      renderPgaps(await api("/api/pgaps?limit=50"));
-      renderDiagnostics(o, feed, col, q, val);
-      renderIntegrity(ig);
-      renderSources(col, ig);
-      renderLatency(ig);
-    }
-  } catch (e) { console.error(e); }
+  } catch { /* transient */ }
 }
-
+async function refreshView() {
+  if (state.view === "chart") { await loadChart(true); await refreshSlow(); await refreshFast(); }
+  else if (state.view === "signals") await renderSignals();
+  else if (state.view === "performance") await renderPerformance();
+  else if (state.view === "strategy") await renderStrategy();
+  else if (state.view === "system") await renderSystem();
+}
 function setTheme(t) {
   document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("smc-theme", t); } catch { /* storage unavailable */ }
   $("theme-btn").replaceChildren(icon(t === "dark" ? "sun" : "moon"));
-  try { localStorage.setItem("sp2l-theme", t); } catch (_) { /* storage unavailable */ }
-  restyleCharts();
+  restyle();
 }
 function init() {
-  let t = "dark";
-  try { t = localStorage.getItem("sp2l-theme") || "dark"; } catch (_) { /* default */ }
-  setTheme(t);
-  $("tz-label").textContent = `Times shown in ${tzText()}`;
-  for (const a of $("nav").querySelectorAll("a")) a.prepend(icon(a.dataset.view));
+  let theme = "dark";
+  try { theme = localStorage.getItem("smc-theme") || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"); } catch { /* default */ }
+  setTheme(theme);
   $("theme-btn").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
-  const pause = $("pause-btn");
-  const setPause = (p) => { state.paused = p; pause.setAttribute("aria-pressed", String(p));
-    pause.setAttribute("aria-label", p ? "Resume auto-refresh" : "Pause auto-refresh"); pause.replaceChildren(icon(p ? "play" : "pause")); };
-  pause.addEventListener("click", () => setPause(!state.paused));
-  setPause(false);
-  if (/^#setup=/.test(location.hash)) location.hash = `#/candidates/${location.hash.slice(7)}`;  // old deep links
+  renderAlertBtn();
+  $("alert-btn").addEventListener("click", () => {
+    state.alerts = !state.alerts; savePrefs(); renderAlertBtn();
+    if (state.alerts && window.Notification && Notification.permission === "default") Notification.requestPermission();
+  });
+  $("tz-label").textContent = `Times in ${tzText()}`;
+  api("/api/smc/params").then((p) => { state.params = p; }).catch(() => {});
+  renderControls();
+  renderLegend();
   window.addEventListener("hashchange", route);
   route();
   startLive();
-  setInterval(() => { if (!state.paused) refreshFast(); }, 5000);
-  setInterval(() => { if (!state.paused && state.view === "indicators") refreshFast(); }, 2000);
-  setInterval(tickCountdown, 1000);
-  setInterval(() => { if (!state.paused) refreshSlow(); }, 15000);
+  setInterval(refreshFast, 5000);
+  setInterval(refreshSlow, 20000);
+  setInterval(() => { if (state.view === "chart") loadChart(true); }, 60000);
 }
-document.addEventListener("DOMContentLoaded", init);
+init();

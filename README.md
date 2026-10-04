@@ -1,46 +1,40 @@
-# SP2L V5
+# SMC Console
 
-Deterministic SP2L trading engine (M1 execution, M5 context). The authoritative spec is `spec/` (precedence:
-`spec/SP2L_RULES.yaml` first). Open decisions: `docs/BLOCKERS.md`. Tabdeal API notes:
-`docs/tabdeal_endpoint_map.md`.
+Smart Money Concepts signal engine for Tabdeal futures (XAUT/USDT), with a live dashboard.
+Top-down analysis (4h bias → 1h / 15m order blocks and fair value gaps → M1 BOS / CHoCH),
+execution on M1, entry / stop / target net of fees. The strategy is specified in
+`docs/SMC_STRATEGY.md`. **No orders are ever sent**: signals and their lifecycle are recorded.
 
-Live automation is **disabled** until every runtime-validation item passes (`live_automation_status` view).
-
-## Running the collector
+## Processes
 ```sh
-uv run python -m sp2l collect                 # market data only (public stream, no API key)
-uv run python -m sp2l shadow                  # Shadow runner (separate process); needs costs in config/runtime.yaml
-uv run python -m sp2l collect --duration 300  # stop after 5 minutes
+uv run python -m sp2l collect          # live market data (public stream, no API key) -> live chart
+uv run python -m sp2l smc              # SMC engine: history from Tabdeal (no warmup), signals
+uv run python -m sp2l api --port 8765  # read-only API + WebUI
+uv run python -m sp2l backtest --days 30 [--set min_net_rr=2 --set poi_tfs=15m]
 ```
-The collector writes raw trades, M1/M5 candles (with data-quality flags), coverage gaps and the
-**market-event journal** (`market_events`: proven trades, M1 results, GAP events in exact order) to the
-database in `config/runtime.yaml`. Coverage is proven with ping/pong; minutes without proven coverage are
-`DATA_GAP`. The Shadow runner is a separate process that consumes the journal. On restart it restores its
-last checkpoint and replays the journal from its cursor (V5.5 B39); a coverage gap while a setup is exposed
-finalizes it as `AMBIGUOUS_DATA_GAP`.
+The engine loads `smc.history_days` of 1-minute history from Tabdeal's chart on start and tops
+it up every minute, so every timeframe is complete immediately; live collector candles take
+precedence where they exist. It runs without the collector too (chart then updates per minute).
 
-## Feed redundancy (B46 test)
-`config/runtime.yaml` → `collector.connections: [A, B]`, `stagger_s: 600`: two independent stream
-connections whose pong-proven coverage is merged. `uv run python -m sp2l feed-report --hours 24` prints
-the measurement (disconnects, close reasons, reconnect durations, correlation, merged gaps, duplicate
-rate, conflicts, longest M5 segment vs the 150-bar target).
+## Dashboard
+- **Chart** — timeframe switch (1m…4h), layers: order blocks, fair value gaps, BOS / CHoCH,
+  liquidity (BSL / SSL), premium / discount, higher-timeframe zones, long / short position
+  objects (open and past), mitigated zones. Position ticket, top-down ladder, POI watchlist and
+  the M1 trigger log with the reason each trigger did or did not qualify.
+- **Signals** — full history with the lifecycle timeline of each signal; "Show on chart".
+- **Performance** — live results in R and the backtest of the parameters in force.
+- **Strategy** — the model and every parameter (with its hash), factors and reason codes.
+- **System** — engine heartbeat, history coverage, collector and data quality.
 
-## Always-on services (macOS LaunchAgents, auto-restart)
-```sh
-scripts/collector-service.sh install|restart|status|logs|uninstall   # public-stream collector
-scripts/api-service.sh install|restart|status|logs|uninstall         # API + WebUI, http://127.0.0.1:8765
-scripts/shadow-service.sh install|...                               # Shadow runner (after costs are set)
-```
-Logs: `~/Library/Logs/sp2l/`. Every (re)start is recorded in `collector_runs`, and health heartbeats in
-`collector_heartbeats` (visible in the WebUI).
+## Services
+- macOS: `scripts/collector-service.sh`, `scripts/smc-service.sh`, `scripts/api-service.sh`
+  (`install|restart|status|logs|uninstall`).
+- Linux server: `deploy/smc-collector.service`, `deploy/smc-engine.service`,
+  `deploy/smc-api.service` (WebUI on port 3000), set up by `deploy/install.sh`.
 
 ## Read-only exchange validation
-`uv run python -m sp2l validate-readonly` runs GET-only authenticated checks (server time, exchange info,
-balance, positions, position risk, leverage/margin, open orders) and records redacted evidence in
-`runtime_validation_runs`. It cannot place, cancel or modify anything.
-
-Credentials live outside the repo in `~/.config/sp2l/tabdeal.env` (directory 700, file 600). They are
-never logged, persisted or shown in the WebUI.
+`uv run python -m sp2l validate-readonly` runs GET-only authenticated checks. Credentials live
+outside the repo in `~/.config/sp2l/tabdeal.env` (directory 700, file 600).
 
 ## Development
 ```sh

@@ -1,5 +1,5 @@
-# SP2L runtime configuration for the production server (non-strategy). Strategy rules live in spec/SP2L_RULES.yaml.
-database_url: postgresql+psycopg:///sp2l?host=/var/run/postgresql
+# SMC runtime configuration for the production server. Strategy parameters: the `smc` section.
+database_url: postgresql+psycopg:///smc?host=/var/run/postgresql
 symbol: XAUTUSDT
 
 collector:
@@ -53,10 +53,9 @@ collector:
     min_live_minutes: 5             # stored live minutes (any run) needed to validate against
     max_fill_gap_minutes: 2         # chart holes up to this long = synthetic no-trade minutes
 
-# B16: fees and the SL slippage allowance are never hardcoded. Fill these in from your
-# actual Tabdeal account tier, as fractions (0.0002 = 0.02 %). Shadow refuses to start while
-# any value is missing. evidence_id stays null until runtime validation records the evidence
-# (required for Live).
+# Fees and the SL slippage allowance are never hardcoded. Fill these in from your actual
+# Tabdeal account tier, as fractions (0.0002 = 0.02 %). The SMC runner refuses to start while
+# any value is missing; every signal's R is net of them.
 costs:
   # Evidence: docs/cost_evidence.json (2026-09-30, XAUT_USDT, scripts/cost_evidence.py, read-only
   # public data). Fees = Tabdeal special-margin commission level 1 (30-day volume 0 - 1,000,000;
@@ -65,14 +64,29 @@ costs:
   # 180 order-book samples) + p99(stop overshoot by the first trade through a level, 791 public
   # trades) = 1.12 bp + 2.14 bp (max overshoot seen 5.4 bp). Re-measure once 24 h of canonical
   # XAUT tape exists (the script then uses it automatically).
-  maker_fee: 0.0008          # resting limit fills (E1, E2)
-  taker_fee: 0.00095         # exits (SL; TP charged taker conservatively)
+  maker_fee: 0.0008          # resting limit entries
+  taker_fee: 0.00095         # market entries and every exit (TP charged taker conservatively)
   slippage_allowance: 0.000326   # modeled worst SL fill beyond the SL price (XAUT)
   evidence_id: "docs/cost_evidence.json@2026-09-30T08:26Z"
 
-shadow:
-  warmup_m5_bars: 30      # V6.0 (was 150, B06): finalized M5 bars before Context is ready
 
 validation:
   server_time_max_offset_ms: 500    # B42 Live target: worst |server - local midpoint| offset
   server_time_samples: 20           # B42: at least 20 samples
+
+# Smart Money Concepts engine. Top-down: bias (4h trend, 1h confirmation) -> POI (unmitigated
+# 1h / 15m order blocks and fair value gaps) -> M1 trigger (BOS/CHoCH reacting inside the POI)
+# -> entry on M1. Every timeframe uses the same structure parameters. Omitted keys keep the
+# defaults of src/sp2l/smc/model.py; the dashboard's Strategy page lists the effective values.
+smc:
+  swing_len: 5            # pivot = N bars on each side (all timeframes)
+  bias_tf: 4h
+  confirm_bias_tf: 1h
+  poi_tfs: [1h, 15m]
+  trigger_tf: 1m
+  entry_mode: market      # market (trigger close) | proximal | mid | distal
+  sl_mode: poi            # stop beyond the higher-timeframe zone
+  tp_mode: liquidity      # nearest unswept swing that pays min_net_rr after fees
+  min_net_rr: 1.5
+  min_score: 2
+  history_days: 35        # Tabdeal chart history kept for warmup (4h needs ~30 days)

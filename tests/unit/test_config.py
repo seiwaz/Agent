@@ -1,21 +1,27 @@
-"""B16: Shadow fee/slippage values are validated and never defaulted."""
+"""Fee/slippage values are validated and never defaulted; the smc section is validated."""
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal as D
+from pathlib import Path
 
 import pytest
 
 from sp2l.config import ConfigError, RuntimeConfig
 
+ROOT = Path(__file__).resolve().parents[2]
 
-def cfg(costs):
-    return RuntimeConfig({"database_url": "x", "symbol": "BTCUSDT", "costs": costs})
+
+def cfg(costs, smc=None):
+    return RuntimeConfig(
+        {"database_url": "x", "symbol": "BTCUSDT", "costs": costs, "smc": smc or {}}
+    )
 
 
 def test_missing_values_fail_clearly_naming_each_field():
     with pytest.raises(ConfigError) as e:
-        cfg({"maker_fee": None, "taker_fee": "0.0005"}).shadow_costs()
+        cfg({"maker_fee": None, "taker_fee": "0.0005"}).costs()
     msg = str(e.value)
     assert "costs.maker_fee is missing" in msg and "costs.slippage_allowance is missing" in msg
     assert "never hardcoded" in msg
@@ -24,36 +30,26 @@ def test_missing_values_fail_clearly_naming_each_field():
 @pytest.mark.parametrize("bad", ["-0.001", "abc", "0.05", "nan"])
 def test_invalid_or_percent_unit_values_rejected(bad):
     with pytest.raises(ConfigError):
-        cfg(
-            {"maker_fee": bad, "taker_fee": "0.0005", "slippage_allowance": "0.0005"}
-        ).shadow_costs()
+        cfg({"maker_fee": bad, "taker_fee": "0.0005", "slippage_allowance": "0.0005"}).costs()
 
 
-def test_valid_values_map_to_cost_model():
-    m = cfg(
-        {"maker_fee": "0.0002", "taker_fee": 0.0005, "slippage_allowance": "0.0003"}
-    ).shadow_costs()
-    assert (m.entry_fee_rate, m.exit_fee_rate, m.sl_slippage_rate) == (
-        D("0.0002"),
-        D("0.0005"),
-        D("0.0003"),
-    )
-    assert m.evidence_id is None
+def test_valid_values_map_to_costs():
+    m = cfg({"maker_fee": "0.0002", "taker_fee": 0.0005, "slippage_allowance": "0.0003"}).costs()
+    assert (m.maker_fee, m.taker_fee, m.slippage) == (D("0.0002"), D("0.0005"), D("0.0003"))
 
 
-def test_repo_config_costs_are_backed_by_recorded_evidence():
-    """B16: costs are never invented. Every configured value must equal the recorded evidence
-    (docs/cost_evidence.json from Tabdeal's public commission table and measured slippage)."""
-    import json
-    from decimal import Decimal
-    from pathlib import Path
+def test_smc_section_overrides_defaults_and_rejects_unknown_keys():
+    p = cfg({}, {"swing_len": 3, "poi_tfs": ["15m", "5m"], "min_net_rr": "2"}).smc_params()
+    assert (p.swing_len, p.poi_tfs, p.min_net_rr) == (3, ("15m", "5m"), D(2))
+    with pytest.raises(ConfigError, match="unknown"):
+        cfg({}, {"swing_length": 3}).smc_params()
 
-    root = Path(__file__).resolve().parents[2]
-    ev = json.loads((root / "docs" / "cost_evidence.json").read_text())
+
+def test_repo_configs_load_and_costs_match_recorded_evidence():
+    ev = json.loads((ROOT / "docs" / "cost_evidence.json").read_text())
     for name in ("runtime.yaml", "server.yaml"):
-        c = RuntimeConfig.load(root / "config" / name).shadow_costs()
-        assert c.evidence_id and c.evidence_id.startswith("docs/cost_evidence.json")
-        assert c.entry_fee_rate == Decimal(ev["maker_fee"])
-        assert c.exit_fee_rate == Decimal(ev["taker_fee"])
-        assert c.sl_slippage_rate == Decimal(ev["slippage_allowance"])
-    assert ev["fee_level"]["from_volume"] == "0"  # level 1 (account volume ~0)
+        c = RuntimeConfig.load(ROOT / "config" / name)
+        k = c.costs()
+        assert k.maker_fee == D(ev["maker_fee"]) and k.taker_fee == D(ev["taker_fee"])
+        assert k.slippage == D(ev["slippage_allowance"])
+        c.smc_params()

@@ -13,9 +13,7 @@ from typing import Any
 
 from sqlalchemy import Engine, text
 
-from sp2l.indicators.m5_state import DEFAULT_WARMUP
-
-WARMUP_TARGET = DEFAULT_WARMUP  # V6.0: 30 (single source: indicators.m5_state)
+WARMUP_TARGET = 30  # reference length of a contiguous M5 segment (feed-quality metric only)
 CORRELATION_WINDOW_S = 10
 
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SP2L Dashboard</title>
+  <title>SMC Console</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -13,162 +13,127 @@
   <a class="skip" href="#main">Skip to content</a>
   <header class="topbar">
     <div class="brand">
-      <span class="logo">SP2L</span>
-      <span class="brand-sub"><span id="symbol">—</span> · Shadow</span>
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" class="logo-mark"><path d="M3 17 9 11l4 4 8-8"/><path d="M14 7h7v7"/></svg></span>
+      <span class="brand-name">SMC Console</span>
+      <span class="brand-sub" id="symbol">—</span>
     </div>
     <nav class="nav" id="nav" aria-label="Sections">
-      <a href="#/dashboard" data-view="dashboard">Dashboard</a>
-      <a href="#/candidates" data-view="candidates">Candidates</a>
-      <a href="#/history" data-view="history">History</a>
-      <a href="#/indicators" data-view="indicators">Indicators</a>
-      <a href="#/analytics" data-view="analytics">Analytics</a>
-      <a href="#/diagnostics" data-view="diagnostics">Diagnostics</a>
+      <a href="#/chart" data-view="chart">Chart</a>
+      <a href="#/signals" data-view="signals">Signals</a>
+      <a href="#/performance" data-view="performance">Performance</a>
+      <a href="#/strategy" data-view="strategy">Strategy</a>
+      <a href="#/system" data-view="system">System</a>
     </nav>
     <div class="top-meta">
-      <span class="pill" id="live-pill" title="Real trading status"></span>
-      <button class="icon-btn" id="pause-btn" type="button" aria-pressed="false" aria-label="Pause auto-refresh"></button>
+      <span class="pill" id="runner-pill" title="SMC engine status"></span>
+      <span class="pill" id="feed-pill" title="Live market feed"></span>
+      <button class="icon-btn" id="alert-btn" type="button" aria-pressed="false" aria-label="Signal alerts" title="Sound and notification on new signals"></button>
       <button class="icon-btn" id="theme-btn" type="button" aria-label="Toggle light/dark theme"></button>
     </div>
   </header>
 
   <main id="main">
-    <!-- DASHBOARD: what is happening now? -->
-    <section class="view" id="view-dashboard" aria-labelledby="dash-h">
-      <h1 class="sr-only" id="dash-h">Dashboard</h1>
-      <div class="status-grid" id="status-tiles" aria-label="System status"></div>
-      <div class="blocker" id="blocker" role="status" aria-live="polite"></div>
-
+    <!-- CHART: where is price inside the structure, and is there a trade? -->
+    <section class="view" id="view-chart" aria-labelledby="chart-h">
+      <h1 class="sr-only" id="chart-h">Chart</h1>
+      <div class="kpi-strip" id="kpis" aria-label="Summary"></div>
       <div class="main-row">
-        <section class="card chart-card" aria-labelledby="chart-h">
+        <section class="card chart-card" aria-label="Price chart with Smart Money structure">
           <div class="chart-head">
-            <h2 id="chart-h"><span id="chart-symbol">—</span> <span class="muted">· <span id="chart-tf">1m</span></span></h2>
-            <span class="price num" id="chart-price" aria-live="off">—</span>
-            <span class="live-dot small" id="chart-live" hidden title="Live candle updates from SP2L's canonical trade stream">Live</span>
-            <span class="muted small" id="chart-age"></span>
-            <span id="chart-quality"></span>
+            <div class="chart-title">
+              <h2><span id="chart-symbol">—</span></h2>
+              <span class="price num" id="chart-price" aria-live="off">—</span>
+              <span class="live-dot" id="chart-live" hidden title="Live candles from the canonical trade stream">Live</span>
+            </div>
+            <div class="seg tf-seg" role="tablist" id="tf-seg" aria-label="Timeframe"></div>
           </div>
-          <div class="chart-slot" id="chart-slot-dashboard"><div id="chart" class="chart" role="img" aria-label="One-minute candlestick chart with setup levels"></div><button class="go-live" id="go-live" type="button" hidden>Go to live</button></div>
+          <div class="chips" id="layer-chips" aria-label="Chart layers"></div>
+          <div class="chart-slot"><div id="chart" class="chart" role="img" aria-label="Candlestick chart with order blocks, fair value gaps, structure breaks and positions"></div>
+            <button class="go-live" id="go-live" type="button" hidden>Go to live</button>
+            <div class="chart-note" id="chart-note" hidden></div>
+          </div>
           <div class="ohlc num small" id="chart-ohlc" aria-live="off"></div>
-          <ul class="legend" id="chart-legend" aria-label="Chart overlays"></ul>
-          <div class="zone-bar" id="zone-bar" aria-label="Support and resistance zones"></div>
+          <ul class="legend" id="chart-legend" aria-label="Legend"></ul>
         </section>
         <aside class="side-col">
-          <section class="card" id="position-card" aria-labelledby="pos-h" hidden>
-            <h2 id="pos-h">Current Shadow position</h2>
-            <div id="position-body"></div>
+          <section class="card ticket" id="ticket" aria-labelledby="ticket-h">
+            <div class="card-head"><h2 id="ticket-h">Position</h2><span id="ticket-state"></span></div>
+            <div id="ticket-body"></div>
           </section>
-          <section class="card" aria-labelledby="strat-h">
-            <h2 id="strat-h">Strategy</h2>
-            <div id="strategy-summary"></div>
+          <section class="card" aria-labelledby="ladder-h">
+            <div class="card-head"><h2 id="ladder-h">Top-down</h2><span class="muted small" id="ladder-bias"></span></div>
+            <ol class="ladder" id="ladder"></ol>
           </section>
-          <section class="card" aria-labelledby="md-h">
-            <h2 id="md-h">Market data</h2>
-            <div id="market-data"></div>
+          <section class="card" aria-labelledby="poi-h">
+            <div class="card-head"><h2 id="poi-h">Points of interest</h2><span class="muted small">with the bias</span></div>
+            <ul class="poi-list" id="poi-list"></ul>
           </section>
         </aside>
       </div>
-
-      <section class="card" id="setup-card" aria-labelledby="setup-h" hidden>
-        <div class="card-head">
-          <h2 id="setup-h">Active setup</h2>
-          <a class="link" href="#/candidates">All candidates</a>
-        </div>
-        <div id="setup-body"></div>
-      </section>
-
-      <section class="section" aria-labelledby="shadow-h">
-        <div class="section-head"><h2 id="shadow-h">Shadow</h2><span class="muted small">Confirmed results only</span></div>
-        <div id="shadow-body"></div>
+      <section class="card" aria-labelledby="trig-h">
+        <div class="card-head"><h2 id="trig-h">M1 trigger log</h2><span class="muted small">Every M1 BOS / CHoCH, evaluated against the model</span></div>
+        <ul class="trig-list" id="trig-list"></ul>
       </section>
     </section>
 
-    <!-- CANDIDATES: which setups were detected and why? -->
-    <section class="view" id="view-candidates" aria-labelledby="cand-h" hidden>
-      <div class="cand-layout">
-        <section class="card cand-list-card" aria-labelledby="cand-h">
-          <h1 class="view-title" id="cand-h">Candidates</h1>
-          <div class="filters">
-            <div class="seg" role="tablist" id="primary-filters" aria-label="Candidate filter"></div>
-            <label class="more"><span>More filters</span>
-              <select id="more-filters"></select>
-            </label>
-          </div>
-          <ul class="cand-list" id="cand-list"></ul>
-        </section>
-        <section class="card cand-detail" aria-labelledby="detail-h">
-          <h2 id="detail-h">Candidate detail</h2>
-          <div id="detail-body"><p class="empty">Select a candidate to see how it was evaluated.</p></div>
-          <div class="chart-slot" id="chart-slot-candidates"></div>
-          <div id="detail-tech"></div>
-        </section>
+    <!-- SIGNALS: everything the engine traded, with its full lifecycle -->
+    <section class="view" id="view-signals" aria-labelledby="sig-h" hidden>
+      <div class="view-head"><h1 class="view-title" id="sig-h">Signals</h1>
+        <div class="seg seg-inline" role="tablist" id="sig-filter" aria-label="Filter"></div></div>
+      <div class="sig-layout">
+        <section class="card"><div class="table-wrap tall"><table id="sig-table"></table></div></section>
+        <section class="card sig-detail" aria-labelledby="sigd-h"><h2 id="sigd-h">Signal detail</h2><div id="sig-detail"><p class="empty">Select a signal to see its timeline.</p></div></section>
       </div>
     </section>
 
-    <!-- HISTORY: what actually happened? -->
-    <section class="view" id="view-history" aria-labelledby="hist-h" hidden>
-      <h1 class="view-title" id="hist-h">History</h1>
-      <section class="card"><h2>Confirmed Shadow trades</h2><div class="table-wrap"><table id="trades-table"></table></div></section>
-      <section class="card"><h2>Other outcomes</h2><p class="muted small">Expired, uncertain (data gap) and held setups. Not part of confirmed performance.</p><div class="table-wrap"><table id="outcomes-table"></table></div></section>
-      <section class="card"><h2>Shadow wallet ledger</h2><div class="table-wrap"><table id="ledger-table"></table></div></section>
-    </section>
-
-    <!-- ANALYTICS: how is the strategy performing? -->
-    <!-- INDICATORS: the exact M5 values the gates read, updated at every M5 close -->
-    <section class="view" id="view-indicators" aria-labelledby="ind-h" hidden>
-      <h1 class="view-title" id="ind-h">Indicators <span class="muted small">· M5, live</span></h1>
-      <section class="card ind-head" aria-live="polite">
-        <div id="ind-bar"></div>
-        <div class="ind-next"><span class="muted small">Next M5 close in</span> <b class="num" id="ind-countdown">—</b></div>
-        <p class="muted small" id="ind-note"></p>
+    <!-- PERFORMANCE: live results and the backtest of the same parameters -->
+    <section class="view" id="view-performance" aria-labelledby="perf-h" hidden>
+      <h1 class="view-title" id="perf-h">Performance</h1>
+      <section class="card"><div class="card-head"><h2>Live signals</h2><span class="muted small">R after fees and slippage</span></div>
+        <div class="stat-grid" id="live-stats"></div><div class="equity" id="live-equity" role="img" aria-label="Live equity curve in R"></div></section>
+      <section class="card"><div class="card-head"><h2>Backtest · same engine, same parameters</h2><span class="muted small" id="bt-meta"></span></div>
+        <p class="note" id="bt-note"></p>
+        <div class="stat-grid" id="bt-stats"></div>
+        <div class="equity" id="bt-equity" role="img" aria-label="Backtest equity curve in R"></div>
+        <div class="two-col">
+          <div><h3>Why triggers were rejected</h3><div class="bars" id="bt-funnel"></div></div>
+          <div><h3>Outcomes</h3><div class="bars" id="bt-outcomes"></div></div>
+        </div>
+        <h3>Recent backtest trades</h3><div class="table-wrap"><table id="bt-trades"></table></div>
       </section>
-      <div class="ind-states" id="ind-states" aria-label="Regime, trend and liquidity"></div>
-      <div class="ind-grid" id="ind-grid" aria-label="Indicator values"></div>
-      <section class="card"><h2>Recent M5 bars</h2><div class="table-wrap"><table id="ind-history"></table></div></section>
     </section>
 
-    <section class="view" id="view-analytics" aria-labelledby="an-h" hidden>
-      <h1 class="view-title" id="an-h">Analytics</h1>
-      <section class="card"><h2>Confirmed performance</h2><div id="perf-kpis"></div><div class="equity" id="equity-chart" role="img" aria-label="Confirmed Shadow equity curve"></div></section>
-      <section class="card"><h2>Uncertain results <span class="muted small">(excluded from performance)</span></h2><div class="table-wrap"><table id="ambiguous-table"></table></div></section>
-      <section class="card cf"><div class="card-head"><h2>Counterfactual results</h2><span class="tag">Hypothetical · never affects Shadow or live</span></div>
-        <p class="muted small">What rejected or expired setups would have done under the same rules. Shown separately and never added to Shadow results.</p>
-        <div class="table-wrap"><table id="cf-table"></table></div></section>
+    <!-- STRATEGY: the model and every parameter in force -->
+    <section class="view" id="view-strategy" aria-labelledby="strat-h" hidden>
+      <div class="view-head"><h1 class="view-title" id="strat-h">Strategy</h1><span class="muted small" id="strat-ver"></span></div>
+      <section class="card"><h2>Top-down model</h2><ol class="model-flow" id="model-flow"></ol></section>
+      <div class="param-grid" id="param-grid"></div>
+      <div class="two-col">
+        <section class="card"><h2>Confluence factors</h2><dl class="kv glossary" id="factor-list"></dl></section>
+        <section class="card"><h2>Rejection reasons</h2><dl class="kv glossary" id="reason-list"></dl></section>
+      </div>
     </section>
 
-    <!-- DIAGNOSTICS: is the system technically healthy? -->
-    <section class="view" id="view-diagnostics" aria-labelledby="diag-h" hidden>
-      <h1 class="view-title" id="diag-h">Diagnostics</h1>
+    <!-- SYSTEM: is the data complete and the engine alive? -->
+    <section class="view" id="view-system" aria-labelledby="sys-h" hidden>
+      <h1 class="view-title" id="sys-h">System</h1>
       <div class="diag-grid">
-        <section class="card wide"><h2>Recent P-Gaps <span class="muted small">(every geometric P-Gap with its quality — rejected ones never create a setup)</span></h2><div class="table-wrap"><table id="diag-pgaps"></table></div></section>
-        <section class="card"><h2>Context continuity <span class="muted small">(from stored canonical history)</span></h2><dl class="kv" id="diag-continuity"></dl></section>
-        <section class="card"><h2>Leverage</h2><dl class="kv" id="diag-leverage"></dl></section>
-        <section class="card"><h2>Market-data sources · this collector run</h2><dl class="kv" id="diag-sources"></dl></section>
-        <section class="card"><h2>Decision latency · last hour <span class="muted small">(ms after the minute closed)</span></h2><div class="table-wrap"><table id="diag-latency"></table></div></section>
-        <section class="card"><h2>Collector</h2><dl class="kv" id="diag-collector"></dl></section>
-        <section class="card"><h2>Merged feed · last 24 h</h2><dl class="kv" id="diag-merged"></dl></section>
-        <section class="card wide"><h2>Connections · last 24 h</h2><div class="table-wrap"><table id="diag-conn"></table></div></section>
-        <section class="card"><h2>Correlated closes <span class="muted small">(A and B within <span id="corr-win">—</span> s)</span></h2><div class="table-wrap"><table id="diag-corr"></table></div></section>
-        <section class="card"><h2>Merged coverage gaps · last 24 h</h2><div class="table-wrap"><table id="diag-gaps"></table></div></section>
-        <section class="card wide"><h2>Data quality · per minute, last 180 min</h2>
+        <section class="card"><h2>SMC engine</h2><dl class="kv" id="sys-runner"></dl></section>
+        <section class="card"><h2>Exchange history <span class="muted small">(warmup source)</span></h2><dl class="kv" id="sys-history"></dl></section>
+        <section class="card"><h2>Live collector</h2><dl class="kv" id="sys-collector"></dl></section>
+        <section class="card wide"><h2>Live data quality · last 180 min</h2>
           <div class="dq-strip" id="dq-strip" aria-label="Per-minute data quality"></div>
           <ul class="legend">
-            <li><span class="dq ok" aria-hidden="true"></span>Real trades, proven coverage</li>
-            <li><span class="dq syn" aria-hidden="true"></span>No trades, proven coverage</li>
-            <li><span class="dq gap" aria-hidden="true"></span>Data gap</li>
-          </ul>
-          <h3>Recorded gaps</h3><div class="table-wrap"><table id="diag-dq-gaps"></table></div></section>
-        <section class="card"><h2>Host sleep &amp; long coverage gaps</h2><div class="table-wrap"><table id="diag-sleep"></table></div></section>
-        <section class="card"><h2>Collector runs &amp; restarts</h2><div class="table-wrap"><table id="diag-runs"></table></div></section>
-        <section class="card wide"><h2>Runtime validation (real trading prerequisites)</h2><div class="table-wrap"><table id="diag-validation"></table></div></section>
-        <section class="card wide"><h2>Gap repairs <span class="muted small">(recent trades = exact · chart history = OHLCV only · only a failure of every tier resets warmup)</span></h2><div class="table-wrap"><table id="diag-repairs"></table></div></section>
-        <section class="card wide"><h2>Canonical candle revisions <span class="muted small">(previous versions are kept)</span></h2><div class="table-wrap"><table id="diag-revisions"></table></div></section>
-        <section class="card"><h2>Payload conflict audit</h2><div class="table-wrap"><table id="diag-conflicts"></table></div></section>
-        <section class="card"><h2>Candle lineage · last 24 h</h2><dl class="kv" id="diag-lineage"></dl></section>
-        <section class="card wide"><h2>Spec</h2><dl class="kv" id="diag-spec"></dl></section>
+            <li><span class="dq ok" aria-hidden="true"></span>Live trades</li>
+            <li><span class="dq syn" aria-hidden="true"></span>No trades (quiet)</li>
+            <li><span class="dq gap" aria-hidden="true"></span>No live candle (history fills the analysis)</li>
+          </ul></section>
+        <section class="card wide"><h2>Recorded coverage gaps</h2><div class="table-wrap"><table id="sys-gaps"></table></div></section>
       </div>
     </section>
   </main>
-  <footer class="foot"><span id="foot-spec">—</span> · Read-only console · <span id="tz-label"></span></footer>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <footer class="foot"><span id="foot-ver">—</span> · Signals only, no orders are sent · <span id="tz-label"></span></footer>
   <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
   <script src="/static/app.js"></script>
 </body>

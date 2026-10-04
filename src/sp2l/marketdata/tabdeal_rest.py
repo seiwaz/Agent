@@ -3,20 +3,28 @@
 Tabdeal futures REST uses the market name with an underscore (BTC_USDT), like the stream;
 the docs' "BTCUSDT" examples return "Invalid symbol" (code 1208) - observed 2026-09-26.
 
-Exchange info documents only pricePrecision / quantityPrecision (docs 2026-09-26). Per
-V5.1 B26, filters derived from them are PROVISIONAL (Shadow/development only); Live
-requires probe-established increments and minimums.
+Exchange info documents only pricePrecision / quantityPrecision (docs 2026-09-26); filters
+derived from them are PROVISIONAL (signals / development only).
 """
 
 from __future__ import annotations
 
 import json
 import urllib.request
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
 from sp2l.marketdata.tabdeal_ws import ws_market
-from sp2l.strategy.risk.engine import ExchangeFilters
+
+
+@dataclass(frozen=True, slots=True)
+class ExchangeFilters:
+    tick: Decimal
+    step: Decimal
+    min_qty: Decimal | None
+    min_notional: Decimal | None
+    verified: bool  # established by a runtime probe; precision-derived = False
 
 BASE = "https://api1.tabdeal.org"
 

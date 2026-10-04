@@ -1,12 +1,13 @@
-"""Read-only HTTP API + static WebUI (UI-02: backend truth only).
+"""Read-only HTTP API + static WebUI (the browser renders backend truth only).
 
 - Every route is GET; nothing here can place, cancel or modify anything, and no route
   touches credentials (they are never persisted).
-- Served on 127.0.0.1 by default.
+- Served on 127.0.0.1 by default (`--host 0.0.0.0` exposes it).
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -19,11 +20,13 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from sp2l.api import queries as qx
 from sp2l.api.live import LiveHub, psycopg_dsn, sse
+from sp2l.api.smc import SmcView
 from sp2l.config import ConfigError, RuntimeConfig
 from sp2l.marketdata.tabdeal_ws import ws_market
-from sp2l.spec.loader import SpecIntegrityError, load_rules, verify_manifest
+from sp2l.smc.timeframes import ORDER
 
 WEB = Path(__file__).resolve().parents[3] / "web"
+TF_PATTERN = "^(" + "|".join(ORDER) + ")$"
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; "
@@ -65,76 +68,71 @@ class SecurityHeaders:
 def create_app(cfg: RuntimeConfig) -> FastAPI:
     db = create_engine(cfg.database_url, pool_pre_ping=True)
     symbol = cfg.symbol
-    rules = load_rules()
     try:
-        verify_manifest()
-        manifest_ok = True
-    except SpecIntegrityError:
-        manifest_ok = False
-    try:
-        cfg.shadow_costs()
+        costs = cfg.costs()
         costs_problem: str | None = None
     except ConfigError as exc:
-        costs_problem = str(exc)
+        costs, costs_problem = None, str(exc)
+    view = SmcView(db, symbol, cfg.smc_params(), costs)
     display = ws_market(symbol).replace("_", "/")
-    app = FastAPI(title="SP2L Console API", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="SMC Console API", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(SecurityHeaders)
 
     @app.get("/api/overview")
     def overview() -> Any:
-        col = qx.collector_health(db)
         return {
             "symbol": symbol,
             "symbol_display": display,
-            "system": qx.system(
-                db, symbol, costs_problem=costs_problem, manifest_ok=manifest_ok, collector=col
-            ),
             "market": qx.market_summary(db, symbol, display),
-            "spec": qx.spec_info(rules.version, rules.sha256, manifest_ok),
+            "collector": qx.collector_health(db),
+            "smc": view.status(),
+            "costs_problem": costs_problem,
             "live": qx.live_status(db),
-            "collector": col,
-            "wallet": qx.wallet(db, symbol),
-            "active": qx.setup_list(db, symbol, "ACTIVE", 5),
-            "quality": {
-                k: v
-                for k, v in qx.data_quality(db, symbol, 60).items()
-                if k in ("counts", "window_minutes")
-            },
-            "performance": qx.performance(db, symbol),
         }
 
-    @app.get("/api/setups")
-    def setups(bucket: str | None = None, limit: int = Query(50, ge=1, le=500)) -> Any:
-        if bucket is not None and bucket not in qx.FILTERS:
-            raise HTTPException(400, f"bucket must be one of {sorted(qx.FILTERS)}")
-        return {
-            "buckets": list(qx.FILTERS),
-            "primary": list(qx.PRIMARY_FILTERS),
-            "counts": qx.setup_counts(db, symbol),
-            "items": qx.setup_list(db, symbol, bucket, limit),
-        }
+    # ---- SMC ------------------------------------------------------------------------------
+    @app.get("/api/smc/analysis")
+    def analysis(
+        tf: str = Query("15m", pattern=TF_PATTERN), bars: int = Query(300, ge=20, le=1000)
+    ) -> Any:
+        return view.analysis(tf, bars)
 
-    @app.get("/api/setups/{key}")
-    def setup(key: str) -> Any:
-        d = qx.setup_detail(db, symbol, key)
-        if d is None:
-            raise HTTPException(404, "unknown setup")
-        return d
+    @app.get("/api/smc/radar")
+    def radar() -> Any:
+        return view.radar()
 
-    @app.get("/api/counterfactuals")
-    def counterfactuals(limit: int = Query(100, ge=1, le=1000)) -> Any:
-        return {"label": "COUNTERFACTUAL", "items": qx.counterfactuals(db, symbol, limit)}
+    @app.get("/api/smc/signals")
+    def signals(
+        state: str = Query("all", pattern="^(all|active|closed)$"),
+        limit: int = Query(50, ge=1, le=500),
+        since_hours: float | None = Query(None, ge=0.1, le=24 * 90),
+    ) -> Any:
+        since = None if since_hours is None else datetime.now(UTC) - timedelta(hours=since_hours)
+        act = {"all": None, "active": True, "closed": False}[state]
+        return {"items": view.signals(active=act, limit=limit, since=since)}
 
+    @app.get("/api/smc/signals/{sid}/events")
+    def signal_events(sid: int) -> Any:
+        return {"items": view.signal_events(sid)}
+
+    @app.get("/api/smc/performance")
+    def performance() -> Any:
+        return view.performance()
+
+    @app.get("/api/smc/backtest")
+    def backtest(days: int = Query(30, ge=1, le=90)) -> Any:
+        return view.backtest(days)
+
+    @app.get("/api/smc/params")
+    def params() -> Any:
+        return view.params_view()
+
+    # ---- market data ----------------------------------------------------------------------
     @app.get("/api/market/candles")
     def candles(
-        tf: str = Query("1m", pattern="^(1m|5m)$"), limit: int = Query(240, ge=1, le=500)
+        tf: str = Query("1m", pattern=TF_PATTERN), limit: int = Query(300, ge=1, le=1000)
     ) -> Any:
-        return {"tf": tf, "items": qx.candles(db, symbol, tf, limit)}
-
-    @app.get("/api/market/zones")
-    def zones() -> Any:
-        """Support / resistance zones for the live chart (display only)."""
-        return qx.sr_zones(db, symbol)
+        return view.candles(tf, limit)
 
     @app.get("/api/market/quality")
     def quality(minutes: int = Query(180, ge=5, le=1440)) -> Any:
@@ -146,14 +144,20 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
 
     @app.get("/api/feed")
     def feed(hours: float = Query(24.0, ge=0.1, le=168.0)) -> Any:
-        from datetime import UTC, datetime, timedelta
-
         from sp2l.runtime.feed_report import report
 
         rep = report(db, symbol, datetime.now(UTC) - timedelta(hours=hours))
         rep["live"] = qx.collector_health(db).get("heartbeat")
         rep["correlated_closes"] = [qx.split_close_pair(c) for c in rep["correlated_closes"]]
         return qx.jsonable(rep)
+
+    @app.get("/api/integrity")
+    def integrity() -> Any:
+        return qx.integrity(db, symbol)
+
+    @app.get("/api/validation")
+    def validation() -> Any:
+        return {"live": qx.live_status(db), "items": qx.validation(db)}
 
     hub = LiveHub(psycopg_dsn(cfg.database_url), symbol)
 
@@ -164,41 +168,23 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
 
     @app.get("/api/live/stream")
     async def live_stream(request: Request) -> StreamingResponse:
-        """V5.9 Server-Sent Events: forming M1 on every canonical trade, then its final
-        canonical candle and any revision. Display only; never read by trading code."""
+        """Server-Sent Events: forming M1 on every canonical trade, then its final candle and
+        any revision. Display only."""
         return StreamingResponse(
             sse(hub, lambda: qx.live_snapshot(db, symbol), request.is_disconnected),
             media_type="text/event-stream",
             headers={"X-Accel-Buffering": "no"},
         )
 
-    @app.get("/api/pgaps")
-    def pgaps(limit: int = Query(50, ge=1, le=500)) -> Any:
-        return {"items": qx.recent_pgaps(db, symbol, limit)}
-
-    @app.get("/api/indicators")
-    def indicators(limit: int = Query(48, ge=2, le=288)) -> Any:
-        return qx.indicators(db, symbol, limit)
-
-    @app.get("/api/integrity")
-    def integrity() -> Any:
-        return qx.integrity(db, symbol)
-
-    @app.get("/api/performance")
-    def performance() -> Any:
-        return qx.performance(db, symbol)
-
-    @app.get("/api/wallet")
-    def wallet() -> Any:
-        return qx.wallet(db, symbol)
-
-    @app.get("/api/validation")
-    def validation() -> Any:
-        return {"live": qx.live_status(db), "items": qx.validation(db)}
+    @app.get("/api/health")
+    def health() -> Any:
+        return {"ok": True}
 
     @app.get("/")
     def index() -> FileResponse:
         return FileResponse(WEB / "index.html")
 
+    if not (WEB / "index.html").exists():  # pragma: no cover
+        raise HTTPException(500, "web/ missing")
     app.mount("/static", StaticFiles(directory=WEB), name="static")
     return app

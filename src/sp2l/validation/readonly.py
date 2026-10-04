@@ -35,7 +35,9 @@ from sqlalchemy import Engine, create_engine, text
 from sp2l.config import RuntimeConfig
 from sp2l.marketdata.tabdeal_rest import exchange_symbol
 from sp2l.secrets import Credentials, load_credentials
-from sp2l.strategy.risk.engine import STRATEGY_LEVERAGE
+
+# the account leverage the read-only check expects (only READ, never changed from here)
+STRATEGY_LEVERAGE = 10
 
 log = logging.getLogger("sp2l.validation")
 

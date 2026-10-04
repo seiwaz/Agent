@@ -1,0 +1,20 @@
+[Unit]
+Description=SMC market-data collector (Tabdeal public stream; no API key, no orders)
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=smc
+WorkingDirectory=/home/smc/SMC
+ExecStart=/home/smc/SMC/.venv/bin/python -m sp2l --config config/server.yaml collect --log-file /home/smc/logs/collector.log
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

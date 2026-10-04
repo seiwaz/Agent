@@ -1,12 +1,14 @@
-"""Runtime configuration (non-strategy) with validation.
+"""Runtime configuration with validation.
 
-Costs (V5.1 B16) are never hardcoded; Shadow refuses to start until they are provided:
-- maker_fee: fraction charged on resting limit fills (E1, E2; E1 is never marketable, B15);
-- taker_fee: fraction charged on exits (SL is taker; the single TP is also charged taker,
-  conservatively, until Tabdeal's positionSlTp execution type is runtime-validated);
-- slippage_allowance: fraction by which the modeled SL exit may be worse than SL.
+Costs are never hardcoded; the SMC runner refuses to start until they are provided:
+- maker_fee: fraction charged on resting limit entries;
+- taker_fee: fraction charged on market entries and on every exit (TP charged taker,
+  conservatively);
+- slippage_allowance: fraction by which a stop exit may be worse than the stop price.
 Values are fractions (0.0002 = 0.02 %). Values >= 0.01 are rejected as a likely percent/
 fraction unit mistake.
+
+The `smc` section overrides SmcParams defaults (see smc/model.py); unknown keys are errors.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from typing import Any
 
 import yaml
 
-from sp2l.strategy.risk.engine import CostModel
+from sp2l.smc.model import Costs, SmcParams
 
 COST_FIELDS = ("maker_fee", "taker_fee", "slippage_allowance")
 MAX_RATE = Decimal("0.01")
@@ -56,8 +58,18 @@ class RuntimeConfig:
             raise ConfigError(f"`{name}` must be a mapping")
         return v
 
-    def shadow_costs(self) -> CostModel:
-        """Validated CostModel; raises ConfigError naming every missing/invalid field."""
+    def smc_params(self) -> SmcParams:
+        s = self.section("smc")
+        unknown = sorted(set(s) - set(SmcParams.__dataclass_fields__))
+        if unknown:
+            raise ConfigError(f"smc: unknown parameter(s) {', '.join(unknown)}")
+        try:
+            return SmcParams.from_mapping(s)
+        except (ValueError, InvalidOperation, TypeError) as e:
+            raise ConfigError(f"smc: invalid value: {e}") from e
+
+    def costs(self) -> Costs:
+        """Validated costs; raises ConfigError naming every missing/invalid field."""
         costs = self.section("costs")
         problems: list[str] = []
         values: dict[str, Decimal] = {}
@@ -78,14 +90,5 @@ class RuntimeConfig:
             else:
                 values[f] = d
         if problems:
-            raise ConfigError(
-                "Shadow cannot start; fee/slippage values are never hardcoded (B16): "
-                + "; ".join(problems)
-            )
-        evidence = costs.get("evidence_id")
-        return CostModel(
-            entry_fee_rate=values["maker_fee"],
-            exit_fee_rate=values["taker_fee"],
-            sl_slippage_rate=values["slippage_allowance"],
-            evidence_id=str(evidence) if evidence else None,
-        )
+            raise ConfigError("fee/slippage values are never hardcoded: " + "; ".join(problems))
+        return Costs(values["maker_fee"], values["taker_fee"], values["slippage_allowance"])
