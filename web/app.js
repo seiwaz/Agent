@@ -395,6 +395,27 @@ function applyMinute(m) {
   state.byTime.set(b, { open_time: new Date(b * 1000).toISOString(), open: bar.open, high: bar.high, low: bar.low, close: bar.close, forming: true });
   setPrice(+m.c, true);
   state.layer.update();
+  touchCheck(+m.h, +m.l);
+}
+/* When a live tick reaches a drawn zone or liquidity line, ask the backend for the new state
+ * right away instead of waiting for the next poll. The backend decides what changed (touched,
+ * filled, swept); this only decides when to ask. */
+let touchTimer = null, lastTouchFetch = 0;
+function touchCheck(h, l) {
+  const a = state.analysis;
+  if (!a || !a.ready || touchTimer) return;
+  const reaches = (z) => {
+    const long = z.direction === "LONG", top = +z.top, bot = +z.bottom;
+    return (!z.tested && (long ? l <= top : h >= bot)) || (z.kind === "FVG" && (long ? l <= bot : h >= top));
+  };
+  const hit = [...(a.zones || []), ...(a.htf_zones || [])].some(reaches)
+    || (a.liquidity || []).some((lq) => (lq.kind === "BSL" ? h > +lq.price : l < +lq.price));
+  if (!hit) return;
+  const wait = Math.max(300, 1500 - (Date.now() - lastTouchFetch));
+  touchTimer = setTimeout(() => {
+    touchTimer = null; lastTouchFetch = Date.now();
+    refreshAnalysis().then(() => { if (state.view === "chart") refreshSlow(); }).catch(() => {});
+  }, wait);
 }
 function setPrice(p, live) {
   if (p === null || p === undefined) return;

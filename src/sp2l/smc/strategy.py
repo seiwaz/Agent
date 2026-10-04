@@ -70,6 +70,30 @@ def _round(v: Decimal, tick: Decimal, mode: str) -> Decimal:
     return (v / tick).to_integral_value(rounding=mode) * tick
 
 
+def m1_range(m1: Analysis, start: datetime, i: int) -> tuple[Decimal, Decimal] | None:
+    """(highest high, lowest low) of the M1 bars that opened at/after `start`, up to bar i:
+    what happened inside a higher-timeframe bar that has not closed yet."""
+    lo, hi = 0, i + 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if m1.bars[mid].open_time < start:
+            lo = mid + 1
+        else:
+            hi = mid
+    seg = m1.bars[lo : i + 1]
+    if not seg:
+        return None
+    return max(b.high for b in seg), min(b.low for b in seg)
+
+
+def filled_live(z: Zone, rng: tuple[Decimal, Decimal] | None, p: SmcParams) -> bool:
+    """A fair value gap completely filled by a wick inside the still-forming bar (irreversible,
+    so it is invalid before that bar closes). Order blocks need a close: never here."""
+    if rng is None or z.kind != "FVG" or p.fvg_fill != "wick":
+        return False
+    return rng[1] <= z.bottom if z.direction is Side.LONG else rng[0] >= z.top
+
+
 def _swept(a: Analysis, idx: int, k: int, price: Decimal, high: bool) -> bool:
     seg = a.bars[idx + 1 : k + 1]
     return any(b.high > price for b in seg) if high else any(b.low < price for b in seg)
@@ -93,10 +117,14 @@ def targets(
         if k < 0:
             continue
         floor = k - p.lookback(tf)
+        # liquidity taken inside the timeframe's forming bar is gone as well
+        rng = m1_range(m1, a.bars[k].open_time + length(tf), i)
         for s in reversed(a.swings):
             if s.idx < floor:
                 break
             if s.confirmed_idx > k or (s.kind == "HIGH") != long:
+                continue
+            if rng is not None and ((rng[0] > s.price) if long else (rng[1] < s.price)):
                 continue
             if ((s.price > entry) if long else (s.price < entry)) and not _swept(
                 a, s.idx, k, s.price, long
@@ -123,12 +151,19 @@ def targets(
 def find_poi(
     ctx: Mapping[str, Analysis], p: SmcParams, ob: Zone, t: datetime, side: Side
 ) -> tuple[Zone, str] | None:
+    m1 = ctx[p.trigger_tf]
+    i = last_closed(m1, t)
     for tf in p.poi_tfs:
         a = ctx.get(tf)
         if a is None:
             continue
         k = last_closed(a, t)
-        found = [z for z in zones_at(a, k, p) if z.direction is side and z.overlaps(ob)]
+        rng = m1_range(m1, a.bars[k].open_time + length(tf), i) if k >= 0 else None
+        found = [
+            z
+            for z in zones_at(a, k, p)
+            if z.direction is side and z.overlaps(ob) and not filled_live(z, rng, p)
+        ]
         if found:
             found.sort(key=lambda z: (z.kind != "OB", -z.idx))
             return found[0], tf

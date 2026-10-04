@@ -163,3 +163,15 @@ def load_bars(
     return [
         Candle(r[0].astimezone(UTC), r[1], r[2], r[3], r[4], r[5] or Decimal(0), None) for r in rows
     ]
+
+
+def extremes_since(
+    db: Engine, symbol: str, start: datetime, upto: datetime
+) -> tuple[Decimal, Decimal] | None:
+    """(highest high, lowest low) of the final minutes in [start, upto) of the merged series."""
+    with db.connect() as c:
+        r = c.execute(
+            text(f"WITH m AS ({MERGED_M1}) SELECT MAX(high), MIN(low) FROM m"),
+            {"s": symbol, "a": start, "b": upto},
+        ).one()
+    return None if r[0] is None else (r[0], r[1])

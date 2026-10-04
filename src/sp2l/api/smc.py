@@ -19,7 +19,7 @@ from sp2l.api.queries import _dec, jsonable, last_trade, one, rows
 from sp2l.core.types import Side
 from sp2l.smc.backtest import run as run_backtest
 from sp2l.smc.context import ContextBuilder, needed_tfs
-from sp2l.smc.history import coverage, load_bars, series_end
+from sp2l.smc.history import coverage, extremes_since, load_bars, series_end
 from sp2l.smc.model import VERSION, Analysis, Costs, SmcParams, Zone
 from sp2l.smc.strategy import evaluate, trend_at
 from sp2l.smc.timeframes import ORDER, length
@@ -72,18 +72,54 @@ def zone_out(z: Zone, a: Analysis, k: int) -> dict[str, Any]:
     }
 
 
-def liquidity(a: Analysis, price: Decimal | None, per_side: int = 3) -> list[dict[str, Any]]:
-    """Unswept swing highs (buy-side liquidity) and lows (sell-side) nearest the price."""
+Range = tuple[Decimal, Decimal] | None  # (high, low) traded since the last closed bar
+
+
+def live_zone(zd: dict[str, Any], rng: Range, p: SmcParams) -> dict[str, Any] | None:
+    """A zone as of NOW: the closed-bar state plus what the forming bar already did. A touch
+    and a fair value gap filled end to end by a wick are irreversible, so they apply at once
+    (an order block still needs a close to become invalid)."""
+    if rng is None:
+        return zd
+    hi, lo = rng
+    top, bottom = Decimal(zd["top"]), Decimal(zd["bottom"])
+    long = zd["direction"] == "LONG"
+    touched = lo <= top if long else hi >= bottom
+    filled = lo <= bottom if long else hi >= top
+    if zd["kind"] == "FVG" and p.fvg_fill == "wick" and filled:
+        return None
+    if touched and not zd["tested"]:
+        return {**zd, "tested": True, "status": "TESTED", "live": True}
+    return zd
+
+
+def liquidity(
+    a: Analysis, price: Decimal | None, per_side: int = 3, rng: Range = None
+) -> list[dict[str, Any]]:
+    """Unswept swing highs (buy-side liquidity) and lows (sell-side) nearest the price; a level
+    the forming bar already traded through is swept."""
     if not a.bars or price is None:
         return []
     k = len(a.bars) - 1
+    hi = rng[0] if rng else None
+    lo = rng[1] if rng else None
     highs: list[dict[str, Any]] = []
     lows: list[dict[str, Any]] = []
     for s in reversed(a.swings):
         seg = a.bars[s.idx + 1 : k + 1]
-        if s.kind == "HIGH" and s.price > price and not any(b.high > s.price for b in seg):
+        if (
+            s.kind == "HIGH"
+            and s.price > price
+            and (hi is None or hi <= s.price)
+            and not any(b.high > s.price for b in seg)
+        ):
             highs.append({"kind": "BSL", "price": _dec(s.price), "from": _t(s.time)})
-        if s.kind == "LOW" and s.price < price and not any(b.low < s.price for b in seg):
+        if (
+            s.kind == "LOW"
+            and s.price < price
+            and (lo is None or lo >= s.price)
+            and not any(b.low < s.price for b in seg)
+        ):
             lows.append({"kind": "SSL", "price": _dec(s.price), "from": _t(s.time)})
     highs.sort(key=lambda x: Decimal(x["price"]))
     lows.sort(key=lambda x: -Decimal(x["price"]))
@@ -123,6 +159,22 @@ class SmcView:
         with self._lock:
             return upto, self.ctx.build(upto, tfs)
 
+    def _live_range(self, a: Analysis, upto: datetime, forming: list[dict[str, Any]]) -> Range:
+        """What traded after the last closed bar of `a`: final minutes + the live minute."""
+        if not a.bars:
+            return None
+        start = a.bars[-1].open_time + length(a.tf)
+        rng = extremes_since(self.db, self.symbol, start, upto)
+        his = [Decimal(f["h"]) for f in forming] + ([rng[0]] if rng else [])
+        los = [Decimal(f["l"]) for f in forming] + ([rng[1]] if rng else [])
+        return (max(his), min(los)) if his else None
+
+    def _forming(self) -> list[dict[str, Any]]:
+        from sp2l.api.queries import live_snapshot
+
+        forming: list[dict[str, Any]] = live_snapshot(self.db, self.symbol)["forming"]
+        return forming
+
     def _price(self) -> Decimal | None:
         return last_price(self.db, self.symbol)
 
@@ -158,13 +210,25 @@ class SmcView:
         first = a.bars[max(0, k - bars + 1)].open_time if a.bars else upto
         price = self._price() or (a.bars[-1].close if a.bars else None)
 
-        # an order block closed through or a fair value gap filled is invalid: never drawn
-        zones = [zone_out(z, a, k) for z in a.zones if z.valid_at(k)]
+        # an order block closed through or a fair value gap filled is invalid: never drawn;
+        # touches and fills of the forming bar apply at once (live_zone)
+        forming = self._forming()
+        rng = self._live_range(a, upto, forming)
+        zones = [
+            zd
+            for z in a.zones
+            if z.valid_at(k) and (zd := live_zone(zone_out(z, a, k), rng, p)) is not None
+        ]
         htf_zones = []
         for h in htfs:
             ha = ctx[h]
             hk = len(ha.bars) - 1
-            htf_zones += [zone_out(z, ha, hk) for z in ha.zones if z.valid_at(hk)]
+            hr = self._live_range(ha, upto, forming)
+            htf_zones += [
+                zd
+                for z in ha.zones
+                if z.valid_at(hk) and (zd := live_zone(zone_out(z, ha, hk), hr, p)) is not None
+            ]
         events = [
             {
                 "id": e.id,
@@ -189,7 +253,7 @@ class SmcView:
             "zones": zones,
             "htf_zones": htf_zones,
             "events": events,
-            "liquidity": liquidity(a, price),
+            "liquidity": liquidity(a, price, rng=rng),
             "range": dealing_range(a),
             "swings": [
                 {"kind": s.kind, "price": _dec(s.price), "time": _t(s.time)}
@@ -233,25 +297,24 @@ class SmcView:
         bias = trend_at(ctx.get(p.bias_tf), upto)
         side = Side.LONG if bias == 1 else Side.SHORT if bias == -1 else None
         pois = []
+        forming = self._forming()
         for tf in p.poi_tfs:
             a = ctx.get(tf)
             if a is None or side is None:
                 continue
             k = len(a.bars) - 1
+            rng = self._live_range(a, upto, forming)
             for z in a.zones:
-                if z.direction is side and z.valid_at(k):
-                    dist = None
-                    if price is not None:
-                        edge = z.top if side is Side.LONG else z.bottom
-                        dist = (
-                            (price - edge) / price if side is Side.LONG else (edge - price) / price
-                        )
-                    pois.append(
-                        {
-                            **zone_out(z, a, k),
-                            "distance": None if dist is None else _dec(round(dist, 6)),
-                        }
-                    )
+                if z.direction is not side or not z.valid_at(k):
+                    continue
+                zd = live_zone(zone_out(z, a, k), rng, p)
+                if zd is None:
+                    continue
+                dist = None
+                if price is not None:
+                    edge = z.top if side is Side.LONG else z.bottom
+                    dist = (price - edge) / price if side is Side.LONG else (edge - price) / price
+                pois.append({**zd, "distance": None if dist is None else _dec(round(dist, 6))})
         pois.sort(
             key=lambda z: abs(Decimal(z["distance"])) if z["distance"] is not None else Decimal(9)
         )
