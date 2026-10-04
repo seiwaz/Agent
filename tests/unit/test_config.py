@@ -74,3 +74,8 @@ def test_repo_configs_load_and_costs_match_recorded_evidence():
         c.smc_params()
         assert c.symbols == ["BTCUSDT", "XRPUSDT"]
         assert c.instrument("BTCUSDT") == (D("0.1"), D("0.00001"))
+
+
+def test_boolean_parameters_stay_booleans():
+    p = cfg({}, {"ob_require_fvg": True, "tp1_be": "false"}).smc_params()
+    assert p.ob_require_fvg is True and p.tp1_be is False

@@ -79,6 +79,7 @@ smc:
   swing_len: 5            # pivot = N bars on each side (all timeframes)
   fvg_min_atr: 0.5        # smaller gaps are noise (tested 2026-10-04: they react worse than random)
   ob_min_atr: 0.5         # higher-timeframe order blocks below half an ATR react like random ranges
+  ob_require_fvg: true    # owner rule 2026-10-04: an OB is valid only if the move leaving it left a gap (FVG, any size)
   bias_tf: 4h
   confirm_bias_tf: 1h
   poi_tfs: [4h, 1h]

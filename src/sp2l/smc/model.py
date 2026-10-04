@@ -183,6 +183,11 @@ class SmcParams:
             elif isinstance(cur, tuple):
                 items = v.split(",") if isinstance(v, str) else v
                 kw[f] = tuple(str(x).strip() for x in items if str(x).strip())
+            elif isinstance(cur, bool):  # before int: a bool is an int in Python
+                if isinstance(v, str):
+                    kw[f] = v.strip().lower() in ("1", "true", "yes", "on")
+                else:
+                    kw[f] = bool(v)
             elif isinstance(cur, int):
                 kw[f] = int(v)
             else:

@@ -31,7 +31,10 @@ sent: signals and their simulated lifecycle are recorded for review.
 1. **Bias** — trend of `bias_tf` (4h) must match the trade direction.
 2. **POI** — an unmitigated **order block** (`poi_kinds: [OB]`) of `poi_tfs` (4h, then 1h) with
    the bias, at least `ob_min_atr` (0.5) ATR tall, must overlap the M1 order block of the
-   trigger. Fair value gaps (at least `fvg_min_atr` = 0.5 ATR) only add confluence.
+   trigger. Owner rule (2026-10-04, `ob_require_fvg: true`): the move leaving the order block
+   must have left a fair value gap of any size (a three-bar gap between the block and the
+   break); blocks without one are not order blocks. In the 270-day test this rule lowered the
+   result (BTC −0.25R vs −0.08R per trade, XRP −0.32R vs −0.21R); it is applied by decision. Fair value gaps (at least `fvg_min_atr` = 0.5 ATR) only add confluence.
 3. **Trigger** — an M1 BOS / CHoCH in the bias direction.
 4. **Execution (M1)** — a limit order (maker fee) at the near edge of the POI
    (`entry_mode: proximal`, `entry_on: poi`), cancelled after `pending_expiry_min` (120);
