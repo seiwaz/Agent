@@ -240,7 +240,7 @@ function span(from, to, width) {
 /* Labels of one frame: each new one avoids the boxes already placed and keeps a margin from the
  * pane edges (some browsers clip the outermost pixels of the chart canvas). */
 const EDGE = 14;
-let placed = [];
+let placed = [], placedBelow = [];  // the top layer is also redrawn alone (crosshair moves)
 function place(bx, by, w, h, size) {
   const hits = (y) => placed.some((r) => bx < r.x + r.w && r.x < bx + w && y < r.y + r.h && r.y < y + h);
   let y = Math.min(Math.max(by, EDGE), size.height - h - EDGE);
@@ -314,7 +314,11 @@ function drawZone(ctx, z, size, htf) {
   else if (s[1] - s[0] > 30) pill(ctx, text, Math.max(s[0], 0) + 3, y1 + 10, c, size, "left");
 }
 function drawBelow(ctx, size) {
-  placed = [];  // the bottom layer is drawn first in every frame
+  placed = [];
+  drawBelowLabels(ctx, size);
+  placedBelow = placed.slice();  // what the top layer starts from, every time it is drawn
+}
+function drawBelowLabels(ctx, size) {
   const a = shown();
   if (!a || !a.ready || !state.series) return;
   const W = size.width, L = state.layers;
@@ -337,6 +341,7 @@ function drawBelow(ctx, size) {
   }
 }
 function drawAbove(ctx, size) {
+  placed = placedBelow.slice();  // same start on every redraw: labels never drift
   const a = shown();
   if (!state.series) return;
   const W = size.width, L = state.layers;
