@@ -267,3 +267,8 @@ body.has-max { overflow: hidden; }
 /* chart detail switch */
 .seg-mini button { min-height: 30px; padding: 3px 12px; font-size: 13px; }
 .chips .seg-mini { margin-right: 6px; }
+/* position levels never break a price over two lines */
+.levels { gap: 6px; }
+.levels div { padding: 6px; }
+.levels .k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.levels .v { white-space: nowrap; font-size: 13px; overflow-wrap: normal; }

@@ -539,12 +539,13 @@ def open_pnl(
     if r["state"] != "OPEN" or price is None:
         return None, None
     sgn = 1 if r["side"] == "LONG" else -1
-    entry, sl = Decimal(r["entry"]), Decimal(r["sl"])
-    risk = abs(entry - sl)
-    open_r = _dec(round((price - entry) * sgn / risk, 2)) if risk else None
-    qty = Decimal(r["qty"]) if r.get("qty") else Decimal(0)
+    entry = Decimal(r["entry"])
     fee_in = costs.taker_fee if (r.get("detail") or {}).get("market") else costs.maker_fee
-    pnl = qty * ((price - entry) * sgn - entry * fee_in - price * costs.taker_fee)
+    net = (price - entry) * sgn - entry * fee_in - price * costs.taker_fee  # per unit, as R is
+    risk = Decimal(r["risk"]) if r.get("risk") else abs(entry - Decimal(r["sl"]))
+    open_r = _dec(round(net / risk, 2)) if risk else None
+    qty = Decimal(r["qty"]) if r.get("qty") else Decimal(0)
+    pnl = qty * net
     return open_r, _dec(round(pnl, 4))
 
 
@@ -569,7 +570,7 @@ def signals(
         where.append("(closed_at IS NULL OR closed_at >= :since)")
     out = rows(
         db,
-        "SELECT id, symbol, key, side, state, created_at, entry, sl, tp, rr, net_rr, score,"
+        "SELECT id, symbol, key, side, state, created_at, entry, sl, tp, risk, rr, net_rr, score,"
         " tp_source, trigger_kind, poi_tf, detail, qty, notional, leverage, margin, filled_at,"
         " closed_at, exit_price, result_r, pnl_usdt, fees_usdt, updated_at FROM smc_signals WHERE "
         + " AND ".join(where)

@@ -237,6 +237,20 @@ function span(from, to, width) {
   if (x2 < 0 || x1 > width) return null;  // entirely outside the visible pane
   return [Math.max(-2, x1), Math.min(width + 2, x2)];
 }
+/* Labels of one frame: each new one avoids the boxes already placed and keeps a margin from the
+ * pane edges (some browsers clip the outermost pixels of the chart canvas). */
+const EDGE = 14;
+let placed = [];
+function place(bx, by, w, h, size) {
+  const hits = (y) => placed.some((r) => bx < r.x + r.w && r.x < bx + w && y < r.y + r.h && r.y < y + h);
+  let y = Math.min(Math.max(by, EDGE), size.height - h - EDGE);
+  for (let k = 0; k < 8 && hits(y); k++) {
+    const down = y + h + 3 <= size.height - h - EDGE ? y + h + 3 : null;
+    y = down !== null ? down : Math.max(EDGE, y - (h + 3) * (k + 1));
+  }
+  placed.push({ x: bx, y, w, h });
+  return y;
+}
 /** A readable label pill, always kept inside the pane. align: left edge at x / right edge at x. */
 function pill(ctx, text, x, y, color, size, align) {
   ctx.font = "600 11px 'IBM Plex Sans', sans-serif";
@@ -245,7 +259,7 @@ function pill(ctx, text, x, y, color, size, align) {
   const w = ctx.measureText(text).width + 10, h = 17;
   let bx = align === "right" ? x - w : align === "center" ? x - w / 2 : x;
   bx = Math.min(Math.max(bx, 3), size.width - w - 3);
-  const by = Math.min(Math.max(y - h / 2, 2), size.height - h - 2);
+  const by = place(bx, y - h / 2, w, h, size);
   ctx.fillStyle = rgba(color, 0.92);
   ctx.beginPath(); ctx.roundRect(bx, by, w, h, 4); ctx.fill();
   ctx.fillStyle = rgba("--c-on", 1);
@@ -257,6 +271,7 @@ function plainLabel(ctx, text, x, y, color, size, align) {
   const w = ctx.measureText(text).width;
   let tx = align === "right" ? x - w : x;
   tx = Math.min(Math.max(tx, 3), size.width - w - 3);
+  y = place(tx - 2, y - 7, w + 4, 14, size) + 7;
   ctx.textAlign = "left";
   ctx.lineWidth = 3; ctx.strokeStyle = rgba("--c-pill", 0.85); ctx.strokeText(text, tx, y);
   ctx.fillStyle = rgba(color, 1); ctx.fillText(text, tx, y);
@@ -299,6 +314,7 @@ function drawZone(ctx, z, size, htf) {
   else if (s[1] - s[0] > 30) pill(ctx, text, Math.max(s[0], 0) + 3, y1 + 10, c, size, "left");
 }
 function drawBelow(ctx, size) {
+  placed = [];  // the bottom layer is drawn first in every frame
   const a = shown();
   if (!a || !a.ready || !state.series) return;
   const W = size.width, L = state.layers;
@@ -355,8 +371,8 @@ function drawPosition(ctx, p, size) {
   const x1 = s[0], x2 = Math.max(s[1], x1 + 24);
   const focus = state.focus === p.id;
   const a = open || focus ? 1 : state.mode === "focus" ? 0.3 : 0.55;  // history stays in the background
-  ctx.fillStyle = rgba("--c-bull", 0.2 * a); ctx.fillRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
-  ctx.fillStyle = rgba("--c-bear", 0.2 * a); ctx.fillRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
+  ctx.fillStyle = rgba("--c-bull", 0.12 * a); ctx.fillRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
+  ctx.fillStyle = rgba("--c-bear", 0.14 * a); ctx.fillRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
   ctx.lineWidth = focus ? 2 : 1.2;
   ctx.strokeStyle = rgba("--c-bull", 0.85 * a); ctx.strokeRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
   ctx.strokeStyle = rgba("--c-bear", 0.85 * a); ctx.strokeRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
@@ -375,9 +391,12 @@ function drawPosition(ctx, p, size) {
     : ` · ${STATE[p.state] ? STATE[p.state][1] : p.state} ${rText(p.result_r)}${p.pnl_usdt !== null ? ` · ${usdSigned(p.pnl_usdt)} $` : ""}`;
   const yLab = long ? Math.min(yt, ye) - 11 : Math.max(yt, ye) + 11;
   pill(ctx, `${long ? "Long" : "Short"}${money}`, Math.max(x1, 0) + 2, yLab, long ? "--c-bull" : "--c-bear", size, "left");
+  const off = (y) => y < EDGE || y > size.height - EDGE;
+  if (open && off(yt)) pill(ctx, `TP ${pxs(p.tp)} ${yt < EDGE ? "↑" : "↓"} off-screen`, x2 - 6, yt < EDGE ? EDGE : size.height - EDGE, "--c-bull", size, "right");
+  if (open && off(ys)) pill(ctx, `SL ${pxs(p.sl)} ${ys < EDGE ? "↑" : "↓"} off-screen`, x2 - 6, ys < EDGE ? EDGE : size.height - EDGE, "--c-bear", size, "right");
   if (open) {
-    plainLabel(ctx, `TP ${pxs(p.tp)}`, x2 - 6, yt + (long ? 10 : -10), "--c-bull", size, "right");
-    plainLabel(ctx, p.at_breakeven ? `SL at break-even ${pxs(p.sl)}` : `SL ${pxs(p.sl)}`, x2 - 6, ys + (long ? -10 : 10), "--c-bear", size, "right");
+    if (!off(yt)) plainLabel(ctx, `TP ${pxs(p.tp)}`, x2 - 6, yt + (long ? 10 : -10), "--c-bull", size, "right");
+    if (!off(ys)) plainLabel(ctx, p.at_breakeven ? `SL at break-even ${pxs(p.sl)}` : `SL ${pxs(p.sl)}`, x2 - 6, ys + (long ? -10 : 10), "--c-bear", size, "right");
   }
 }
 
