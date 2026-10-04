@@ -32,6 +32,8 @@ from sp2l.smc.model import Analysis, Costs, Setup, SmcParams, StructureEvent, Zo
 from sp2l.smc.timeframes import MINUTE, length
 
 TREND = {Side.LONG: 1, Side.SHORT: -1}
+# factors that add to the score; htf_sweep is only a `require`-able filter
+SCORED = ("fresh", "choch", "sweep", "m1_fvg", "poi_confluence", "bias_confirm")
 
 
 def last_closed(a: Analysis, t: datetime) -> int:
@@ -306,13 +308,14 @@ def evaluate(
     )
     factors = {
         "fresh": _fresh(poi_a, zone, ob.time),
+        "htf_sweep": _htf_sweep(ctx, p, m1, ob, ev, long),
         "choch": ev.kind == "CHOCH",
         "sweep": sw,
         "m1_fvg": m1_fvg,
         "poi_confluence": _poi_confluence(ctx, p, zone, t, side),
         "bias_confirm": trend_at(ctx.get(p.confirm_bias_tf), t) == TREND[side],
     }
-    score = sum(factors.values())
+    score = sum(v for f, v in factors.items() if f in SCORED)
     if score < p.min_score:
         reasons.append("LOW_SCORE")
     missing = [f for f in p.require if not factors.get(f, False)]
@@ -349,6 +352,44 @@ def evaluate(
         notional=notional,
         leverage=leverage,
     )
+
+
+def _htf_sweep(
+    ctx: Mapping[str, Analysis],
+    p: SmcParams,
+    m1: Analysis,
+    ob: Zone,
+    ev: StructureEvent,
+    long: bool,
+) -> bool:
+    """The move into the POI took out higher-timeframe liquidity: the M1 block's extreme runs
+    beyond a confirmed 15m/1h swing low (long) / high (short) that was still intact when the
+    M1 leg began (the swing broken by the trigger)."""
+    start = m1.bars[ev.level_idx].open_time
+    for tf in p.poi_tfs:
+        a = ctx.get(tf)
+        if a is None:
+            continue
+        k = last_closed(a, start)
+        if k < 0:
+            continue
+        rng = m1_range(m1, a.bars[k].open_time + length(tf), ev.level_idx - 1)
+        seen = 0
+        for s in reversed(a.swings):
+            if s.confirmed_idx > k or (s.kind == "LOW") != long:
+                continue
+            seen += 1
+            if seen > 6:
+                break
+            took = ob.bottom < s.price if long else ob.top > s.price
+            if not took:
+                continue
+            intact = not _swept(a, s.idx, k, s.price, high=not long) and (
+                rng is None or (rng[1] >= s.price if long else rng[0] <= s.price)
+            )
+            if intact:
+                return True
+    return False
 
 
 def _fresh(a: Analysis, zone: Zone, tap: datetime) -> bool:

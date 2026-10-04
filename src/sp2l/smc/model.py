@@ -144,6 +144,7 @@ class SmcParams:
     max_positions: int = 2  # simultaneous PENDING/OPEN signals across all symbols
     pending_expiry_min: int = 45
     max_hold_min: int = 360
+    be_at_r: Decimal = Decimal(0)  # move the stop to break-even (after fees) at +N R; 0 = off
     # shared simulated wallet: initial balance, risk per position, cross leverage cap
     account_usdt: Decimal = Decimal(100)
     risk_pct: Decimal = Decimal("0.01")

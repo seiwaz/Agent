@@ -73,7 +73,7 @@ def insert_signal(
             "src": s.tp_source,
             "tk": s.trigger_kind,
             "ptf": s.poi_tf,
-            "d": json.dumps({**setup_detail(s), "market": t.market}),
+            "d": json.dumps({**setup_detail(s), "market": t.market, "sl_initial": str(t.sl)}),
             "q": size.qty if size else s.qty,
             "n": size.notional if size else s.notional,
             "lev": size.leverage if size else s.leverage,
@@ -133,6 +133,7 @@ def active(db: Engine, symbol: str) -> list[tuple[int, Tracked, Decimal]]:
                 filled_at=r[9] or (r[6] if r[8] == "OPEN" else None),
                 last_m1=r[10],
                 market=bool((r[12] or {}).get("market")),
+                sl0=Decimal((r[12] or {}).get("sl_initial") or r[4]),
             ),
             Decimal(r[11]),
         )
@@ -143,11 +144,12 @@ def active(db: Engine, symbol: str) -> list[tuple[int, Tracked, Decimal]]:
 def save(c: Connection, sid: int, t: Tracked) -> None:
     c.execute(
         text(
-            "UPDATE smc_signals SET state = :st, filled_at = :f, closed_at = :cl,"
+            "UPDATE smc_signals SET state = :st, filled_at = :f, closed_at = :cl, sl = :sl,"
             " exit_price = :x, result_r = :r, last_m1 = :m, updated_at = now() WHERE id = :i"
         ),
         {
             "st": t.state.value,
+            "sl": t.sl,
             "f": t.filled_at,
             "cl": t.closed_at,
             "x": t.exit_price,

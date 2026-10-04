@@ -37,10 +37,12 @@ REASON_TEXT = {
     "LOW_SCORE": "Confluence score below the minimum",
     "LEVERAGE": "Position size would need more than the allowed leverage",
     "MISSING_SWEEP": "Required liquidity sweep missing",
+    "MISSING_HTF_SWEEP": "Required higher-timeframe liquidity sweep missing",
     "MISSING_FRESH": "Required fresh POI missing",
 }
 FACTOR_TEXT = {
     "fresh": "Fresh POI (first touch)",
+    "htf_sweep": "Higher-timeframe liquidity swept (filter only)",
     "choch": "M1 CHoCH (reversal)",
     "sweep": "Liquidity sweep before the break",
     "m1_fvg": "Displacement FVG on M1",
@@ -467,7 +469,13 @@ class SmcView:
                 "tick",
             ],
             "Quality": ["min_score", "require"],
-            "Lifecycle": ["pending_expiry_min", "max_hold_min", "max_active", "max_positions"],
+            "Lifecycle": [
+                "pending_expiry_min",
+                "max_hold_min",
+                "be_at_r",
+                "max_active",
+                "max_positions",
+            ],
             "Data": [f"lookback_{tf}" for tf in ORDER] + ["history_days"],
             "Shared wallet": ["account_usdt", "risk_pct", "max_leverage"],
         }

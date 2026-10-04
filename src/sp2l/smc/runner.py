@@ -135,7 +135,13 @@ class SmcRunner:
                         continue
                     ev = advance(t, b, self.params, self.costs)
                     if ev is not None:
-                        price = t.entry if ev == "FILLED" else t.exit_price
+                        price = (
+                            t.entry
+                            if ev == "FILLED"
+                            else t.sl
+                            if ev == "BREAKEVEN"
+                            else t.exit_price
+                        )
                         detail: dict[str, Any] | None = None
                         if t.result_r is not None:
                             detail = {"result_r": str(t.result_r)}

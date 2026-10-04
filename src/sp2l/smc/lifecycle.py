@@ -1,5 +1,10 @@
 """Signal lifecycle on M1 bars: PENDING (limit waiting) -> OPEN -> TP / SL (+ exits without fill).
 
+Break-even (`be_at_r` > 0): once a bar's favourable extreme reaches entry +- be_at_r x the
+initial stop distance, the stop moves to the entry price shifted by the entry and exit fees,
+so a later stop-out costs about nothing. It moves at the END of that bar and only counts from
+the next bar (the order of the extremes inside one minute is unknown); never in the fill bar.
+
 All path decisions use final M1 candles. Where one minute could have touched both sides the
 conservative reading applies: a stop beats a target, and a target is not credited in the very
 minute the entry filled (the order inside the minute is unknown).
@@ -61,10 +66,17 @@ class Tracked:
     result_r: Decimal | None = None
     last_m1: datetime | None = None  # open time of the last M1 applied
     market: bool = False  # entered at the trigger close (OPEN from creation)
+    sl0: Decimal | None = None  # the initial stop (sl moves to break-even)
 
     def __post_init__(self) -> None:
         if self.market and self.state is State.PENDING:
             self.state, self.filled_at = State.OPEN, self.created_at
+        if self.sl0 is None:
+            self.sl0 = self.sl
+
+    @property
+    def at_breakeven(self) -> bool:
+        return self.sl0 is not None and self.sl != self.sl0
 
     @property
     def active(self) -> bool:
@@ -118,6 +130,14 @@ def advance(t: Tracked, bar: Candle, p: SmcParams, costs: Costs) -> str | None:
     assert t.filled_at is not None
     if bar.open_time - t.filled_at >= timedelta(minutes=p.max_hold_min):
         return _close(t, State.TIMEOUT, bar.close, end, costs)
+    if p.be_at_r > 0 and not t.at_breakeven and t.sl0 is not None:
+        reach = abs(t.entry - t.sl0) * p.be_at_r
+        fav = (bar.high - t.entry) if long else (t.entry - bar.low)
+        if fav >= reach:
+            fee_in = costs.taker_fee if t.market else costs.maker_fee
+            cost = t.entry * (fee_in + costs.taker_fee)
+            t.sl = t.entry + cost if long else t.entry - cost
+            return "BREAKEVEN"
     return event
 
 

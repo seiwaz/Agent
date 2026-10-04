@@ -83,3 +83,22 @@ def test_r_is_net_of_fees_and_stop_slippage():
     assert t.exit_price == D(98) - D("0.098")
     assert t.result_r == ((t.exit_price - 100) - D("0.1") - t.exit_price * D("0.001")) / ru
     assert abs(t.result_r + 1) < D("0.001")  # a planned stop is -1R: costs sit in the R
+
+
+def test_break_even_moves_the_stop_after_the_bar_that_reached_one_r():
+    p = SmcParams(be_at_r=D(1), max_hold_min=600)
+    c = Costs(maker_fee=D("0.001"), taker_fee=D("0.001"))
+    t = long_signal(state=State.OPEN, filled_at=T0, risk=risk_unit(Side.LONG, D(100), D(98), c))
+    assert advance(t, bar(1, 101.9, 99.5), p, c) is None  # +0.95R: not yet
+    assert advance(t, bar(2, 102.1, 99.5), p, c) == "BREAKEVEN"  # +1.05R reached
+    assert t.sl == D(100) + D("0.2") and t.sl0 == D(98) and t.at_breakeven
+    assert advance(t, bar(3, 101, 100.1), p, c) == "SL"  # back to entry: out near zero
+    assert abs(t.result_r) < D("0.01")
+
+
+def test_no_break_even_inside_the_fill_bar_and_off_by_default():
+    p = SmcParams(be_at_r=D(1))
+    t = long_signal()
+    assert advance(t, bar(0, 103, 99.9), p, FREE) == "FILLED" and not t.at_breakeven
+    t2 = long_signal(state=State.OPEN, filled_at=T0)
+    assert advance(t2, bar(1, 103, 100.5), P, FREE) is None and not t2.at_breakeven
