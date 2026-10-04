@@ -1,6 +1,11 @@
 # SMC runtime configuration for the production server. Strategy parameters: the `smc` section.
 database_url: postgresql+psycopg:///smc?host=/var/run/postgresql
-symbol: XAUTUSDT
+# Markets traded together on ONE shared simulated wallet (smc.account_usdt).
+symbols: [BTCUSDT, XRPUSDT]
+# Tabdeal FAPI exchangeInfo (2026-10-04): pricePrecision / quantityPrecision.
+instruments:
+  BTCUSDT: {tick: "0.1", step: "0.00001"}
+  XRPUSDT: {tick: "0.00001", step: "0.1"}
 
 collector:
   grace_ms: 2000          # B05
@@ -90,3 +95,7 @@ smc:
   min_net_rr: 1.5
   min_score: 2
   history_days: 35        # Tabdeal chart history kept for warmup (4h needs ~30 days)
+  account_usdt: 100       # the shared simulated wallet for all symbols
+  risk_pct: 0.01          # risk per position, of the wallet balance at entry
+  max_active: 1           # open/pending positions per symbol
+  max_positions: 2        # open/pending positions across all symbols

@@ -25,29 +25,33 @@ def psycopg_dsn(sqlalchemy_url: str) -> str:
 
 
 class LiveHub:
-    def __init__(self, dsn: str, symbol: str) -> None:
+    """One LISTEN connection for every configured market; each subscriber gets one market."""
+
+    def __init__(self, dsn: str, symbols: list[str]) -> None:
         self.dsn = dsn
-        self.symbol = symbol
-        self.subs: set[asyncio.Queue[str]] = set()
+        self.symbols = set(symbols)
+        self.subs: dict[asyncio.Queue[str], str] = {}
         self._task: asyncio.Task[None] | None = None
         self.connected = False
 
-    def subscribe(self) -> asyncio.Queue[str]:
+    def subscribe(self, symbol: str) -> asyncio.Queue[str]:
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._listen())
         q: asyncio.Queue[str] = asyncio.Queue(maxsize=5000)
-        self.subs.add(q)
+        self.subs[q] = symbol
         return q
 
     def unsubscribe(self, q: asyncio.Queue[str]) -> None:
-        self.subs.discard(q)
+        self.subs.pop(q, None)
 
-    def publish(self, payload: str) -> None:
-        for q in list(self.subs):
+    def publish(self, payload: str, symbol: str) -> None:
+        for q, sym in list(self.subs.items()):
+            if sym != symbol:
+                continue
             try:
                 q.put_nowait(payload)
             except asyncio.QueueFull:  # a stalled client: drop it (it reconnects + snapshot)
-                self.subs.discard(q)
+                self.subs.pop(q, None)
 
     async def _listen(self) -> None:
         import psycopg
@@ -60,11 +64,11 @@ class LiveHub:
                     self.connected = True
                     async for n in conn.notifies():
                         try:
-                            if json.loads(n.payload).get("symbol") != self.symbol:
-                                continue
+                            sym = json.loads(n.payload).get("symbol")
                         except ValueError:
                             continue
-                        self.publish(n.payload)
+                        if sym in self.symbols:
+                            self.publish(n.payload, sym)
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # DB restart etc.: clients keep their stream, we retry
@@ -75,11 +79,12 @@ class LiveHub:
 
 async def sse(
     hub: LiveHub,
+    symbol: str,
     snapshot: Callable[[], Any],
     is_disconnected: Callable[[], Any],
 ) -> AsyncIterator[str]:
     """Snapshot first (reconnect restores the forming candle), then every event."""
-    q = hub.subscribe()  # before the snapshot: nothing between the two is lost
+    q = hub.subscribe(symbol)  # before the snapshot: nothing between the two is lost
     try:
         yield "retry: 2000\n\n"
         snap = await asyncio.to_thread(snapshot)

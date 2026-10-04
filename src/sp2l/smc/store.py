@@ -12,6 +12,7 @@ from sqlalchemy import Connection, Engine, text
 from sp2l.core.types import Side
 from sp2l.smc.lifecycle import State, Tracked
 from sp2l.smc.model import Setup, Zone
+from sp2l.smc.wallet import Size
 
 
 def zone_json(z: Zone | None, tf: str | None = None) -> dict[str, Any] | None:
@@ -38,13 +39,22 @@ def setup_detail(s: Setup) -> dict[str, Any]:
     }
 
 
-def insert_signal(c: Connection, symbol: str, s: Setup, t: Tracked, params_hash: str) -> int:
+def insert_signal(
+    c: Connection,
+    symbol: str,
+    s: Setup,
+    t: Tracked,
+    params_hash: str,
+    size: Size | None = None,
+    wallet_id: int | None = None,
+) -> int:
     sid: int | None = c.execute(
         text(
             "INSERT INTO smc_signals (symbol, key, side, state, created_at, entry, sl, tp, risk,"
             " rr, net_rr, score, tp_source, trigger_kind, poi_tf, detail, qty, notional,"
-            " leverage, params_hash) VALUES (:sym, :key, :side, :state, :ca, :e, :sl, :tp, :risk,"
-            " :rr, :nrr, :score, :src, :tk, :ptf, CAST(:d AS jsonb), :q, :n, :lev, :ph)"
+            " leverage, params_hash, wallet_id, margin, filled_at) VALUES (:sym, :key, :side,"
+            " :state, :ca, :e, :sl, :tp, :risk, :rr, :nrr, :score, :src, :tk, :ptf,"
+            " CAST(:d AS jsonb), :q, :n, :lev, :ph, :w, :m, :fa)"
             " ON CONFLICT (symbol, key) DO NOTHING RETURNING id"
         ),
         {
@@ -63,15 +73,23 @@ def insert_signal(c: Connection, symbol: str, s: Setup, t: Tracked, params_hash:
             "src": s.tp_source,
             "tk": s.trigger_kind,
             "ptf": s.poi_tf,
-            "d": json.dumps(setup_detail(s)),
-            "q": s.qty,
-            "n": s.notional,
-            "lev": s.leverage,
+            "d": json.dumps({**setup_detail(s), "market": t.market}),
+            "q": size.qty if size else s.qty,
+            "n": size.notional if size else s.notional,
+            "lev": size.leverage if size else s.leverage,
             "ph": params_hash,
+            "w": wallet_id,
+            "m": size.margin if size else None,
+            "fa": t.filled_at,  # a market entry is filled at creation
         },
     ).scalar()
     if sid is not None:
-        event(c, sid, s.created_at, "CREATED", t.entry, {"sl": str(t.sl), "tp": str(t.tp)})
+        detail = {"sl": str(t.sl), "tp": str(t.tp)}
+        if size is not None:
+            detail.update(qty=str(size.qty), margin=str(size.margin))
+            if size.note:
+                detail["note"] = size.note
+        event(c, sid, s.created_at, "CREATED", t.entry, detail)
     return int(sid or 0)
 
 
@@ -87,11 +105,13 @@ def event(
     )
 
 
-def active(db: Engine, symbol: str) -> list[tuple[int, Tracked]]:
+def active(db: Engine, symbol: str) -> list[tuple[int, Tracked, Decimal]]:
+    """PENDING / OPEN signals of a market with their quantity."""
     with db.connect() as c:
         rows = c.execute(
             text(
-                "SELECT id, key, side, entry, sl, tp, created_at, risk, state, filled_at, last_m1"
+                "SELECT id, key, side, entry, sl, tp, created_at, risk, state, filled_at, last_m1,"
+                " COALESCE(qty, 0), detail"
                 " FROM smc_signals WHERE symbol = :s AND state IN ('PENDING', 'OPEN')"
                 " ORDER BY created_at"
             ),
@@ -109,9 +129,12 @@ def active(db: Engine, symbol: str) -> list[tuple[int, Tracked]]:
                 created_at=r[6],
                 risk=r[7],
                 state=State(r[8]),
-                filled_at=r[9],
+                # rows written before filled_at was stored: an OPEN market entry filled at creation
+                filled_at=r[9] or (r[6] if r[8] == "OPEN" else None),
                 last_m1=r[10],
+                market=bool((r[12] or {}).get("market")),
             ),
+            Decimal(r[11]),
         )
         for r in rows
     ]

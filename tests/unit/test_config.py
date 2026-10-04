@@ -45,6 +45,25 @@ def test_smc_section_overrides_defaults_and_rejects_unknown_keys():
         cfg({}, {"swing_length": 3}).smc_params()
 
 
+def test_symbols_instruments_and_per_market_params():
+    c = RuntimeConfig(
+        {
+            "database_url": "x",
+            "symbols": ["BTCUSDT", "XRPUSDT"],
+            "instruments": {"XRPUSDT": {"tick": "0.00001", "step": "0.1"}},
+            "smc": {"swing_len": 4},
+        }
+    )
+    assert c.symbols == ["BTCUSDT", "XRPUSDT"] and c.symbol == "BTCUSDT"
+    assert c.instrument("XRPUSDT") == (D("0.00001"), D("0.1"))
+    p = c.symbol_params("XRPUSDT")
+    assert (p.tick, p.swing_len) == (D("0.00001"), 4)
+    one = c.with_symbol("XRPUSDT")
+    assert one.symbols == ["XRPUSDT"] and one.symbol == "XRPUSDT"
+    with pytest.raises(ConfigError):
+        c.with_symbol("ETHUSDT")
+
+
 def test_repo_configs_load_and_costs_match_recorded_evidence():
     ev = json.loads((ROOT / "docs" / "cost_evidence.json").read_text())
     for name in ("runtime.yaml", "server.yaml"):
@@ -53,3 +72,5 @@ def test_repo_configs_load_and_costs_match_recorded_evidence():
         assert k.maker_fee == D(ev["maker_fee"]) and k.taker_fee == D(ev["taker_fee"])
         assert k.slippage == D(ev["slippage_allowance"])
         c.smc_params()
+        assert c.symbols == ["BTCUSDT", "XRPUSDT"]
+        assert c.instrument("BTCUSDT") == (D("0.1"), D("0.00001"))

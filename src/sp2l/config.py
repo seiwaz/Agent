@@ -9,11 +9,13 @@ Values are fractions (0.0002 = 0.02 %). Values >= 0.01 are rejected as a likely 
 fraction unit mistake.
 
 The `smc` section overrides SmcParams defaults (see smc/model.py); unknown keys are errors.
+`symbols` lists the markets traded together on one shared wallet (`smc.account_usdt`);
+`instruments` gives each market's price tick and quantity step.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -39,18 +41,43 @@ class RuntimeConfig:
         data = yaml.safe_load(path.read_text())
         if not isinstance(data, dict):
             raise ConfigError(f"{path}: not a mapping")
-        for key in ("database_url", "symbol"):
-            if not data.get(key):
-                raise ConfigError(f"{path}: `{key}` is required")
+        if not data.get("database_url"):
+            raise ConfigError(f"{path}: `database_url` is required")
+        if not data.get("symbols") and not data.get("symbol"):
+            raise ConfigError(f"{path}: `symbols` is required")
         return cls(data)
+
+    def with_symbol(self, symbol: str) -> RuntimeConfig:
+        """The same configuration restricted to one market (per-market commands)."""
+        if symbol not in self.symbols:
+            raise ConfigError(f"{symbol} is not one of the configured symbols {self.symbols}")
+        return RuntimeConfig({**self.raw, "symbol": symbol, "symbols": [symbol]})
 
     @property
     def database_url(self) -> str:
         return str(self.raw["database_url"])
 
     @property
+    def symbols(self) -> list[str]:
+        v = self.raw.get("symbols") or [self.raw["symbol"]]
+        return [str(x) for x in v]
+
+    @property
     def symbol(self) -> str:
-        return str(self.raw["symbol"])
+        """The first market (per-market commands take `--symbol`)."""
+        return str(self.raw.get("symbol") or self.symbols[0])
+
+    def instrument(self, symbol: str) -> tuple[Decimal, Decimal]:
+        """(price tick, quantity step) of a market."""
+        m = self.section("instruments").get(symbol) or {}
+        try:
+            return Decimal(str(m.get("tick", "0.01"))), Decimal(str(m.get("step", "0.001")))
+        except InvalidOperation as e:
+            raise ConfigError(f"instruments.{symbol}: invalid tick/step") from e
+
+    def symbol_params(self, symbol: str) -> SmcParams:
+        """Strategy parameters with the market's own price tick."""
+        return replace(self.smc_params(), tick=self.instrument(symbol)[0])
 
     def section(self, name: str) -> dict[str, Any]:
         v = self.raw.get(name) or {}

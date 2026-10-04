@@ -1,0 +1,386 @@
+<title>روند کار موتور SMC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a single-column technical field manual, RTL, each section = one diagram + its explanation */
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --surface-2: #eef1f5; --ink: #142029; --muted: #56636f; --line: #d6dce3;
+  --accent: #2f55c8; --accent-soft: rgba(47,85,200,.10);
+  --up: #13805f; --up-soft: rgba(19,128,95,.13); --down: #c2443a; --down-soft: rgba(194,68,58,.12);
+  --warn: #9a6410; --warn-soft: rgba(154,100,16,.12); --poi: #6b4fbf; --poi-soft: rgba(107,79,191,.14);
+  --f-body: "Vazirmatn", "Tahoma", system-ui, sans-serif;
+  --f-num: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1218; --surface: #141b23; --surface-2: #1a232d; --ink: #e6ebf0; --muted: #98a5b2; --line: #28333f;
+  --accent: #7e9cf2; --accent-soft: rgba(126,156,242,.14); --up: #4cc19a; --up-soft: rgba(76,193,154,.15);
+  --down: #ec7f74; --down-soft: rgba(236,127,116,.15); --warn: #e0b060; --warn-soft: rgba(224,176,96,.14);
+  --poi: #ac96ea; --poi-soft: rgba(172,150,234,.17); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0d1218; --surface: #141b23; --surface-2: #1a232d; --ink: #e6ebf0; --muted: #98a5b2; --line: #28333f;
+  --accent: #7e9cf2; --accent-soft: rgba(126,156,242,.14); --up: #4cc19a; --up-soft: rgba(76,193,154,.15);
+  --down: #ec7f74; --down-soft: rgba(236,127,116,.15); --warn: #e0b060; --warn-soft: rgba(224,176,96,.14);
+  --poi: #ac96ea; --poi-soft: rgba(172,150,234,.17); color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.85 var(--f-body); direction: rtl; }
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px; display: grid; gap: 56px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; line-height: 1.4; }
+h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 800; }
+h2 { font-size: 24px; font-weight: 800; }
+h3 { font-size: 17px; font-weight: 700; }
+p { margin: 0; max-width: 68ch; }
+.muted { color: var(--muted); }
+.num, .mono { font-family: var(--f-num); font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+section { display: grid; gap: 18px; min-width: 0; }
+.eyebrow { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: .02em; }
+
+header { display: grid; gap: 16px; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; }
+.fact { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 14px; font-size: 14px; }
+.fact b { font-weight: 700; }
+
+.fig { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; min-width: 0; }
+.scroll { overflow-x: auto; }
+.fig svg { display: block; width: 100%; height: auto; min-width: 640px; }
+.fig figcaption { font-size: 14px; color: var(--muted); margin-top: 10px; }
+figure { margin: 0; }
+
+/* svg tokens */
+.s-box { fill: var(--surface-2); stroke: var(--line); }
+.s-acc { fill: var(--accent-soft); stroke: var(--accent); }
+.s-up { fill: var(--up-soft); stroke: var(--up); }
+.s-down { fill: var(--down-soft); stroke: var(--down); }
+.s-warn { fill: var(--warn-soft); stroke: var(--warn); }
+.s-poi { fill: var(--poi-soft); stroke: var(--poi); }
+.t { fill: var(--ink); font-family: var(--f-body); font-size: 14px; }
+.t-b { fill: var(--ink); font-family: var(--f-body); font-size: 15px; font-weight: 700; }
+.t-m { fill: var(--muted); font-family: var(--f-body); font-size: 12.5px; }
+.t-n { fill: var(--muted); font-family: var(--f-num); font-size: 11.5px; }
+.t-up { fill: var(--up); } .t-down { fill: var(--down); } .t-poi { fill: var(--poi); } .t-acc { fill: var(--accent); } .t-warn { fill: var(--warn); }
+.ln { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+.ln-acc { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+.grid-ln { stroke: var(--line); stroke-width: 1; }
+.c-up { fill: var(--up); stroke: var(--up); } .c-down { fill: var(--down); stroke: var(--down); }
+.arrowhead { fill: var(--muted); } .arrowhead-acc { fill: var(--accent); }
+
+.gates { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.gate { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.gate .tf { font-family: var(--f-num); font-size: 13px; font-weight: 600; color: var(--accent); direction: ltr; text-align: right; }
+.gate .q { font-weight: 700; }
+.gate .fail { font-size: 13px; color: var(--muted); }
+.gate .fail code { font-family: var(--f-num); font-size: 12px; color: var(--down); }
+
+.cond { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cond li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.cond .k { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-family: var(--f-num); font-size: 13px; font-weight: 600; }
+.cond small { color: var(--muted); display: block; font-size: 13.5px; }
+
+.calc { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.calc .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 4px; min-width: 0; }
+.row { display: flex; justify-content: space-between; gap: 12px; font-size: 14.5px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.row:first-of-type { border-top: 0; }
+.row.total { font-weight: 700; border-top: 1px solid var(--ink); }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.stat .k { font-size: 13px; color: var(--muted); }
+.stat .v { font-family: var(--f-num); font-size: 22px; font-weight: 600; direction: ltr; text-align: right; }
+.stat .v.neg { color: var(--down); }
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.bars { display: grid; gap: 7px; }
+.bar { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 2fr) 52px; gap: 10px; align-items: center; font-size: 14px; }
+.bar .tr { height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+.bar .fl { height: 100%; border-radius: 5px; background: var(--c, var(--accent)); }
+.bar .n { font-family: var(--f-num); font-size: 13px; text-align: left; direction: ltr; }
+.note { background: var(--warn-soft); border-radius: 10px; padding: 12px 14px; font-size: 15px; }
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+
+@media (max-width: 760px) {
+  .gates, .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .calc, .two { grid-template-columns: minmax(0, 1fr); }
+  .wrap { gap: 44px; padding-block: 28px 48px; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">XAUT/USDT · فیوچرز تبدال · شبیه‌سازی بدون سفارش واقعی</span>
+    <h1>روند کار موتور SMC</h1>
+    <p class="muted">این صفحه نشان می‌دهد داده از کجا می‌آید، هر تایم‌فریم چه نقشی دارد، و دقیقاً در چه لحظه و با چه شرطی سیستم یک shadow position (پوزیشن شبیه‌سازی‌شده) باز می‌کند و آن را تا TP یا SL دنبال می‌کند.</p>
+    <div class="facts">
+      <span class="fact">جهت: <b>4h</b> + تأیید <b>1h</b></span>
+      <span class="fact">ناحیه ورود: <b>1h / 15m</b></span>
+      <span class="fact">تریگر و اجرا: <b>M1</b></span>
+      <span class="fact">warmup: <b>۳۵ روز</b> از history تبدال</span>
+      <span class="fact">حداقل سود خالص: <b>1.5R</b> بعد از کارمزد</span>
+    </div>
+  </header>
+
+  <!-- 1. pipeline -->
+  <section>
+    <span class="eyebrow">مسیر داده</span>
+    <h2>از کندل تا پوزیشن</h2>
+    <p>همه چیز از یک سری کندل یک‌دقیقه‌ای شروع می‌شود. کندل‌های زندهٔ کلکتور هر جا باشند اولویت دارند و بقیه از history چارت تبدال پر می‌شود. تایم‌فریم‌های بالاتر هر بار از همین سری ساخته می‌شوند، پس چارت داشبورد و موتور دقیقاً یک چیز را می‌بینند.</p>
+    <figure class="fig"><div class="scroll">
+      <svg viewBox="0 0 900 300" role="img" aria-label="نمودار جریان داده از تبدال تا داشبورد">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker>
+          <marker id="ara" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead-acc"/></marker>
+        </defs>
+        <!-- sources (right side, RTL reading) -->
+        <rect x="720" y="30" width="165" height="70" rx="10" class="s-box"/>
+        <text x="802" y="60" text-anchor="middle" class="t-b">history چارت تبدال</text>
+        <text x="802" y="82" text-anchor="middle" class="t-m">۳۵ روز M1، هر دقیقه به‌روز</text>
+        <rect x="720" y="190" width="165" height="70" rx="10" class="s-box"/>
+        <text x="802" y="220" text-anchor="middle" class="t-b">کلکتور زنده</text>
+        <text x="802" y="242" text-anchor="middle" class="t-m">WebSocket معاملات</text>
+        <!-- merged -->
+        <rect x="520" y="110" width="160" height="80" rx="10" class="s-acc"/>
+        <text x="600" y="143" text-anchor="middle" class="t-b">سری M1 ادغام‌شده</text>
+        <text x="600" y="166" text-anchor="middle" class="t-m">کندل زنده مقدم است</text>
+        <path d="M720 65 C 690 65, 700 130, 682 140" class="ln" marker-end="url(#ar)"/>
+        <path d="M720 225 C 690 225, 700 170, 682 160" class="ln" marker-end="url(#ar)"/>
+        <!-- TFs -->
+        <rect x="330" y="40" width="150" height="220" rx="10" class="s-box"/>
+        <text x="405" y="68" text-anchor="middle" class="t-b">تایم‌فریم‌ها</text>
+        <g class="t-n" text-anchor="middle">
+          <text x="405" y="100">4h · Tehran :30</text><text x="405" y="128">1h · Tehran :30</text>
+          <text x="405" y="156">15m</text><text x="405" y="184">5m</text><text x="405" y="212">1m</text>
+        </g>
+        <text x="405" y="244" text-anchor="middle" class="t-m">فقط کندل‌های بسته</text>
+        <path d="M520 150 L 484 150" class="ln" marker-end="url(#ar)"/>
+        <!-- structure -->
+        <rect x="160" y="70" width="135" height="160" rx="10" class="s-poi"/>
+        <text x="227" y="100" text-anchor="middle" class="t-b">تحلیل ساختار</text>
+        <g class="t" text-anchor="middle" font-size="13">
+          <text x="227" y="130">Swing</text><text x="227" y="154">BOS / CHoCH</text>
+          <text x="227" y="178">Order Block</text><text x="227" y="202">FVG</text>
+        </g>
+        <path d="M330 150 L 299 150" class="ln" marker-end="url(#ar)"/>
+        <!-- model + outputs -->
+        <rect x="15" y="40" width="120" height="90" rx="10" class="s-warn"/>
+        <text x="75" y="76" text-anchor="middle" class="t-b">مدل top-down</text>
+        <text x="75" y="100" text-anchor="middle" class="t-m">۴ دروازه</text>
+        <rect x="15" y="170" width="120" height="90" rx="10" class="s-up"/>
+        <text x="75" y="206" text-anchor="middle" class="t-b">shadow position</text>
+        <text x="75" y="230" text-anchor="middle" class="t-m">ثبت و پیگیری روی M1</text>
+        <path d="M160 130 C 145 120, 145 95, 139 90" class="ln" marker-end="url(#ar)"/>
+        <path d="M75 130 L 75 166" class="ln-acc" marker-end="url(#ara)"/>
+        <text x="84" y="153" class="t-n">pass</text>
+      </svg></div>
+      <figcaption>جهت خواندن از راست به چپ. هر کادر یک بخش واقعی کد است: <span class="mono">smc/history</span>، <span class="mono">smc/structure</span>، <span class="mono">smc/strategy</span>، <span class="mono">smc/lifecycle</span>.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 2. gates -->
+  <section>
+    <span class="eyebrow">مدل top-down</span>
+    <h2>چهار دروازه قبل از هر پوزیشن</h2>
+    <p>هر BOS یا CHoCH روی M1 یک «تریگر» است. تریگر فقط وقتی پوزیشن می‌شود که از هر چهار دروازه به ترتیب عبور کند. اگر در هر مرحله رد شود، دلیلش با یک کد در لاگ تریگرهای داشبورد ثبت می‌شود.</p>
+    <div class="gates">
+      <div class="gate"><span class="tf">4h + 1h</span><span class="q">۱. جهت بازار</span><span>آخرین شکست ساختار 4h باید هم‌جهت معامله باشد.</span><span class="fail">رد: <code>BIAS_MISMATCH</code>، <code>NO_BIAS</code></span></div>
+      <div class="gate"><span class="tf">1h → 15m</span><span class="q">۲. ناحیهٔ POI</span><span>یک OB یا FVG هم‌جهت که هنوز mitigate نشده و با OB تایم M1 هم‌پوشانی دارد.</span><span class="fail">رد: <code>NO_POI</code></span></div>
+      <div class="gate"><span class="tf">1m</span><span class="q">۳. تریگر</span><span>BOS یا CHoCH روی M1 با بسته شدن کندل، داخل همان ناحیه.</span><span class="fail">رد: <code>NO_ORDER_BLOCK</code></span></div>
+      <div class="gate"><span class="tf">1m</span><span class="q">۴. اجرا</span><span>TP روی نقدینگی که بعد از کارمزد حداقل 1.5R بدهد، SL حداکثر ۱٪، امتیاز ≥ ۲.</span><span class="fail">رد: <code>NO_TARGET</code>، <code>LOW_SCORE</code>، <code>SL_TOO_WIDE</code></span></div>
+    </div>
+  </section>
+
+  <!-- 3. annotated chart -->
+  <section>
+    <span class="eyebrow">یک ستاپ نمونه</span>
+    <h2>یک Short از روی چارت</h2>
+    <p>bias تایم 4h نزولی است (وضعیت واقعی همین حالا). قیمت به یک OB نزولی 1h برمی‌گردد، سقف قبلی را می‌زند تا نقدینگی بالای آن جمع شود، و بعد روی M1 یک CHoCH نزولی می‌دهد. ورود در بسته شدن همان کندل است، SL بالای ناحیه و TP روی کف بعدی (SSL).</p>
+    <figure class="fig"><div class="scroll"><svg id="setup" viewBox="0 0 900 400" role="img" aria-label="نمودار نمونهٔ یک ستاپ Short با ناحیه OB، شکار نقدینگی، CHoCH، ورود، حد ضرر و حد سود"></svg></div>
+      <figcaption>نمودار نمایشی است و قیمت‌ها گرد شده‌اند. روی داشبورد واقعی همین شیء Long/Short روی چارت کشیده می‌شود.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 4. exact moment -->
+  <section>
+    <span class="eyebrow">زمان‌بندی</span>
+    <h2>دقیقاً چه لحظه‌ای پوزیشن باز می‌شود؟</h2>
+    <p>موتور هر ۲ ثانیه بررسی می‌کند که آیا یک دقیقهٔ تازه بسته شده است. ارزیابی فقط روی کندل بسته انجام می‌شود، پس پوزیشن چند ثانیه بعد از بسته شدن کندل M1 تریگر باز می‌شود، نه وسط کندل.</p>
+    <figure class="fig"><div class="scroll">
+      <svg viewBox="0 0 900 190" role="img" aria-label="خط زمانی یک دقیقه از بسته شدن کندل تا نمایش پوزیشن">
+        <line x1="40" y1="95" x2="860" y2="95" class="ln"/>
+        <g class="t-n" text-anchor="middle">
+          <text x="840" y="125">10:41:00.0</text><text x="680" y="125">+1–2 s</text><text x="520" y="125">≤ +2 s</text><text x="360" y="125">+0.3 s</text><text x="200" y="125">≤ +5 s</text>
+        </g>
+        <circle cx="840" cy="95" r="8" class="s-acc"/><circle cx="680" cy="95" r="8" class="s-box"/><circle cx="520" cy="95" r="8" class="s-box"/><circle cx="360" cy="95" r="8" class="s-up"/><circle cx="200" cy="95" r="8" class="s-box"/>
+        <g text-anchor="middle">
+          <text x="840" y="60" class="t-b">بسته شدن M1</text><text x="840" y="160" class="t-m">CHoCH با close</text>
+          <text x="680" y="60" class="t-b">نهایی شدن کندل</text><text x="680" y="160" class="t-m">کلکتور / history</text>
+          <text x="520" y="60" class="t-b">tick موتور</text><text x="520" y="160" class="t-m">تایم‌فریم‌ها بازسازی</text>
+          <text x="360" y="60" class="t-b t-up">CREATED → OPEN</text><text x="360" y="160" class="t-m">ورود = close کندل تریگر</text>
+          <text x="200" y="60" class="t-b">داشبورد و هشدار</text><text x="200" y="160" class="t-m">جعبهٔ Long/Short روی چارت</text>
+        </g>
+      </svg></div>
+    </figure>
+    <ul class="cond">
+      <li><span class="k">۱</span><div>تریگر باید <b>تازه</b> باشد<small>فقط BOS/CHoCH که حداکثر ۳ دقیقه قبل بسته شده. بعد از قطعی یا ری‌استارت، سیستم هرگز پوزیشن گذشته‌نگر نمی‌سازد.</small></div></li>
+      <li><span class="k">۲</span><div>ظرفیت خالی باشد<small>در هر لحظه حداکثر یک پوزیشن باز یا در انتظار (<span class="mono">max_active = 1</span>).</small></div></li>
+      <li><span class="k">۳</span><div>نوع ورود پیش‌فرض market است<small>پوزیشن در همان لحظه OPEN می‌شود. در حالت limit (proximal/mid/distal) ابتدا PENDING است و منتظر پر شدن می‌ماند.</small></div></li>
+      <li><span class="k">۴</span><div>اندازهٔ پیشنهادی<small>ریسک ۱٪ از حساب فرضی ۱۰۰ USDT، به شرط اینکه اهرم لازم از ۱۰ برابر بیشتر نشود (<span class="mono">LEVERAGE</span>).</small></div></li>
+    </ul>
+  </section>
+
+  <!-- 5. lifecycle -->
+  <section>
+    <span class="eyebrow">چرخهٔ عمر</span>
+    <h2>بعد از باز شدن، روی هر کندل M1</h2>
+    <p>هر پوزیشن با تک‌تک کندل‌های نهایی M1 جلو می‌رود. اگر در یک دقیقه هم SL و هم TP لمس شده باشند، سیستم محافظه‌کارانه SL را حساب می‌کند. در دقیقه‌ای که ورود پر شده، TP حساب نمی‌شود.</p>
+    <figure class="fig"><div class="scroll">
+      <svg viewBox="0 0 900 260" role="img" aria-label="نمودار حالت‌های پوزیشن">
+        <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>
+        <rect x="730" y="100" width="140" height="56" rx="28" class="s-acc"/><text x="800" y="133" text-anchor="middle" class="t-b">PENDING</text>
+        <rect x="470" y="100" width="140" height="56" rx="28" class="s-warn"/><text x="540" y="133" text-anchor="middle" class="t-b">OPEN</text>
+        <rect x="180" y="20" width="150" height="50" rx="25" class="s-up"/><text x="255" y="50" text-anchor="middle" class="t-b">TP · سود</text>
+        <rect x="180" y="104" width="150" height="50" rx="25" class="s-down"/><text x="255" y="134" text-anchor="middle" class="t-b">SL · −1R</text>
+        <rect x="180" y="188" width="150" height="50" rx="25" class="s-box"/><text x="255" y="218" text-anchor="middle" class="t-b">TIMEOUT</text>
+        <rect x="730" y="10" width="140" height="44" rx="22" class="s-box"/><text x="800" y="37" text-anchor="middle" class="t">MISSED</text>
+        <rect x="730" y="200" width="140" height="44" rx="22" class="s-box"/><text x="800" y="227" text-anchor="middle" class="t">EXPIRED</text>
+        <path d="M730 128 L 614 128" class="ln" marker-end="url(#ar2)"/><text x="672" y="118" text-anchor="middle" class="t-m">پر شدن limit</text>
+        <path d="M800 100 L 800 58" class="ln" marker-end="url(#ar2)"/><text x="812" y="84" class="t-m" text-anchor="start">TP قبل از ورود</text>
+        <path d="M800 156 L 800 196" class="ln" marker-end="url(#ar2)"/><text x="812" y="182" class="t-m" text-anchor="start">۴۵ دقیقه بی‌ورود</text>
+        <path d="M470 118 C 400 90, 380 50, 334 46" class="ln" marker-end="url(#ar2)"/>
+        <path d="M470 129 L 334 129" class="ln" marker-end="url(#ar2)"/>
+        <path d="M470 140 C 400 170, 380 210, 334 212" class="ln" marker-end="url(#ar2)"/><text x="400" y="232" class="t-m" text-anchor="middle">۶ ساعت باز</text>
+        <path d="M540 20 L 540 96" class="ln-acc" marker-end="url(#ar2)"/><text x="552" y="40" class="t-m t-acc" text-anchor="start">ورود market (پیش‌فرض)</text>
+      </svg></div>
+    </figure>
+  </section>
+
+  <!-- 6. R math -->
+  <section>
+    <span class="eyebrow">حساب R</span>
+    <h2>چرا TP این‌قدر دور قرار می‌گیرد؟</h2>
+    <p>R همیشه بعد از کارمزد حساب می‌شود. کارمزد taker تبدال ۰٫۰۹۵٪ است و روی XAUT حدود ۴ USDT در هر طرف معامله می‌شود. پس یک استاپ ۸ دلاری در عمل ریسکی دو برابر دارد، و هدف 1.5R خالص خیلی دورتر از چیزی می‌افتد که روی چارت به نظر می‌رسد.</p>
+    <div class="calc">
+      <div class="card"><h3>ریسک هر واحد (Short)</h3>
+        <div class="row"><span>ورود (market) / SL</span><span class="num">4143.00 / 4151.00</span></div>
+        <div class="row"><span>فاصلهٔ استاپ</span><span class="num">8.00</span></div>
+        <div class="row"><span>کارمزد ورود ۰٫۰۹۵٪</span><span class="num">3.94</span></div>
+        <div class="row"><span>کارمزد خروج در SL</span><span class="num">3.94</span></div>
+        <div class="row"><span>slippage استاپ ۰٫۰۳۲۶٪</span><span class="num">1.35</span></div>
+        <div class="row total"><span>۱R واقعی</span><span class="num">17.23</span></div>
+      </div>
+      <div class="card"><h3>هدف برای 1.5R خالص</h3>
+        <div class="row"><span>سود خالص لازم</span><span class="num">1.5 × 17.23 = 25.85</span></div>
+        <div class="row"><span>+ کارمزد ورود و خروج</span><span class="num">≈ 7.84</span></div>
+        <div class="row"><span>حرکت قیمت لازم</span><span class="num">≈ 33.7</span></div>
+        <div class="row total"><span>TP</span><span class="num">≈ 4109.3</span></div>
+        <p class="muted" style="font-size:14px">یعنی ۳۳٫۷ دلار هدف در برابر ۸ دلار استاپ روی چارت. اگر هیچ نقدینگی تا آنجا نباشد، تریگر با <span class="mono">NO_TARGET</span> رد می‌شود.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. backtest -->
+  <section>
+    <span class="eyebrow">نتیجهٔ واقعی</span>
+    <h2>بک‌تست ۳۰ روز، همان پارامترها</h2>
+    <p class="muted">از ۴ سپتامبر تا ۴ اکتبر ۲۰۲۶، روی ۴۳٬۲۰۰ کندل M1، با همان کد و همان کارمزدهای سرور.</p>
+    <div class="stats">
+      <div class="stat"><div class="k">معاملات بسته</div><div class="v">64</div></div>
+      <div class="stat"><div class="k">نرخ برد</div><div class="v">17.2%</div></div>
+      <div class="stat"><div class="k">مجموع</div><div class="v neg">−38.06R</div></div>
+      <div class="stat"><div class="k">Profit factor</div><div class="v">0.15</div></div>
+    </div>
+    <figure class="fig"><div class="scroll"><svg id="equity" viewBox="0 0 900 240" role="img" aria-label="منحنی سرمایه بک‌تست بر حسب R"></svg></div>
+      <figcaption>منحنی سرمایه بر حسب R برای ۶۴ معامله، به ترتیب زمان بسته شدن.</figcaption></figure>
+    <div class="two">
+      <div class="fig"><h3>قیف تریگرها</h3><div class="bars" id="funnel"></div></div>
+      <div class="fig"><h3>نتیجهٔ معاملات</h3><div class="bars" id="outcomes"></div></div>
+    </div>
+    <p class="note">با این کارمزدها، مدل فعلی روی XAUT سودده نیست. بدون کارمزد تقریباً سربه‌سر است (PF ≈ 0.95). پس فعلاً سیگنال‌ها را آزمایشی در نظر بگیرید. صفحهٔ Performance داشبورد بعد از هر تغییر پارامتر همین بک‌تست را دوباره اجرا می‌کند.</p>
+  </section>
+
+  <footer>وضعیت زنده در لحظهٔ ساخت این صفحه (۴ اکتبر ۲۰۲۶، ۱۰:۴۳ تهران): bias تایم 4h و 1h نزولی، 15m و 1m صعودی، و هنوز هیچ پوزیشنی باز نشده است. آخرین تریگرها با <span class="mono">BIAS_MISMATCH</span>، <span class="mono">NO_POI</span> و <span class="mono">NO_TARGET</span> رد شدند. داشبورد: <span class="mono">http://94.74.166.123:3000</span></footer>
+</div>
+
+<script>
+(function () {
+  const NS = "http://www.w3.org/2000/svg";
+  const mk = (tag, attrs, text) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text !== undefined) e.textContent = text; return e; };
+
+  /* ---- annotated short setup ---- */
+  const svg = document.getElementById("setup");
+  const W = 900, H = 400, L = 60, R = 820, TOP = 30, BOT = 370;
+  const lo = 4100, hi = 4160;
+  const y = (p) => TOP + (hi - p) / (hi - lo) * (BOT - TOP);
+  // [open, high, low, close]: rally into the zone, sweep, M1 CHoCH down, then the drop to SSL
+  const c = [[4118,4121,4116,4120],[4120,4124,4119,4123],[4123,4126,4121,4122],[4122,4127,4121,4126],[4126,4130,4125,4129],
+    [4129,4133,4127,4128],[4128,4135,4127,4134],[4134,4139,4132,4138],[4138,4141,4135,4136],[4136,4143,4135,4142],
+    [4142,4147,4141,4145],[4145,4151,4144,4146],[4146,4148,4141,4142],[4142,4144,4139,4140],[4140,4142,4138,4141],
+    [4141,4143,4137,4138],[4138,4140,4133,4134],[4134,4136,4130,4131],[4131,4133,4126,4127],[4127,4130,4124,4128],
+    [4128,4129,4121,4122],[4122,4124,4116,4117],[4117,4119,4112,4113],[4113,4116,4109,4111],[4111,4114,4108,4112]];
+  const step = (R - L) / (c.length + 2);
+  const X = (i) => L + (i + 1) * step;  // charts keep time left to right, as traders read them
+  for (let p = 4105; p <= 4155; p += 10) {
+    svg.append(mk("line", { x1: L, x2: R, y1: y(p), y2: y(p), class: "grid-ln" }));
+    svg.append(mk("text", { x: R + 8, y: y(p) + 4, class: "t-n" }, p));
+  }
+  // 1h bearish OB (POI)
+  svg.append(mk("rect", { x: X(1) - 10, y: y(4150), width: R - X(1) + 10, height: y(4140) - y(4150), class: "s-poi", "stroke-dasharray": "0" }));
+  svg.append(mk("text", { x: X(1) - 4, y: y(4150) - 6, class: "t-b t-poi", "font-size": "13" }, "POI · OB نزولی 1h"));
+  // buy-side liquidity (old high) swept
+  svg.append(mk("line", { x1: X(2) - 6, x2: X(11) + 6, y1: y(4148), y2: y(4148), stroke: "currentColor", class: "ln", "stroke-dasharray": "2 4" }));
+  svg.append(mk("text", { x: X(3), y: y(4148) - 6, class: "t-m" }, "BSL · سقف قبلی"));
+  // structure: M1 swing low that breaks = CHoCH level
+  svg.append(mk("line", { x1: X(9), x2: X(13), y1: y(4139), y2: y(4139), class: "ln-acc", "stroke-dasharray": "5 3" }));
+  svg.append(mk("text", { x: X(13) + 8, y: y(4139) + 4, class: "t-b t-acc", "font-size": "13" }, "CHoCH M1"));
+  // candles
+  c.forEach(([o, h, l, cl], i) => {
+    const up = cl >= o, cx = X(i), cls = up ? "c-up" : "c-down";
+    svg.append(mk("line", { x1: cx, x2: cx, y1: y(h), y2: y(l), class: cls, "stroke-width": 1.4 }));
+    svg.append(mk("rect", { x: cx - step * 0.32, y: y(Math.max(o, cl)), width: step * 0.64, height: Math.max(1.5, Math.abs(y(o) - y(cl))), class: cls, "fill-opacity": up ? 0.85 : 0.85 }));
+  });
+  // sweep marker
+  svg.append(mk("text", { x: X(11), y: y(4151) - 10, "text-anchor": "middle", class: "t-m" }, "شکار نقدینگی"));
+  // position box from the trigger candle (index 15 closes below 4139)
+  const e = 4138, sl = 4152.5, tp = 4110, x1 = X(15), x2 = R;
+  svg.append(mk("rect", { x: x1, y: y(e), width: x2 - x1, height: y(tp) - y(e), class: "s-up" }));
+  svg.append(mk("rect", { x: x1, y: y(sl), width: x2 - x1, height: y(e) - y(sl), class: "s-down" }));
+  svg.append(mk("line", { x1: x1, x2: x2, y1: y(e), y2: y(e), class: "ln", "stroke-width": 2 }));
+  svg.append(mk("circle", { cx: x1, cy: y(e), r: 5, class: "s-acc" }));
+  svg.append(mk("text", { x: x2 - 6, y: y(sl) + 16, "text-anchor": "end", class: "t-b t-down", "font-size": "13" }, "SL بالای ناحیه + بافر ATR"));
+  svg.append(mk("text", { x: x2 - 6, y: y(tp) - 8, "text-anchor": "end", class: "t-b t-up", "font-size": "13" }, "TP روی SSL (کف بعدی)"));
+  svg.append(mk("text", { x: x1 + 8, y: y(e) - 8, class: "t-b", "font-size": "13" }, "ورود Short = close کندل CHoCH"));
+  svg.append(mk("line", { x1: X(22) - 20, x2: R, y1: y(4110), y2: y(4110), class: "ln", "stroke-dasharray": "2 4" }));
+
+  /* ---- equity curve ---- */
+  const eq = [-1.0,-2.0,-2.34,-3.34,-3.03,-2.84,-3.24,-4.24,-4.96,-5.96,-6.96,-7.96,-8.25,-8.05,-8.14,-9.14,-10.14,-11.14,-11.73,-12.73,-13.73,-14.73,-15.73,-16.31,-17.31,-16.89,-17.89,-17.77,-18.08,-19.08,-20.08,-20.78,-21.78,-22.78,-23.78,-24.78,-25.78,-26.78,-26.43,-27.43,-28.43,-29.43,-30.43,-31.43,-31.62,-31.53,-31.46,-31.84,-32.41,-32.93,-33.93,-34.61,-35.61,-36.05,-37.05,-38.05,-36.24,-37.24,-38.24,-36.68,-37.68,-38.68,-37.06,-38.06];
+  const es = document.getElementById("equity");
+  const EL = 60, ER = 870, ET = 20, EB = 205, emin = -40, emax = 0;
+  const ex = (i) => EL + (i / eq.length) * (ER - EL);
+  const ey = (v) => ET + (emax - v) / (emax - emin) * (EB - ET);
+  for (let v = 0; v >= -40; v -= 10) {
+    es.append(mk("line", { x1: EL, x2: ER, y1: ey(v), y2: ey(v), class: "grid-ln" }));
+    es.append(mk("text", { x: EL - 8, y: ey(v) + 4, "text-anchor": "end", class: "t-n" }, `${v}R`));
+  }
+  [0, 16, 32, 48, 64].forEach((n) => es.append(mk("text", { x: ex(n), y: EB + 22, "text-anchor": "middle", class: "t-n" }, n)));
+  const pts = [[ex(0), ey(0)], ...eq.map((v, i) => [ex(i + 1), ey(v)])];
+  es.append(mk("path", { d: pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("") + `L${ex(eq.length)},${ey(0)}Z`, class: "s-down", "stroke-width": 0 }));
+  es.append(mk("path", { d: pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(""), fill: "none", class: "c-down", "stroke-width": 2, style: "fill:none" }));
+  const lastP = pts[pts.length - 1];
+  es.append(mk("circle", { cx: lastP[0], cy: lastP[1], r: 4, class: "c-down" }));
+  es.append(mk("text", { x: lastP[0] - 8, y: lastP[1] - 10, "text-anchor": "end", class: "t-b t-down", "font-size": "13" }, "−38.06R"));
+
+  /* ---- bars ---- */
+  const bars = (id, rows) => {
+    const max = Math.max(...rows.map((r) => r[1]));
+    const box = document.getElementById(id);
+    rows.forEach(([label, n, color]) => {
+      const row = document.createElement("div"); row.className = "bar";
+      row.innerHTML = `<span></span><div class="tr"><div class="fl"></div></div><span class="n"></span>`;
+      row.children[0].textContent = label; row.children[2].textContent = n;
+      const fl = row.querySelector(".fl"); fl.style.width = `${(n / max) * 100}%`; fl.style.setProperty("--c", `var(${color})`);
+      box.append(row);
+    });
+  };
+  bars("funnel", [["همهٔ تریگرهای M1", 2077, "--muted"], ["خلاف جهت 4h", 881, "--down"], ["بیرون از POI", 387, "--down"], ["4h بدون جهت", 315, "--down"],
+    ["هدف با 1.5R خالص نیست", 135, "--down"], ["امتیاز کم", 61, "--down"], ["SL بیش از ۱٪", 25, "--down"], ["قبول‌شده", 307, "--up"], ["معامله‌شده (ظرفیت ۱، هر POI یک‌بار)", 64, "--up"]]);
+  bars("outcomes", [["SL", 38, "--down"], ["TIMEOUT (۶ ساعت)", 24, "--warn"], ["TP", 2, "--up"]]);
+})();
+</script>

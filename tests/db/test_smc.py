@@ -14,9 +14,11 @@ from sp2l.smc.history import ensure_history, load_bars, series_end
 from sp2l.smc.lifecycle import Tracked, risk_unit
 from sp2l.smc.model import Costs, Setup, SmcParams, Zone
 from sp2l.smc.runner import SmcRunner
+from sp2l.smc.wallet import Wallet
 
 pytestmark = pytest.mark.db
 SYM = "XAUTUSDT"
+OTHER = "ETHUSDT"
 NOW = datetime(2026, 3, 2, 12, 0, 20, tzinfo=UTC)
 MIN = timedelta(minutes=1)
 
@@ -44,7 +46,12 @@ def chart(a: datetime, b: datetime) -> list[dict]:
 @pytest.fixture()
 def clean(engine):
     with engine.begin() as c:
-        c.execute(text("TRUNCATE exchange_m1, smc_runner_state, smc_signal_events, smc_signals"))
+        c.execute(
+            text(
+                "TRUNCATE exchange_m1, smc_runner_state, smc_signal_events, smc_wallet_ledger,"
+                " smc_signals, smc_wallets"
+            )
+        )
     yield engine
 
 
@@ -125,9 +132,14 @@ def test_runner_steps_tracks_an_open_signal_to_its_stop_and_heartbeats(clean):
         risk_unit(Side.LONG, D(4100), D(4099), costs),
         market=True,
     )
+    w = Wallet(clean, p, [SYM])
     with clean.begin() as c:
-        sid = store.insert_signal(c, SYM, s, t, p.digest())
-    r = SmcRunner(clean, SYM, p, costs, fetch=None)
+        size = w.size(c, t.entry, t.risk, D("0.001"))
+        assert not isinstance(size, str)
+        # 1 % of 100 USDT at 1 USDT/unit risk = 1 unit = 4100 notional: cut to 10x the free 100
+        assert (size.qty, size.note) == (D("0.243"), "MARGIN_LIMITED")
+        sid = store.insert_signal(c, SYM, s, t, p.digest(), size, w.id)
+    r = SmcRunner(clean, SYM, p, costs, fetch=None, wallet=w)
     assert r.step(NOW)
     with clean.connect() as c:
         st, res = c.execute(
@@ -143,9 +155,15 @@ def test_runner_steps_tracks_an_open_signal_to_its_stop_and_heartbeats(clean):
         hb = c.execute(
             text("SELECT status FROM smc_runner_state WHERE symbol = :s"), {"s": SYM}
         ).scalar_one()
-    assert (
-        st == "SL" and res == D(-1) and kinds == ["CREATED", "SL"]
-    )  # chart prices sit far below 4099
+    # the chart prices sit far below 4099: stopped at once
+    assert st == "SL" and res == D(-1) and kinds == ["CREATED", "SL"]
+    with clean.connect() as c:
+        led = c.execute(
+            text("SELECT kind, amount, balance_after FROM smc_wallet_ledger ORDER BY id")
+        ).all()
+        pnl = c.execute(text("SELECT pnl_usdt FROM smc_signals WHERE id = :i"), {"i": sid}).scalar()
+    assert [(k, a) for k, a, _ in led] == [("DEPOSIT", D(100)), ("REALIZED_PNL", D("-0.243"))]
+    assert led[-1][2] == D("99.757") and pnl == D("-0.243")
     assert {x["tf"] for x in hb["timeframes"]} == {"1m", "15m", "1h", "4h"}
     assert not r.step(NOW)  # no new minute: nothing to do
 
@@ -161,7 +179,8 @@ def test_api_serves_every_smc_view(clean, tmp_path):
     cfg = RuntimeConfig(
         {
             "database_url": URL,
-            "symbol": SYM,
+            "symbols": [SYM],
+            "instruments": {SYM: {"tick": "0.01", "step": "0.001"}},
             "costs": {
                 "maker_fee": "0.0008",
                 "taker_fee": "0.00095",
@@ -181,6 +200,9 @@ def test_api_serves_every_smc_view(clean, tmp_path):
         "/api/market/candles?tf=4h&limit=5",
         "/api/smc/analysis?tf=1m&bars=100",
         "/api/smc/analysis?tf=15m",
+        f"/api/smc/analysis?tf=15m&symbol={SYM}",
+        "/api/smc/wallet",
+        f"/api/live/snapshot?symbol={SYM}",
     ):
         r = c.get(path)
         assert r.status_code == 200, (path, r.text[:300])
@@ -188,3 +210,68 @@ def test_api_serves_every_smc_view(clean, tmp_path):
     assert a["ready"] and {"zones", "htf_zones", "events", "liquidity", "range"} <= set(a)
     assert c.post("/api/smc/signals").status_code == 405  # read-only
     assert c.get("/api/smc/analysis?tf=2m").status_code == 422
+
+
+def test_shared_wallet_sizes_from_the_balance_and_caps_positions_across_markets(clean):
+    p = SmcParams(account_usdt=D(100), risk_pct=D("0.01"), max_leverage=D(10))
+    w = Wallet(clean, p, ["BTCUSDT", "XRPUSDT"])
+    assert Wallet(clean, p, ["XRPUSDT", "BTCUSDT"]).id == w.id  # same wallet on restart
+    with clean.begin() as c:
+        s = w.size(c, D("2.5"), D("0.05"), D("0.1"))  # XRP: 1 USDT risk / 0.05 = 20 units
+        assert not isinstance(s, str)
+        assert (s.qty, s.notional, s.margin, s.note) == (D(20), D(50), D(5), None)
+        assert w.size(c, D(80000), D(1000000), D("0.00001")) == "SIZE_BELOW_STEP"
+    w2 = Wallet(clean, SmcParams(account_usdt=D(200)), ["BTCUSDT", "XRPUSDT"])
+    assert w2.id != w.id  # a different initial balance starts a new wallet; the old one ends
+    with clean.connect() as c:
+        q = text("SELECT ended_at FROM smc_wallets WHERE id = :i")
+        assert c.execute(q, {"i": w.id}).scalar() is not None
+        assert w2.balance(c) == D(200)
+
+
+def test_an_open_market_position_survives_a_restart_and_stays_open(clean):
+    """Regression: an OPEN market entry is reloaded with its fill time (no crash on restart).
+    Its own market, so no canonical candle of another test can touch its stop."""
+    ensure_history(clean, OTHER, lambda a, b: chart(a, min(b, NOW)), days=2, now=NOW)
+    p = SmcParams(history_days=2, lookback_4h=10, lookback_1h=40)
+    created = NOW.replace(second=0) - timedelta(minutes=30)
+    zone = Zone("15m:OB:LONG:2", "OB", Side.LONG, D(3990), D(3980), 0, created, 0)
+    s = Setup(
+        key="test|2",
+        direction=Side.LONG,
+        accepted=True,
+        reasons=(),
+        created_at=created,
+        trigger_kind="BOS",
+        trigger_event_id="1m:BOS:LONG:2",
+        bias=1,
+        poi=zone,
+        poi_tf="15m",
+        entry_zone=zone,
+        entry=D(4010),
+        sl=D(3900),
+        tp=D(4500),
+        score=2,
+    )
+    t = Tracked(
+        "test|2",
+        Side.LONG,
+        D(4010),
+        D(3900),
+        D(4500),
+        created,
+        risk_unit(Side.LONG, D(4010), D(3900), Costs(), market=True),
+        market=True,
+    )
+    w = Wallet(clean, p, [OTHER])
+    with clean.begin() as c:
+        sid = store.insert_signal(c, OTHER, s, t, p.digest(), None, w.id)
+    ((loaded_id, loaded, _),) = store.active(clean, OTHER)
+    assert loaded_id == sid and loaded.filled_at == created and loaded.market
+    r = SmcRunner(clean, OTHER, p, Costs(), fetch=None, wallet=w)
+    assert r.step(NOW)  # chart prices stay between 3900 and 4500: still open, no error
+    with clean.connect() as c:
+        st, last = c.execute(
+            text("SELECT state, last_m1 FROM smc_signals WHERE id = :i"), {"i": sid}
+        ).one()
+    assert st == "OPEN" and last is not None

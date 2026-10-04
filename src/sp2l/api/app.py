@@ -19,6 +19,7 @@ from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from sp2l.api import queries as qx
+from sp2l.api import smc as smc_q
 from sp2l.api.live import LiveHub, psycopg_dsn, sse
 from sp2l.api.smc import SmcView
 from sp2l.config import ConfigError, RuntimeConfig
@@ -67,25 +68,49 @@ class SecurityHeaders:
 
 def create_app(cfg: RuntimeConfig) -> FastAPI:
     db = create_engine(cfg.database_url, pool_pre_ping=True)
-    symbol = cfg.symbol
+    symbols = cfg.symbols
     try:
         costs = cfg.costs()
         costs_problem: str | None = None
     except ConfigError as exc:
         costs, costs_problem = None, str(exc)
-    view = SmcView(db, symbol, cfg.smc_params(), costs)
-    display = ws_market(symbol).replace("_", "/")
+    views = {s: SmcView(db, s, cfg.symbol_params(s), costs) for s in symbols}
+    display = {s: ws_market(s).replace("_", "/") for s in symbols}
     app = FastAPI(title="SMC Console API", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(SecurityHeaders)
 
+    def view(symbol: str | None) -> SmcView:
+        if symbol is None:
+            return views[symbols[0]]
+        if symbol not in views:
+            raise HTTPException(404, f"symbol must be one of {symbols}")
+        return views[symbol]
+
+    def sym(symbol: str | None) -> str:
+        return view(symbol).symbol
+
     @app.get("/api/overview")
     def overview() -> Any:
+        markets = []
+        for s in symbols:
+            tick, step = cfg.instrument(s)
+            markets.append(
+                {
+                    "symbol": s,
+                    "display": display[s],
+                    "tick": qx.jsonable(tick),
+                    "step": qx.jsonable(step),
+                    "decimals": max(0, -tick.normalize().as_tuple().exponent),  # type: ignore[operator]
+                    "market": qx.market_summary(db, s, display[s]),
+                    "price": qx.jsonable(smc_q.last_price(db, s)),
+                    "collector": qx.collector_health(db, s),
+                    "smc": views[s].status(),
+                }
+            )
         return {
-            "symbol": symbol,
-            "symbol_display": display,
-            "market": qx.market_summary(db, symbol, display),
-            "collector": qx.collector_health(db),
-            "smc": view.status(),
+            "symbols": symbols,
+            "markets": markets,
+            "wallet": smc_q.wallet(db, symbols, costs),
             "costs_problem": costs_problem,
             "live": qx.live_status(db),
         }
@@ -93,85 +118,98 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
     # ---- SMC ------------------------------------------------------------------------------
     @app.get("/api/smc/analysis")
     def analysis(
-        tf: str = Query("15m", pattern=TF_PATTERN), bars: int = Query(300, ge=20, le=1000)
+        symbol: str | None = None,
+        tf: str = Query("15m", pattern=TF_PATTERN),
+        bars: int = Query(300, ge=20, le=1000),
     ) -> Any:
-        return view.analysis(tf, bars)
+        return view(symbol).analysis(tf, bars)
 
     @app.get("/api/smc/radar")
-    def radar() -> Any:
-        return view.radar()
+    def radar(symbol: str | None = None) -> Any:
+        return view(symbol).radar()
 
     @app.get("/api/smc/signals")
     def signals(
+        symbol: str | None = None,
         state: str = Query("all", pattern="^(all|active|closed)$"),
         limit: int = Query(50, ge=1, le=500),
         since_hours: float | None = Query(None, ge=0.1, le=24 * 90),
     ) -> Any:
         since = None if since_hours is None else datetime.now(UTC) - timedelta(hours=since_hours)
         act = {"all": None, "active": True, "closed": False}[state]
-        return {"items": view.signals(active=act, limit=limit, since=since)}
+        syms = symbols if symbol is None else [sym(symbol)]
+        return {"items": smc_q.signals(db, syms, active=act, limit=limit, since=since, costs=costs)}
 
     @app.get("/api/smc/signals/{sid}/events")
     def signal_events(sid: int) -> Any:
-        return {"items": view.signal_events(sid)}
+        return {"items": smc_q.signal_events(db, sid)}
 
     @app.get("/api/smc/performance")
-    def performance() -> Any:
-        return view.performance()
+    def performance(symbol: str | None = None) -> Any:
+        return smc_q.performance(db, symbols if symbol is None else [sym(symbol)])
+
+    @app.get("/api/smc/wallet")
+    def wallet() -> Any:
+        return smc_q.wallet(db, symbols, costs)
 
     @app.get("/api/smc/backtest")
-    def backtest(days: int = Query(30, ge=1, le=90)) -> Any:
-        return view.backtest(days)
+    def backtest(symbol: str | None = None, days: int = Query(30, ge=1, le=90)) -> Any:
+        return view(symbol).backtest(days)
 
     @app.get("/api/smc/params")
-    def params() -> Any:
-        return view.params_view()
+    def params(symbol: str | None = None) -> Any:
+        return view(symbol).params_view()
 
     # ---- market data ----------------------------------------------------------------------
     @app.get("/api/market/candles")
     def candles(
-        tf: str = Query("1m", pattern=TF_PATTERN), limit: int = Query(300, ge=1, le=1000)
+        symbol: str | None = None,
+        tf: str = Query("1m", pattern=TF_PATTERN),
+        limit: int = Query(300, ge=1, le=1000),
     ) -> Any:
-        return view.candles(tf, limit)
+        return view(symbol).candles(tf, limit)
 
     @app.get("/api/market/quality")
-    def quality(minutes: int = Query(180, ge=5, le=1440)) -> Any:
-        return qx.data_quality(db, symbol, minutes)
+    def quality(symbol: str | None = None, minutes: int = Query(180, ge=5, le=1440)) -> Any:
+        return qx.data_quality(db, sym(symbol), minutes)
 
     @app.get("/api/collector")
-    def collector() -> Any:
-        return {**qx.collector_health(db), "diagnostics": qx.diagnostics(db, symbol)}
+    def collector(symbol: str | None = None) -> Any:
+        s = sym(symbol)
+        return {**qx.collector_health(db, s), "diagnostics": qx.diagnostics(db, s)}
 
     @app.get("/api/feed")
-    def feed(hours: float = Query(24.0, ge=0.1, le=168.0)) -> Any:
+    def feed(symbol: str | None = None, hours: float = Query(24.0, ge=0.1, le=168.0)) -> Any:
         from sp2l.runtime.feed_report import report
 
-        rep = report(db, symbol, datetime.now(UTC) - timedelta(hours=hours))
-        rep["live"] = qx.collector_health(db).get("heartbeat")
+        s = sym(symbol)
+        rep = report(db, s, datetime.now(UTC) - timedelta(hours=hours))
+        rep["live"] = qx.collector_health(db, s).get("heartbeat")
         rep["correlated_closes"] = [qx.split_close_pair(c) for c in rep["correlated_closes"]]
         return qx.jsonable(rep)
 
     @app.get("/api/integrity")
-    def integrity() -> Any:
-        return qx.integrity(db, symbol)
+    def integrity(symbol: str | None = None) -> Any:
+        return qx.integrity(db, sym(symbol))
 
     @app.get("/api/validation")
     def validation() -> Any:
         return {"live": qx.live_status(db), "items": qx.validation(db)}
 
-    hub = LiveHub(psycopg_dsn(cfg.database_url), symbol)
+    hub = LiveHub(psycopg_dsn(cfg.database_url), symbols)
 
     @app.get("/api/live/snapshot")
-    def live_snapshot() -> Any:
+    def live_snapshot(symbol: str | None = None) -> Any:
         """The forming candle(s) and latest price, for (re)connecting clients."""
-        return qx.live_snapshot(db, symbol)
+        return qx.live_snapshot(db, sym(symbol))
 
     @app.get("/api/live/stream")
-    async def live_stream(request: Request) -> StreamingResponse:
-        """Server-Sent Events: forming M1 on every canonical trade, then its final candle and
-        any revision. Display only."""
+    async def live_stream(request: Request, symbol: str | None = None) -> StreamingResponse:
+        """Server-Sent Events of one market: forming M1 on every canonical trade, then its
+        final candle and any revision. Display only."""
+        s = sym(symbol)
         return StreamingResponse(
-            sse(hub, lambda: qx.live_snapshot(db, symbol), request.is_disconnected),
+            sse(hub, s, lambda: qx.live_snapshot(db, s), request.is_disconnected),
             media_type="text/event-stream",
             headers={"X-Accel-Buffering": "no"},
         )
@@ -184,7 +222,5 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
     def index() -> FileResponse:
         return FileResponse(WEB / "index.html")
 
-    if not (WEB / "index.html").exists():  # pragma: no cover
-        raise HTTPException(500, "web/ missing")
     app.mount("/static", StaticFiles(directory=WEB), name="static")
     return app

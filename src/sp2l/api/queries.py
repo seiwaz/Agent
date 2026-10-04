@@ -50,13 +50,23 @@ def one(engine: Engine, sql: str, **p: Any) -> dict[str, Any] | None:
     return r[0] if r else None
 
 
-def collector_health(engine: Engine) -> dict[str, Any]:
-    run = one(engine, "SELECT * FROM collector_runs ORDER BY id DESC LIMIT 1")
-    hb = one(engine, "SELECT * FROM collector_heartbeats ORDER BY id DESC LIMIT 1")
+def collector_health(engine: Engine, symbol: str) -> dict[str, Any]:
+    run = one(
+        engine,
+        "SELECT * FROM collector_runs WHERE symbol = :s ORDER BY id DESC LIMIT 1",
+        s=symbol,
+    )
+    hb = one(
+        engine,
+        "SELECT h.* FROM collector_heartbeats h JOIN collector_runs r ON r.id = h.run_id"
+        " WHERE r.symbol = :s ORDER BY h.id DESC LIMIT 1",
+        s=symbol,
+    )
     restarts = rows(
         engine,
         "SELECT id, started_at, ended_at, exit_reason, pid, mode FROM"
-        " collector_runs ORDER BY id DESC LIMIT 20",
+        " collector_runs WHERE symbol = :s ORDER BY id DESC LIMIT 20",
+        s=symbol,
     )
     for i, r in enumerate(restarts):
         r["clean_exit"] = r["ended_at"] is not None

@@ -1,36 +1,40 @@
 # SMC Console
 
-Smart Money Concepts signal engine for Tabdeal futures (XAUT/USDT), with a live dashboard.
+Smart Money Concepts engine for Tabdeal futures — **BTC/USDT and XRP/USDT on one shared
+simulated 100 USDT wallet** — with a live dashboard.
 Top-down analysis (4h bias → 1h / 15m order blocks and fair value gaps → M1 BOS / CHoCH),
 execution on M1, entry / stop / target net of fees. The strategy is specified in
 `docs/SMC_STRATEGY.md`. **No orders are ever sent**: signals and their lifecycle are recorded.
 
 ## Processes
 ```sh
-uv run python -m sp2l collect          # live market data (public stream, no API key) -> live chart
-uv run python -m sp2l smc              # SMC engine: history from Tabdeal (no warmup), signals
+uv run python -m sp2l --symbol BTCUSDT collect   # live market data of one market (one per market)
+uv run python -m sp2l smc              # SMC engine: every market, shared wallet, history from Tabdeal
 uv run python -m sp2l api --port 8765  # read-only API + WebUI
-uv run python -m sp2l backtest --days 30 [--set min_net_rr=2 --set poi_tfs=15m]
+uv run python -m sp2l --symbol XRPUSDT backtest --days 30 [--set min_net_rr=2 --set poi_tfs=15m]
 ```
 The engine loads `smc.history_days` of 1-minute history from Tabdeal's chart on start and tops
 it up every minute, so every timeframe is complete immediately; live collector candles take
 precedence where they exist. It runs without the collector too (chart then updates per minute).
 
 ## Dashboard
-- **Chart** — timeframe switch (1m…4h), layers: order blocks, fair value gaps, BOS / CHoCH,
-  liquidity (BSL / SSL), premium / discount, higher-timeframe zones, long / short position
-  objects (open and past), mitigated zones. Position ticket, top-down ladder, POI watchlist and
+- **Chart** — market switch (BTC / XRP), timeframe switch (1m…4h), full-screen button, layers:
+  order blocks, fair value gaps, BOS / CHoCH, liquidity (BSL / SSL), premium / discount,
+  higher-timeframe zones, long / short position objects (open and past). Invalid zones (an OB
+  closed through, an FVG completely filled) are removed. Position ticket, top-down ladder, POI watchlist and
   the M1 trigger log with the reason each trigger did or did not qualify.
 - **Signals** — full history with the lifecycle timeline of each signal; "Show on chart".
-- **Performance** — live results in R and the backtest of the parameters in force.
+- **Performance** — the shared wallet (balance, equity, fees, ledger, per-market results) and
+  the backtest of the parameters in force per market.
 - **Strategy** — the model and every parameter (with its hash), factors and reason codes.
 - **System** — engine heartbeat, history coverage, collector and data quality.
 
 ## Services
 - macOS: `scripts/collector-service.sh`, `scripts/smc-service.sh`, `scripts/api-service.sh`
   (`install|restart|status|logs|uninstall`).
-- Linux server: `deploy/smc-collector.service`, `deploy/smc-engine.service`,
-  `deploy/smc-api.service` (WebUI on port 3000), set up by `deploy/install.sh`.
+- Linux server: `deploy/smc-collector@.service` (one instance per market:
+  `smc-collector@BTCUSDT`, `smc-collector@XRPUSDT`), `deploy/smc-engine.service`,
+  `deploy/smc-api.service` (WebUI on port 3000).
 
 ## Read-only exchange validation
 `uv run python -m sp2l validate-readonly` runs GET-only authenticated checks. Credentials live

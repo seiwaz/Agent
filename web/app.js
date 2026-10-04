@@ -1,5 +1,5 @@
 /* SMC Console — render-only client.
- * Every zone, structure break, signal, state, reason and number shown here comes from the
+ * Every zone, structure break, position, state, reason and number shown here comes from the
  * backend API. This file holds no strategy logic: it fetches JSON, maps prices and times to
  * pixels, formats values for people and renders them. The only aggregation it does is folding
  * live M1 ticks into the bar of the selected timeframe that is still forming (display only).
@@ -21,6 +21,9 @@ const ICONS = {
   down: '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
   flat: '<path d="M5 12h14"/>',
   target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  expand: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>',
+  shrink: '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/>',
+  wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
 };
 function icon(name, cls) {
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -78,9 +81,17 @@ function grp(v) {
   const [i, f] = s.split(".");
   return i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (f ? `.${f}` : "");
 }
-const px2 = (v) => (v === null || v === undefined ? "—" : grp((+v).toFixed(2)));
+/** A price of `sym` with that market's own number of decimals. */
+function pxs(v, sym) {
+  if (v === null || v === undefined) return "—";
+  const m = state.markets[sym || state.symbol];
+  return grp((+v).toFixed(m ? m.decimals : 2));
+}
+const usd = (v, d) => (v === null || v === undefined ? "—" : `${+v < 0 ? "−" : ""}${grp(Math.abs(+v).toFixed(d ?? 2))}`);
+const usdSigned = (v) => (v === null || v === undefined ? "—" : `${+v > 0 ? "+" : +v < 0 ? "−" : ""}${grp(Math.abs(+v).toFixed(2))}`);
 function rText(v) { if (v === null || v === undefined) return "—"; const n = +v; return `${n > 0 ? "+" : ""}${n.toFixed(2)}R`; }
-function rEl(v) { return el("span", { class: `num ${v === null || v === undefined ? "" : +v > 0 ? "pos" : +v < 0 ? "neg" : ""}` }, rText(v)); }
+const toneOf = (v) => (v === null || v === undefined ? "" : +v > 0 ? "pos" : +v < 0 ? "neg" : "");
+function rEl(v) { return el("span", { class: `num ${toneOf(v)}` }, rText(v)); }
 function pct(fraction, digits) {
   if (fraction === null || fraction === undefined) return "—";
   return new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: digits ?? 1 }).format(+fraction);
@@ -97,6 +108,7 @@ function sideTag(side) {
   const long = side === "LONG";
   return el("span", { class: `side t-${long ? "ok" : "bad"}` }, icon(long ? "up" : "down"), long ? "Long" : "Short");
 }
+const symName = (s) => (state.markets[s] ? state.markets[s].display : s);
 const TREND = { BULLISH: ["ok", "up", "Bullish"], BEARISH: ["bad", "down", "Bearish"], UNDEFINED: ["neutral", "flat", "Undefined"] };
 const STATE = { PENDING: ["info", "Pending entry"], OPEN: ["warn", "Open"], TP: ["ok", "Target hit"], SL: ["bad", "Stopped out"],
   EXPIRED: ["neutral", "Expired"], MISSED: ["neutral", "Missed"], TIMEOUT: ["neutral", "Timed out"], CANCELLED: ["neutral", "Cancelled"] };
@@ -109,14 +121,12 @@ function table(target, headers, data, rowFn, emptyText) {
   else for (const r of data) body.append(rowFn(r));
   t.append(body);
 }
-function kv(target, pairs) {
-  $(target).replaceChildren(...pairs.flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v instanceof Node ? v : show(v))]));
-}
 async function api(path) {
   const r = await fetch(path, { headers: { Accept: "application/json" } });
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
   return r.json();
 }
+const q = (path, extra) => `${path}${path.includes("?") ? "&" : "?"}symbol=${encodeURIComponent(state.symbol)}${extra || ""}`;
 
 /* ---- state ---------------------------------------------------------------------------------- */
 const TFS = ["1m", "5m", "15m", "1h", "4h"];
@@ -126,14 +136,16 @@ const TF_BARS = { "1m": 600, "5m": 500, "15m": 400, "1h": 300, "4h": 180 };
 const LAYERS = [
   ["ob", "Order blocks", "--c-bull"], ["fvg", "Fair value gaps", "--c-fvg-bull"], ["structure", "BOS / CHoCH", "--c-text"],
   ["liquidity", "Liquidity", "--c-liq"], ["pd", "Premium / discount", "--c-pd-hi"], ["htf", "Higher-TF zones", "--c-fvg-bear"],
-  ["positions", "Positions", "--c-bull"], ["mitigated", "Mitigated", "--c-text"],
+  ["positions", "Positions", "--c-bull"],
 ];
 const prefs = loadPrefs();
-const state = { view: "chart", tf: prefs.tf || "15m", layers: prefs.layers || { ob: true, fvg: true, structure: true, liquidity: true, pd: false, htf: true, positions: true, mitigated: false },
-  chart: null, series: null, layer: null, data: [], times: [], byTime: new Map(), analysis: null, signals: [], focus: null,
-  overview: null, radar: null, live: null, lastPrice: null, sigFilter: "all", selectedSig: null, known: null, alerts: !!prefs.alerts };
+const state = { view: "chart", symbol: prefs.symbol || null, tf: prefs.tf || "15m",
+  layers: Object.assign({ ob: true, fvg: true, structure: true, liquidity: true, pd: false, htf: true, positions: true }, prefs.layers || {}),
+  markets: {}, symbols: [], chart: null, series: null, layer: null, data: [], times: [], byTime: new Map(), analysis: null,
+  signals: [], allSignals: [], focus: null, overview: null, radar: null, live: null, lastPrice: null,
+  sigFilter: "all", sigSym: "all", btSym: null, selectedSig: null, known: null, alerts: !!prefs.alerts, params: {} };
 function loadPrefs() { try { return JSON.parse(localStorage.getItem("smc-prefs") || "{}"); } catch { return {}; } }
-function savePrefs() { try { localStorage.setItem("smc-prefs", JSON.stringify({ tf: state.tf, layers: state.layers, alerts: state.alerts })); } catch { /* storage unavailable */ } }
+function savePrefs() { try { localStorage.setItem("smc-prefs", JSON.stringify({ symbol: state.symbol, tf: state.tf, layers: state.layers, alerts: state.alerts })); } catch { /* storage unavailable */ } }
 
 /* ---- chart: SMC drawing layer (series primitive) -------------------------------------------- */
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -153,15 +165,15 @@ function xOf(t) {
   return ts.logicalToCoordinate(lo + (t - T[lo]) / (T[hi] - T[lo]));
 }
 class SmcLayer {
-  constructor() { this.views = [new LayerView(this, "bottom"), new LayerView(this, "top")]; }
-  attached(p) { this.series = p.series; this.request = p.requestUpdate; }
+  constructor() { this.views = [new LayerView("bottom"), new LayerView("top")]; }
+  attached(p) { this.request = p.requestUpdate; }
   detached() { this.request = null; }
   paneViews() { return this.views; }
   updateAllViews() {}
   update() { if (this.request) this.request(); }
 }
 class LayerView {
-  constructor(src, z) { this.src = src; this.z = z; }
+  constructor(z) { this.z = z; }
   zOrder() { return this.z; }
   renderer() { return { draw: (target) => target.useMediaCoordinateSpace(({ context, mediaSize }) => (this.z === "bottom" ? drawBelow : drawAbove)(context, mediaSize)) }; }
 }
@@ -170,39 +182,68 @@ function span(from, to, width) {
   const x1 = from ? xOf(secs(from)) : 0;
   const x2 = to ? xOf(secs(to)) : width;
   if (x1 === null || x2 === null) return null;
-  return [Math.max(-10, x1), Math.min(width + 10, x2)];
+  if (x2 < 0 || x1 > width) return null;  // entirely outside the visible pane
+  return [Math.max(-2, x1), Math.min(width + 2, x2)];
 }
-function label(ctx, text, x, y, color, align, bg) {
-  ctx.font = "500 11px 'IBM Plex Sans', sans-serif";
-  ctx.textAlign = align || "left";
+/** A readable label pill, always kept inside the pane. align: left edge at x / right edge at x. */
+function pill(ctx, text, x, y, color, size, align) {
+  ctx.font = "600 11px 'IBM Plex Sans', sans-serif";
   ctx.textBaseline = "middle";
-  if (bg) {
-    const w = ctx.measureText(text).width + 8;
-    const bx = align === "right" ? x - w : align === "center" ? x - w / 2 : x;
-    ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(bx, y - 8, w, 16, 3); ctx.fill();
-    ctx.fillStyle = color; ctx.fillText(text, align === "right" ? x - 4 : align === "center" ? x : x + 4, y);
-    return;
-  }
-  ctx.fillStyle = color; ctx.fillText(text, x, y);
+  ctx.textAlign = "left";
+  const w = ctx.measureText(text).width + 10, h = 17;
+  let bx = align === "right" ? x - w : align === "center" ? x - w / 2 : x;
+  bx = Math.min(Math.max(bx, 3), size.width - w - 3);
+  const by = Math.min(Math.max(y - h / 2, 2), size.height - h - 2);
+  ctx.fillStyle = rgba(color, 0.92);
+  ctx.beginPath(); ctx.roundRect(bx, by, w, h, 4); ctx.fill();
+  ctx.fillStyle = rgba("--c-on", 1);
+  ctx.fillText(text, bx + 5, by + h / 2 + 0.5);
+}
+function plainLabel(ctx, text, x, y, color, size, align) {
+  ctx.font = "500 11px 'IBM Plex Sans', sans-serif";
+  ctx.textBaseline = "middle";
+  const w = ctx.measureText(text).width;
+  let tx = align === "right" ? x - w : x;
+  tx = Math.min(Math.max(tx, 3), size.width - w - 3);
+  ctx.textAlign = "left";
+  ctx.lineWidth = 3; ctx.strokeStyle = rgba("--c-pill", 0.85); ctx.strokeText(text, tx, y);
+  ctx.fillStyle = rgba(color, 1); ctx.fillText(text, tx, y);
 }
 function zoneColor(z) {
   if (z.kind === "OB") return z.direction === "LONG" ? "--c-bull" : "--c-bear";
   return z.direction === "LONG" ? "--c-fvg-bull" : "--c-fvg-bear";
 }
-function drawZone(ctx, z, W, htf) {
-  const s = span(z.from, z.to, W);
+let hatchCache = null;
+function hatch(ctx, color) {
+  const key = `${color}|${css(color)}`;
+  if (hatchCache && hatchCache.key === key) return hatchCache.pattern;
+  const c = document.createElement("canvas"); c.width = 8; c.height = 8;
+  const g = c.getContext("2d");
+  g.strokeStyle = rgba(color, 0.35); g.lineWidth = 1;
+  g.beginPath(); g.moveTo(0, 8); g.lineTo(8, 0); g.stroke();
+  hatchCache = { key, pattern: ctx.createPattern(c, "repeat") };
+  return hatchCache.pattern;
+}
+const invalid = (z) => z.status === "MITIGATED" || z.status === "EXPIRED";
+function drawZone(ctx, z, size, htf) {
+  if (invalid(z)) return;  // invalid zones are never drawn
+  const s = span(z.from, z.to, size.width);
   const y1 = yOf(z.top), y2 = yOf(z.bottom);
   if (!s || y1 === null || y2 === null) return;
-  const dead = z.status === "MITIGATED" || z.status === "EXPIRED";
   const c = zoneColor(z);
-  ctx.fillStyle = rgba(c, dead ? 0.05 : htf ? 0.10 : z.kind === "OB" ? 0.16 : 0.13);
-  ctx.fillRect(s[0], y1, s[1] - s[0], y2 - y1);
-  ctx.strokeStyle = rgba(c, dead ? 0.25 : htf ? 0.9 : 0.55);
-  ctx.lineWidth = htf ? 1.5 : 1;
-  ctx.setLineDash(z.kind === "FVG" || dead ? [4, 3] : []);
-  ctx.strokeRect(s[0], y1, s[1] - s[0], y2 - y1);
+  const h = Math.max(1, y2 - y1);
+  ctx.fillStyle = rgba(c, htf ? 0.08 : z.kind === "OB" ? 0.22 : 0.17);
+  ctx.fillRect(s[0], y1, s[1] - s[0], h);
+  if (htf) { ctx.fillStyle = hatch(ctx, c); ctx.fillRect(s[0], y1, s[1] - s[0], h); hatchCache = null; }
+  ctx.strokeStyle = rgba(c, htf ? 0.95 : 0.8);
+  ctx.lineWidth = htf ? 1.6 : 1;
+  ctx.setLineDash(htf ? [6, 3] : z.kind === "FVG" ? [3, 2] : []);
+  ctx.strokeRect(s[0], y1, s[1] - s[0], h);
   ctx.setLineDash([]);
-  if (s[1] - s[0] > 34) label(ctx, `${htf ? `${z.tf} ` : ""}${z.kind}${z.tested ? "" : " ●"}`, s[0] + 2, y1 + 8, rgba(c, dead ? 0.5 : 1));
+  const text = `${htf ? `${z.tf} ` : ""}${z.kind}${z.tested ? "" : " · fresh"}`;
+  // higher-timeframe labels sit at the right edge, own-timeframe labels at the zone's visible start
+  if (htf) pill(ctx, text, s[1] - 4, y1 + 10, c, size, "right");
+  else if (s[1] - s[0] > 30) pill(ctx, text, Math.max(s[0], 0) + 3, y1 + 10, c, size, "left");
 }
 function drawBelow(ctx, size) {
   const a = state.analysis;
@@ -211,20 +252,19 @@ function drawBelow(ctx, size) {
   if (L.pd && a.range) {
     const s = span(a.range.from, null, W), yh = yOf(a.range.high), ye = yOf(a.range.eq), yl = yOf(a.range.low);
     if (s && yh !== null && yl !== null) {
-      ctx.fillStyle = rgba("--c-pd-hi", 0.05); ctx.fillRect(s[0], yh, s[1] - s[0], ye - yh);
-      ctx.fillStyle = rgba("--c-pd-lo", 0.05); ctx.fillRect(s[0], ye, s[1] - s[0], yl - ye);
-      ctx.strokeStyle = rgba("--c-text", 0.35); ctx.setLineDash([2, 4]);
+      ctx.fillStyle = rgba("--c-pd-hi", 0.06); ctx.fillRect(s[0], yh, s[1] - s[0], ye - yh);
+      ctx.fillStyle = rgba("--c-pd-lo", 0.06); ctx.fillRect(s[0], ye, s[1] - s[0], yl - ye);
+      ctx.strokeStyle = rgba("--c-text", 0.4); ctx.setLineDash([2, 4]);
       ctx.beginPath(); ctx.moveTo(s[0], ye); ctx.lineTo(s[1], ye); ctx.stroke(); ctx.setLineDash([]);
-      label(ctx, "Premium", W - 60, yh + 10, rgba("--c-pd-hi", 0.8), "right");
-      label(ctx, "Equilibrium", W - 60, ye - 8, rgba("--c-text", 0.6), "right");
-      label(ctx, "Discount", W - 60, yl - 10, rgba("--c-pd-lo", 0.8), "right");
+      plainLabel(ctx, "Premium", W - 6, yh + 10, "--c-pd-hi", size, "right");
+      plainLabel(ctx, "Equilibrium", W - 6, ye - 9, "--c-text", size, "right");
+      plainLabel(ctx, "Discount", W - 6, yl - 10, "--c-pd-lo", size, "right");
     }
   }
-  if (L.htf) for (const z of a.htf_zones || []) if ((z.kind === "OB" && L.ob) || (z.kind === "FVG" && L.fvg)) drawZone(ctx, z, W, true);
+  if (L.htf) for (const z of a.htf_zones || []) if ((z.kind === "OB" && L.ob) || (z.kind === "FVG" && L.fvg)) drawZone(ctx, z, size, true);
   for (const z of a.zones || []) {
     if ((z.kind === "OB" && !L.ob) || (z.kind === "FVG" && !L.fvg)) continue;
-    if ((z.status === "MITIGATED" || z.status === "EXPIRED") && !L.mitigated) continue;
-    drawZone(ctx, z, W, false);
+    drawZone(ctx, z, size, false);
   }
 }
 function drawAbove(ctx, size) {
@@ -236,24 +276,25 @@ function drawAbove(ctx, size) {
       const s = span(e.from, e.to, W), y = yOf(e.level);
       if (!s || y === null) continue;
       const c = e.direction === "LONG" ? "--c-bull" : "--c-bear";
-      ctx.strokeStyle = rgba(c, 0.85); ctx.lineWidth = 1; ctx.setLineDash(e.kind === "CHOCH" ? [5, 3] : [2, 2]);
+      ctx.strokeStyle = rgba(c, 0.95); ctx.lineWidth = 1.3; ctx.setLineDash(e.kind === "CHOCH" ? [6, 3] : [2, 2]);
       ctx.beginPath(); ctx.moveTo(s[0], y); ctx.lineTo(s[1], y); ctx.stroke(); ctx.setLineDash([]);
-      label(ctx, e.kind === "CHOCH" ? "CHoCH" : "BOS", (s[0] + s[1]) / 2, y + (e.direction === "LONG" ? -8 : 8), rgba(c, 1), "center");
+      if (s[1] - s[0] > 24) plainLabel(ctx, e.kind === "CHOCH" ? "CHoCH" : "BOS", (s[0] + s[1]) / 2 - 14, y + (e.direction === "LONG" ? -9 : 9), c, size, "left");
     }
   }
   if (a && a.ready && L.liquidity) {
-    for (const q of a.liquidity || []) {
-      const s = span(q.from, null, W), y = yOf(q.price);
+    for (const lq of a.liquidity || []) {
+      const s = span(lq.from, null, W), y = yOf(lq.price);
       if (!s || y === null) continue;
-      ctx.strokeStyle = rgba("--c-liq", 0.8); ctx.setLineDash([1, 3]); ctx.lineWidth = 1.5;
+      ctx.strokeStyle = rgba("--c-liq", 0.9); ctx.setLineDash([1, 3]); ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.moveTo(s[0], y); ctx.lineTo(s[1], y); ctx.stroke(); ctx.setLineDash([]);
-      label(ctx, `${q.kind} ${px2(q.price)}`, s[0] + 4, y + (q.kind === "BSL" ? -8 : 8), rgba("--c-liq", 1));
+      plainLabel(ctx, `${lq.kind} ${pxs(lq.price)}`, W - 6, y + (lq.kind === "BSL" ? -9 : 9), "--c-liq", size, "right");
     }
   }
-  if (L.positions) for (const p of state.signals) drawPosition(ctx, p, W);
+  if (L.positions) for (const p of state.signals) drawPosition(ctx, p, size);
 }
 /** TradingView-style long/short position object: risk box, reward box, entry line, result. */
-function drawPosition(ctx, p, W) {
+function drawPosition(ctx, p, size) {
+  const W = size.width;
   const open = p.state === "PENDING" || p.state === "OPEN";
   const s = span(p.created_at, open ? null : p.closed_at, W);
   const ye = yOf(p.entry), ys = yOf(p.sl), yt = yOf(p.tp);
@@ -261,12 +302,12 @@ function drawPosition(ctx, p, W) {
   const x1 = s[0], x2 = Math.max(s[1], x1 + 24);
   const focus = state.focus === p.id;
   const a = open || focus ? 1 : 0.55;
-  ctx.fillStyle = rgba("--c-bull", 0.17 * a); ctx.fillRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
-  ctx.fillStyle = rgba("--c-bear", 0.17 * a); ctx.fillRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
-  ctx.lineWidth = focus ? 2 : 1;
-  ctx.strokeStyle = rgba("--c-bull", 0.7 * a); ctx.strokeRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
-  ctx.strokeStyle = rgba("--c-bear", 0.7 * a); ctx.strokeRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
-  ctx.strokeStyle = rgba("--c-text", 0.9 * a); ctx.setLineDash(p.state === "PENDING" ? [4, 3] : []); ctx.lineWidth = 1.5;
+  ctx.fillStyle = rgba("--c-bull", 0.2 * a); ctx.fillRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
+  ctx.fillStyle = rgba("--c-bear", 0.2 * a); ctx.fillRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
+  ctx.lineWidth = focus ? 2 : 1.2;
+  ctx.strokeStyle = rgba("--c-bull", 0.85 * a); ctx.strokeRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
+  ctx.strokeStyle = rgba("--c-bear", 0.85 * a); ctx.strokeRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
+  ctx.strokeStyle = rgba("--c-text", 0.95 * a); ctx.setLineDash(p.state === "PENDING" ? [4, 3] : []); ctx.lineWidth = 1.6;
   ctx.beginPath(); ctx.moveTo(x1, ye); ctx.lineTo(x2, ye); ctx.stroke(); ctx.setLineDash([]);
   if (p.filled_at) {
     const xf = xOf(secs(p.filled_at));
@@ -277,13 +318,13 @@ function drawPosition(ctx, p, W) {
     if (xx !== null && yx !== null) { ctx.strokeStyle = rgba("--c-text", a); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(xx - 4, yx - 4); ctx.lineTo(xx + 4, yx + 4); ctx.moveTo(xx + 4, yx - 4); ctx.lineTo(xx - 4, yx + 4); ctx.stroke(); }
   }
   const long = p.side === "LONG";
-  const head = `${long ? "Long" : "Short"} · ${p.net_rr ? `${(+p.net_rr).toFixed(2)}R` : ""}`;
-  const tail = open ? (p.state === "OPEN" ? ` · ${rText(p.open_r)}` : " · pending") : ` · ${STATE[p.state] ? STATE[p.state][1] : p.state} ${p.result_r !== null ? rText(p.result_r) : ""}`;
-  const yLab = long ? Math.min(yt, ye) - 10 : Math.max(yt, ye) + 10;
-  label(ctx, head + tail, x1, yLab, css("--surface"), "left", rgba(long ? "--c-bull" : "--c-bear", 0.95 * a));
+  const money = open ? (p.state === "OPEN" ? ` · ${rText(p.open_r)} · ${usdSigned(p.open_pnl)} $` : " · pending")
+    : ` · ${STATE[p.state] ? STATE[p.state][1] : p.state} ${rText(p.result_r)}${p.pnl_usdt !== null ? ` · ${usdSigned(p.pnl_usdt)} $` : ""}`;
+  const yLab = long ? Math.min(yt, ye) - 11 : Math.max(yt, ye) + 11;
+  pill(ctx, `${long ? "Long" : "Short"}${money}`, Math.max(x1, 0) + 2, yLab, long ? "--c-bull" : "--c-bear", size, "left");
   if (open) {
-    label(ctx, `TP ${px2(p.tp)}`, x2 - 2, yt + (long ? 9 : -9), rgba("--c-bull", 1), "right");
-    label(ctx, `SL ${px2(p.sl)}`, x2 - 2, ys + (long ? -9 : 9), rgba("--c-bear", 1), "right");
+    plainLabel(ctx, `TP ${pxs(p.tp)}`, x2 - 6, yt + (long ? 10 : -10), "--c-bull", size, "right");
+    plainLabel(ctx, `SL ${pxs(p.sl)}`, x2 - 6, ys + (long ? -10 : 10), "--c-bear", size, "right");
   }
 }
 
@@ -296,14 +337,14 @@ function chartTheme() {
     timeScale: { borderColor: css("--border"), timeVisible: true, secondsVisible: false, rightOffset: 12,
       tickMarkFormatter: (t, type) => (type < 3 ? fmtDay : fmtClock).format(new Date(t * 1000)) } };
 }
+function seriesColors() {
+  return { upColor: css("--ok"), borderUpColor: css("--ok"), wickUpColor: css("--ok"),
+    downColor: css("--bad"), borderDownColor: css("--bad"), wickDownColor: css("--bad") };
+}
 function ensureChart() {
   if (state.chart || !window.LightweightCharts) return;
   state.chart = LightweightCharts.createChart($("chart"), { autoSize: true, ...chartTheme() });
-  state.series = state.chart.addCandlestickSeries({
-    upColor: css("--ok"), borderUpColor: css("--ok"), wickUpColor: css("--ok"),
-    downColor: css("--bad"), borderDownColor: css("--bad"), wickDownColor: css("--bad"),
-    priceFormat: { type: "price", precision: 2, minMove: 0.01 },
-  });
+  state.series = state.chart.addCandlestickSeries(seriesColors());
   state.layer = new SmcLayer();
   state.series.attachPrimitive(state.layer);
   state.chart.subscribeCrosshairMove(showOhlc);
@@ -311,17 +352,23 @@ function ensureChart() {
   ts.subscribeVisibleLogicalRangeChange(() => { $("go-live").hidden = !(ts.scrollPosition() < -3); });
   $("go-live").addEventListener("click", () => ts.scrollToRealTime());
 }
+function applyPriceFormat() {
+  const m = state.markets[state.symbol];
+  if (!state.series || !m) return;
+  state.series.applyOptions({ priceFormat: { type: "price", precision: m.decimals, minMove: +m.tick } });
+}
 function restyle() {
   if (!state.chart) return;
   state.chart.applyOptions(chartTheme());
-  state.series.applyOptions({ upColor: css("--ok"), borderUpColor: css("--ok"), wickUpColor: css("--ok"),
-    downColor: css("--bad"), borderDownColor: css("--bad"), wickDownColor: css("--bad") });
+  state.series.applyOptions(seriesColors());
+  hatchCache = null;
   state.layer.update();
 }
 const toBar = (c) => ({ time: secs(c.open_time), open: +c.open, high: +c.high, low: +c.low, close: +c.close });
 function setCandles(d, keepView) {
   ensureChart();
   if (!state.series) return;
+  applyPriceFormat();
   state.byTime = new Map(d.items.map((c) => [secs(c.open_time), c]));
   state.data = d.items.map(toBar);
   state.times = state.data.map((b) => b.time);
@@ -352,18 +399,21 @@ function applyMinute(m) {
 function setPrice(p, live) {
   if (p === null || p === undefined) return;
   state.lastPrice = +p;
-  $("chart-price").textContent = px2(p);
+  $("chart-price").textContent = pxs(p);
   $("chart-price").title = live ? "latest trade (live)" : "last close";
 }
 function startLive() {
-  if (!window.EventSource || state.live) return;
-  const es = new EventSource("/api/live/stream");
+  if (!window.EventSource) return;
+  if (state.live) { state.live.close(); state.live = null; }
+  const sym = state.symbol;
+  const es = new EventSource(`/api/live/stream?symbol=${encodeURIComponent(sym)}`);
   state.live = es;
   const mark = (up) => { state.streamUp = up; $("chart-live").hidden = !(up && state.feedUp); };
   es.addEventListener("open", () => mark(true));
   es.addEventListener("error", () => mark(false));
-  es.addEventListener("snapshot", (e) => { const s = JSON.parse(e.data); for (const f of s.forming || []) applyMinute(f); if (s.price) setPrice(s.price, true); });
+  es.addEventListener("snapshot", (e) => { if (sym !== state.symbol) return; const s = JSON.parse(e.data); for (const f of s.forming || []) applyMinute(f); if (s.price) setPrice(s.price, true); });
   es.addEventListener("message", (e) => {
+    if (sym !== state.symbol) return;
     const ev = JSON.parse(e.data);
     if (ev.o === undefined || ev.status === "DATA_GAP") return;
     applyMinute(ev);
@@ -374,41 +424,58 @@ function showOhlc(param) {
   const box = $("chart-ohlc");
   const c = param && param.time !== undefined ? state.byTime.get(param.time) : null;
   if (!c) { box.textContent = ""; return; }
-  box.textContent = `${fmtDay.format(new Date(c.open_time))} ${fmtClock.format(new Date(c.open_time))} · O ${px2(c.open)}  H ${px2(c.high)}  L ${px2(c.low)}  C ${px2(c.close)}${c.forming ? " · forming" : ""}`;
+  box.textContent = `${fmtDay.format(new Date(c.open_time))} ${fmtClock.format(new Date(c.open_time))} · O ${pxs(c.open)}  H ${pxs(c.high)}  L ${pxs(c.low)}  C ${pxs(c.close)}${c.forming ? " · forming" : ""}`;
 }
 function renderLegend() {
   const items = [];
-  const sw = (c, b, text) => el("li", {}, el("span", { class: "sw", style: `--c:${rgba(c, 0.25)};--b:${rgba(c, 0.8)}` }), text);
-  if (state.layers.ob) items.push(sw("--c-bull", 0, "Bullish OB"), sw("--c-bear", 0, "Bearish OB"));
-  if (state.layers.fvg) items.push(sw("--c-fvg-bull", 0, "Bullish FVG"), sw("--c-fvg-bear", 0, "Bearish FVG"));
-  if (state.layers.structure) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${css("--text-2")}` }), "BOS / CHoCH (dashed)"));
+  const sw = (c, text) => el("li", {}, el("span", { class: "sw", style: `--c:${rgba(c, 0.35)};--b:${rgba(c, 0.95)}` }), text);
+  if (state.layers.ob) items.push(sw("--c-bull", "Bullish OB"), sw("--c-bear", "Bearish OB"));
+  if (state.layers.fvg) items.push(sw("--c-fvg-bull", "Bullish FVG"), sw("--c-fvg-bear", "Bearish FVG"));
+  if (state.layers.htf) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${css("--text-2")}` }), "Higher-TF zone (hatched, label on the right)"));
+  if (state.layers.structure) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${css("--text-2")}` }), "BOS / CHoCH"));
   if (state.layers.liquidity) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${rgba("--c-liq", 1)}` }), "BSL / SSL liquidity"));
-  items.push(el("li", { class: "muted" }, "● = untested zone"));
+  items.push(el("li", { class: "muted" }, "Invalid zones (OB closed through, FVG filled) are removed"));
   $("chart-legend").replaceChildren(...items);
 }
 function renderControls() {
   $("tf-seg").replaceChildren(...TFS.map((tf) => {
     const role = state.radar && state.radar.timeframes ? (state.radar.timeframes.find((x) => x.tf === tf) || {}).role : "";
-    return el("button", { type: "button", role: "tab", "aria-selected": String(tf === state.tf), title: role || null,
+    return el("button", { type: "button", role: "tab", "aria-selected": String(tf === state.tf), title: role ? `${tf}: ${role}` : tf,
       onclick: () => { if (state.tf !== tf) { state.tf = tf; savePrefs(); renderControls(); loadChart(false); } } },
     tf, role ? el("span", { class: "r" }, role.split(" ")[0][0]) : null);
   }));
   $("layer-chips").replaceChildren(...LAYERS.map(([k, name, c]) => el("button", { type: "button", class: "chip", "aria-pressed": String(!!state.layers[k]),
     onclick: () => { state.layers[k] = !state.layers[k]; savePrefs(); renderControls(); renderLegend(); if (state.layer) state.layer.update(); } },
-  el("span", { class: "sw", style: `--c:${rgba(c, 0.8)}` }), name)));
+  el("span", { class: "sw", style: `--c:${rgba(c, 0.9)}` }), name)));
+  $("chart-symbol").textContent = `${symName(state.symbol)} · ${state.tf}`;
+}
+function renderSymbols() {
+  $("sym-seg").replaceChildren(...state.symbols.map((s) => {
+    const m = state.markets[s];
+    const busy = state.allSignals.some((x) => x.symbol === s && (x.state === "OPEN" || x.state === "PENDING"));
+    return el("button", { type: "button", role: "tab", "aria-selected": String(s === state.symbol), onclick: () => selectSymbol(s) },
+      el("span", {}, m ? m.display : s, busy ? el("span", { class: "pos-dot", title: "open position" }) : null),
+      el("span", { class: "p" }, m ? pxs(m.price, s) : "—"));
+  }));
+}
+function selectSymbol(s) {
+  if (s === state.symbol) return;
+  state.symbol = s; state.radar = null; state.analysis = null; state.focus = null;
+  savePrefs(); renderSymbols(); renderControls();
+  startLive();
+  refreshView().catch(() => {});
 }
 async function loadChart(keepView) {
-  const tf = state.tf;
+  const tf = state.tf, sym = state.symbol;
   $("chart-note").hidden = true;
   try {
-    const [c, a, s] = await Promise.all([
-      api(`/api/market/candles?tf=${tf}&limit=${TF_BARS[tf]}`),
-      api(`/api/smc/analysis?tf=${tf}&bars=${TF_BARS[tf]}`),
-      api("/api/smc/signals?limit=100"),
+    const [c, a] = await Promise.all([
+      api(q(`/api/market/candles?tf=${tf}&limit=${TF_BARS[tf]}`)),
+      api(q(`/api/smc/analysis?tf=${tf}&bars=${TF_BARS[tf]}`)),
     ]);
-    if (tf !== state.tf) return;
+    if (tf !== state.tf || sym !== state.symbol) return;
     state.analysis = a;
-    state.signals = s.items;
+    state.signals = state.allSignals.filter((x) => x.symbol === sym);
     setCandles(c, keepView);
     if (!c.items.length) { $("chart-note").textContent = "No market history yet — the engine loads it from Tabdeal on start."; $("chart-note").hidden = false; }
   } catch (e) {
@@ -416,83 +483,113 @@ async function loadChart(keepView) {
   }
 }
 async function refreshAnalysis() {
-  const tf = state.tf;
-  const [a, s] = await Promise.all([api(`/api/smc/analysis?tf=${tf}&bars=${TF_BARS[tf]}`), api("/api/smc/signals?limit=100")]);
-  if (tf !== state.tf) return;
+  const tf = state.tf, sym = state.symbol;
+  const a = await api(q(`/api/smc/analysis?tf=${tf}&bars=${TF_BARS[tf]}`));
+  if (tf !== state.tf || sym !== state.symbol) return;
   state.analysis = a;
-  state.signals = s.items;
-  notifyChanges(s.items);
+  state.signals = state.allSignals.filter((x) => x.symbol === sym);
   if (state.layer) state.layer.update();
 }
 
-/* ---- side panels ---------------------------------------------------------------------------- */
-function renderKpis(o, r, perf) {
-  const k = (tone, label, value, detail, ic) => el("div", { class: `kpi t-${tone}` }, el("div", { class: "k" }, label),
-    el("div", { class: "v" }, ic ? icon(ic) : null, value), el("div", { class: "d" }, detail || " "));
-  const bias = (r && r.bias) || "UNDEFINED";
-  const [bt, bi, bl] = TREND[bias];
-  const act = state.signals.find((s) => s.state === "OPEN" || s.state === "PENDING");
-  const smc = o.smc || {}, run = smc.runner;
-  const hist = smc.history || {};
-  $("kpis").replaceChildren(
-    k("info", o.symbol_display || "Price", state.lastPrice !== null ? px2(state.lastPrice) : px2(o.market.last_price), o.market.age_s !== null ? `last trade ${ago(o.market.age_s)}` : "from exchange history"),
-    k(bt, `Bias · ${(r && r.timeframes && r.timeframes.find((x) => x.role.startsWith("Bias")) || {}).tf || ""}`, bl, "higher-timeframe structure", bi),
-    act ? k(act.side === "LONG" ? "ok" : "bad", "Position", `${act.side === "LONG" ? "Long" : "Short"} ${act.state === "OPEN" ? rText(act.open_r) : "pending"}`, `entry ${px2(act.entry)}`, act.side === "LONG" ? "up" : "down")
-      : k("neutral", "Position", "Flat", "waiting for a qualified trigger", "flat"),
-    k(+perf.total_r > 0 ? "ok" : +perf.total_r < 0 ? "bad" : "neutral", "Live result", rText(perf.total_r), `${perf.closed} closed · win ${pct(perf.win_rate)}`),
-    k(run && run.status === "RUNNING" ? "ok" : "bad", "Engine", run ? (run.status === "RUNNING" ? "Running" : "Stale") : "Not started", run ? `heartbeat ${ago(run.heartbeat_age_s)}` : "start: python -m sp2l smc", run && run.status === "RUNNING" ? "check" : "alert"),
-    k(hist.days >= hist.target_days - 1 ? "ok" : "warn", "History", hist.days !== null && hist.days !== undefined ? `${hist.days} d` : "—", `target ${hist.target_days} d · Tabdeal chart`),
-  );
+/* ---- fullscreen ------------------------------------------------------------------------------- */
+function isFull() { return document.fullscreenElement === $("chart-card") || $("chart-card").classList.contains("maximized"); }
+function renderFullBtn() {
+  const on = isFull();
+  $("full-btn").replaceChildren(icon(on ? "shrink" : "expand"));
+  $("full-btn").setAttribute("aria-pressed", String(on));
+  $("full-btn").setAttribute("aria-label", on ? "Leave full screen" : "Full screen chart");
 }
-function renderTicket() {
-  const act = state.signals.find((s) => s.state === "OPEN") || state.signals.find((s) => s.state === "PENDING");
-  const body = $("ticket-body");
-  if (!act) {
-    $("ticket-state").replaceChildren(tag("neutral", "Flat", "clock"));
-    const last = state.signals.find((s) => s.closed_at);
-    body.replaceChildren(el("div", { class: "ticket-empty" }, el("div", { class: "big" }, "No open position"),
-      el("p", { class: "muted small" }, "A position opens when an M1 break reacts inside a higher-timeframe zone aligned with the bias and the target pays the minimum R after fees."),
-      last ? el("p", { class: "small" }, "Last: ", sideTag(last.side), " ", stateTag(last.state), " ", rEl(last.result_r)) : null));
+function toggleFull() {
+  const card = $("chart-card");
+  if (isFull()) {
+    card.classList.remove("maximized"); document.body.classList.remove("has-max");
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    renderFullBtn();
     return;
   }
-  $("ticket-state").replaceChildren(stateTag(act.state));
-  const d = act.detail || {};
-  const risk = Math.abs(+act.entry - +act.sl), reward = Math.abs(+act.tp - +act.entry);
-  const tot = risk + reward || 1;
-  const factors = Object.entries(d.factors || {});
-  const ft = (state.radar && state.radar.factor_text) || {};
-  body.replaceChildren(
-    el("div", { class: "ticket-hero" }, el("div", {}, sideTag(act.side), " ", el("span", { class: "muted small" }, act.trigger_kind === "CHOCH" ? "M1 CHoCH" : "M1 BOS", act.poi_tf ? ` in ${act.poi_tf} ${(d.poi || {}).kind || "zone"}` : "")),
-      el("div", { class: "big num" }, act.state === "OPEN" ? rText(act.open_r) : "—")),
-    el("div", { class: "rr-bar", role: "img", "aria-label": `Risk ${risk.toFixed(2)}, reward ${reward.toFixed(2)}` },
-      el("span", { class: "loss", style: `width:${(risk / tot) * 100}%` }), el("span", { class: "win", style: `width:${(reward / tot) * 100}%` })),
-    el("div", { class: "rr-scale" }, el("span", {}, "Stop"), el("span", {}, `net ${act.net_rr ? (+act.net_rr).toFixed(2) : "—"}R after fees`), el("span", {}, "Target")),
-    el("div", { class: "levels" },
-      el("div", { class: "t-info" }, el("div", { class: "k" }, "Entry"), el("div", { class: "v num" }, px2(act.entry))),
-      el("div", { class: "t-bad" }, el("div", { class: "k" }, "Stop loss"), el("div", { class: "v num" }, px2(act.sl))),
-      el("div", { class: "t-ok" }, el("div", { class: "k" }, "Take profit"), el("div", { class: "v num" }, px2(act.tp)))),
-    el("dl", { class: "kv small" },
-      el("dt", {}, "Target"), el("dd", {}, show(act.tp_source)),
-      el("dt", {}, "Score"), el("dd", {}, `${act.score} / ${factors.length}`),
-      el("dt", {}, "Advisory size"), el("dd", { class: "num" }, act.qty ? `${grp((+act.qty).toFixed(3))} · ${px2(act.notional)} USDT · ${(+act.leverage).toFixed(1)}x` : "—"),
-      el("dt", {}, "Opened"), el("dd", {}, when(act.filled_at || act.created_at))),
-    el("div", { class: "factors" }, factors.map(([f, on]) => el("span", { class: `factor${on ? " on" : ""}`, title: ft[f] || f }, ft[f] || f))));
+  // the page-filling mode applies at once; true full screen is added where the browser allows it
+  card.classList.add("maximized"); document.body.classList.add("has-max");
+  renderFullBtn();
+  if (card.requestFullscreen) card.requestFullscreen().catch(() => {});
+}
+function onFullscreenChange() {
+  if (document.fullscreenElement) state.realFull = true;
+  else if (state.realFull) {  // left with Esc / the browser's own control: leave both modes
+    state.realFull = false;
+    $("chart-card").classList.remove("maximized"); document.body.classList.remove("has-max");
+  }
+  renderFullBtn();
+}
+
+/* ---- side panels ---------------------------------------------------------------------------- */
+function renderKpis(w, r) {
+  const k = (tone, label, value, detail, ic) => el("div", { class: `kpi t-${tone}` }, el("div", { class: "k" }, label),
+    el("div", { class: "v" }, ic ? icon(ic) : null, value), el("div", { class: "d" }, detail || " "));
+  const m = state.markets[state.symbol] || {};
+  const bias = (r && r.bias) || "UNDEFINED";
+  const [bt, bi, bl] = TREND[bias];
+  const smc = m.smc || {}, run = smc.runner, hist = smc.history || {};
+  const nOpen = state.allSignals.filter((s) => s.state === "OPEN" || s.state === "PENDING").length;
+  const maxPos = state.params[state.symbol] ? (state.params[state.symbol].groups.flatMap((g) => g.items).find((i) => i.key === "max_positions") || {}).value : 2;
+  const ret = w && w.ready ? w.return_pct : null;
+  $("kpis").replaceChildren(
+    w && w.ready ? k(+w.equity >= +w.initial ? "ok" : "bad", "Wallet equity · USDT", usd(w.equity), `balance ${usd(w.balance)} · ${ret >= 0 ? "+" : ""}${pct(ret, 2)}`, "wallet")
+      : k("neutral", "Wallet", "—", "starts with the engine", "wallet"),
+    k(nOpen ? "warn" : "neutral", "Positions", `${nOpen} / ${maxPos ?? 2}`, w && w.ready ? `margin ${usd(w.margin_used)} · free ${usd(w.free)}` : "", nOpen ? "target" : "flat"),
+    k(w && +w.unrealized > 0 ? "ok" : w && +w.unrealized < 0 ? "bad" : "neutral", "Open PnL · USDT", w && w.ready ? usdSigned(w.unrealized) : "—", w && w.ready ? `realized ${usdSigned(w.realized)} · fees ${usd(w.fees)}` : ""),
+    k(bt, `${symName(state.symbol)} bias · ${(r && r.timeframes && r.timeframes.find((x) => x.role.startsWith("Bias")) || {}).tf || ""}`, bl, "higher-timeframe structure", bi),
+    k(run && run.status === "RUNNING" ? "ok" : "bad", "Engine", run ? (run.status === "RUNNING" ? "Running" : "Stale") : "Not started", run ? `heartbeat ${ago(run.heartbeat_age_s)}` : "start: python -m sp2l smc", run && run.status === "RUNNING" ? "check" : "alert"),
+    k(hist.days >= hist.target_days - 1 ? "ok" : "warn", `History · ${symName(state.symbol)}`, hist.days !== null && hist.days !== undefined ? `${hist.days} d` : "—", `target ${hist.target_days ?? "—"} d · Tabdeal chart`),
+  );
+}
+function posCard(p) {
+  const long = p.side === "LONG";
+  const live = p.state === "OPEN";
+  return el("button", { type: "button", class: `pos-card t-${long ? "ok" : "bad"}`, title: "Show on chart",
+    onclick: () => { if (p.symbol !== state.symbol) selectSymbol(p.symbol); state.focus = p.id; if (state.layer) state.layer.update(); } },
+  el("div", { class: "top" }, el("span", {}, el("span", { class: "sym" }, symName(p.symbol)), " ", sideTag(p.side), " ", stateTag(p.state)),
+    el("span", { class: `pnl ${toneOf(p.open_pnl)}` }, live ? `${usdSigned(p.open_pnl)} $` : "—")),
+  el("div", { class: "levels" },
+    el("div", { class: "t-info" }, el("div", { class: "k" }, "Entry"), el("div", { class: "v num" }, pxs(p.entry, p.symbol))),
+    el("div", { class: "t-bad" }, el("div", { class: "k" }, "Stop loss"), el("div", { class: "v num" }, pxs(p.sl, p.symbol))),
+    el("div", { class: "t-ok" }, el("div", { class: "k" }, "Take profit"), el("div", { class: "v num" }, pxs(p.tp, p.symbol)))),
+  el("div", { class: "meta" }, el("span", {}, live ? rText(p.open_r) : "pending"), el("span", {}, `net ${p.net_rr ? (+p.net_rr).toFixed(2) : "—"}R`),
+    el("span", { class: "num" }, `qty ${grp(String(+p.qty))}`), el("span", { class: "num" }, `${usd(p.notional)} $ · margin ${usd(p.margin)} $`),
+    el("span", {}, "opened ", when(p.filled_at || p.created_at))));
+}
+function renderTicket(w) {
+  const act = state.allSignals.filter((s) => s.state === "OPEN" || s.state === "PENDING");
+  const body = $("ticket-body");
+  const mini = w && w.ready ? el("div", { class: "wallet-mini" },
+    el("div", {}, el("div", { class: "k" }, "Balance"), el("div", { class: "v" }, `${usd(w.balance)}`)),
+    el("div", {}, el("div", { class: "k" }, "Equity"), el("div", { class: `v ${toneOf(+w.equity - +w.initial)}` }, `${usd(w.equity)}`)),
+    el("div", {}, el("div", { class: "k" }, "Free"), el("div", { class: "v" }, `${usd(w.free)}`))) : null;
+  $("ticket-state").replaceChildren(act.length ? tag("warn", `${act.length} open`, "target") : tag("neutral", "Flat", "clock"));
+  if (!act.length) {
+    const last = state.allSignals.find((s) => s.closed_at);
+    body.replaceChildren(mini || "", el("div", { class: "ticket-empty" },
+      el("p", { class: "muted small" }, `One shared ${w && w.ready ? usd(w.initial, 0) : "100"} USDT wallet for ${state.symbols.map(symName).join(" and ")}. A position opens when an M1 break reacts inside a higher-timeframe zone aligned with the bias and the target pays the minimum R after fees.`),
+      last ? el("p", { class: "small" }, "Last: ", symName(last.symbol), " ", sideTag(last.side), " ", stateTag(last.state), " ", rEl(last.result_r), last.pnl_usdt !== null ? ` · ${usdSigned(last.pnl_usdt)} $` : "") : null));
+    return;
+  }
+  body.replaceChildren(mini || "", el("div", { class: "pos-list" }, act.map(posCard)));
 }
 function renderRadar(r) {
   if (!r || !r.ready) { $("ladder").replaceChildren(el("li", { class: "t-neutral" }, el("span", {}, "No data yet"))); return; }
   const [bt, bic, bl] = TREND[r.bias];
-  $("ladder-bias").replaceChildren(tag(bt, `Bias ${bl.toLowerCase()}`, bic));
+  $("ladder-bias").replaceChildren(tag(bt, `${symName(state.symbol)} · ${bl.toLowerCase()}`, bic));
   $("ladder").replaceChildren(...[...r.timeframes].reverse().map((t) => {
     const [tone, ic, lab] = TREND[t.trend];
     const ev = t.last_event;
     return el("li", { class: `t-${tone}` }, el("span", { class: "tf" }, t.tf),
-      el("div", {}, el("div", { class: "role" }, t.role || "Context"), el("div", { class: "ev" }, ev ? `${ev.kind === "CHOCH" ? "CHoCH" : "BOS"} ${ev.direction === "LONG" ? "up" : "down"} @ ${px2(ev.level)} · ` : "no break yet", ev ? when(ev.time) : null)),
+      el("div", {}, el("div", { class: "role" }, t.role || "Context"),
+        el("div", { class: "ev" }, ev ? `${ev.kind === "CHOCH" ? "CHoCH" : "BOS"} ${ev.direction === "LONG" ? "up" : "down"} @ ${pxs(ev.level)} · ` : "no break yet", ev ? when(ev.time) : null)),
       el("span", { class: "tr" }, icon(ic), lab));
   }));
   $("poi-list").replaceChildren(...(r.pois.length ? r.pois.map((z) => el("li", { class: `t-${z.direction === "LONG" ? "ok" : "bad"}`, title: "Show on chart",
     onclick: () => { state.tf = z.tf; savePrefs(); renderControls(); loadChart(false); } },
   el("div", {}, el("div", { class: "z" }, `${z.tf} ${z.kind === "OB" ? "Order block" : "Fair value gap"}`, z.tested ? "" : " · fresh"),
-    el("div", { class: "px num" }, `${px2(z.bottom)} – ${px2(z.top)}`)),
+    el("div", { class: "px num" }, `${pxs(z.bottom)} – ${pxs(z.top)}`)),
   el("div", { class: "dist" }, z.distance !== null ? pct(z.distance, 2) : "—", el("div", { class: "px" }, "away")))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, r.bias === "UNDEFINED" ? "No bias, so no zones are tradable." : "No unmitigated zone with the bias right now."))]));
   $("trig-list").replaceChildren(...(r.triggers.length ? r.triggers.map((t) => el("li", { class: `t-${t.accepted ? "ok" : "neutral"}` },
     el("div", { class: "top" }, sideTag(t.direction), el("b", {}, t.kind === "CHOCH" ? "CHoCH" : "BOS"), when(t.time), t.accepted ? tag("ok", "Qualified") : null,
@@ -524,10 +621,10 @@ function notifyChanges(items) {
     for (const s of items) {
       const before = state.known.get(s.id);
       if (before === s.state) continue;
-      const side = s.side === "LONG" ? "Long" : "Short";
-      if (before === undefined) toast(s.side === "LONG" ? "ok" : "bad", `New ${side} signal`, `Entry ${px2(s.entry)} · SL ${px2(s.sl)} · TP ${px2(s.tp)}`);
-      else if (s.state === "OPEN") toast("info", `${side} filled`, `Entry ${px2(s.entry)}`);
-      else toast(s.state === "TP" ? "ok" : s.state === "SL" ? "bad" : "neutral", `${side} ${STATE[s.state] ? STATE[s.state][1].toLowerCase() : s.state}`, rText(s.result_r));
+      const head = `${symName(s.symbol)} ${s.side === "LONG" ? "Long" : "Short"}`;
+      if (before === undefined) toast(s.side === "LONG" ? "ok" : "bad", `New ${head}`, `Entry ${pxs(s.entry, s.symbol)} · SL ${pxs(s.sl, s.symbol)} · TP ${pxs(s.tp, s.symbol)} · ${usd(s.notional)} $`);
+      else if (s.state === "OPEN") toast("info", `${head} filled`, `Entry ${pxs(s.entry, s.symbol)}`);
+      else toast(s.state === "TP" ? "ok" : s.state === "SL" ? "bad" : "neutral", `${head} ${STATE[s.state] ? STATE[s.state][1].toLowerCase() : s.state}`, `${rText(s.result_r)}${s.pnl_usdt !== null ? ` · ${usdSigned(s.pnl_usdt)} $` : ""}`);
     }
   }
   state.known = now;
@@ -539,41 +636,49 @@ function renderAlertBtn() {
 }
 
 /* ---- signals view ------------------------------------------------------------------------------ */
+function seg(target, items, current, onPick) {
+  $(target).replaceChildren(...items.map(([k, l]) => el("button", { type: "button", role: "tab", "aria-selected": String(current === k), onclick: () => onPick(k) }, l)));
+}
 async function renderSignals() {
-  const filters = [["all", "All"], ["active", "Active"], ["closed", "Closed"]];
-  $("sig-filter").replaceChildren(...filters.map(([k, l]) => el("button", { type: "button", role: "tab", "aria-selected": String(state.sigFilter === k),
-    onclick: () => { state.sigFilter = k; renderSignals(); } }, l)));
-  const d = await api(`/api/smc/signals?state=${state.sigFilter}&limit=300`);
-  table("sig-table", ["Created", "Side", "Trigger", "POI", "Entry", "SL", "TP", "Net R:R", "Score", "State", "Result"], d.items, (s) => {
-    const tr = el("tr", { class: "click", "aria-current": String(state.selectedSig === s.id), onclick: () => { state.selectedSig = s.id; renderSignals(); } },
-      el("td", {}, when(s.created_at)), el("td", {}, sideTag(s.side)), el("td", {}, s.trigger_kind === "CHOCH" ? "CHoCH" : "BOS"),
-      el("td", {}, s.poi_tf ? `${s.poi_tf} ${(s.detail.poi || {}).kind || ""}` : "—"),
-      el("td", { class: "num" }, px2(s.entry)), el("td", { class: "num" }, px2(s.sl)), el("td", { class: "num" }, px2(s.tp)),
-      el("td", { class: "num" }, s.net_rr ? `${s.net_rr}R` : "—"), el("td", { class: "num" }, s.score), el("td", {}, stateTag(s.state)),
-      el("td", {}, s.state === "OPEN" ? rEl(s.open_r) : rEl(s.result_r)));
-    return tr;
-  }, "No signals yet. They appear here the moment the engine creates one.");
+  seg("sig-sym", [["all", "All markets"], ...state.symbols.map((s) => [s, symName(s)])], state.sigSym, (k) => { state.sigSym = k; renderSignals(); });
+  seg("sig-filter", [["all", "All"], ["active", "Active"], ["closed", "Closed"]], state.sigFilter, (k) => { state.sigFilter = k; renderSignals(); });
+  const symq = state.sigSym === "all" ? "" : `&symbol=${encodeURIComponent(state.sigSym)}`;
+  const d = await api(`/api/smc/signals?state=${state.sigFilter}&limit=300${symq}`);
+  table("sig-table", ["Created", "Market", "Side", "Trigger", "POI", "Entry", "SL", "TP", "Size $", "Net R:R", "State", "Result", "PnL $"], d.items, (s) => el("tr", {
+    class: "click", "aria-current": String(state.selectedSig === s.id), onclick: () => { state.selectedSig = s.id; renderSignals(); } },
+  el("td", {}, when(s.created_at)), el("td", {}, symName(s.symbol)), el("td", {}, sideTag(s.side)), el("td", {}, s.trigger_kind === "CHOCH" ? "CHoCH" : "BOS"),
+  el("td", {}, s.poi_tf ? `${s.poi_tf} ${(s.detail.poi || {}).kind || ""}` : "—"),
+  el("td", { class: "num" }, pxs(s.entry, s.symbol)), el("td", { class: "num" }, pxs(s.sl, s.symbol)), el("td", { class: "num" }, pxs(s.tp, s.symbol)),
+  el("td", { class: "num" }, usd(s.notional)), el("td", { class: "num" }, s.net_rr ? `${s.net_rr}R` : "—"), el("td", {}, stateTag(s.state)),
+  el("td", {}, s.state === "OPEN" ? rEl(s.open_r) : rEl(s.result_r)),
+  el("td", { class: `num ${toneOf(s.state === "OPEN" ? s.open_pnl : s.pnl_usdt)}` }, usdSigned(s.state === "OPEN" ? s.open_pnl : s.pnl_usdt))),
+  "No positions yet. They appear here the moment the engine opens one.");
   const sel = d.items.find((s) => s.id === state.selectedSig);
   if (!sel) return;
   const ev = await api(`/api/smc/signals/${sel.id}/events`);
   const ft = (state.radar && state.radar.factor_text) || {};
   $("sig-detail").replaceChildren(
-    el("div", { class: "ticket-hero" }, el("div", {}, sideTag(sel.side), " ", stateTag(sel.state)), el("div", { class: "big num" }, sel.state === "OPEN" ? rText(sel.open_r) : rText(sel.result_r))),
+    el("div", { class: "ticket-hero" }, el("div", {}, el("b", {}, symName(sel.symbol)), " ", sideTag(sel.side), " ", stateTag(sel.state)),
+      el("div", { class: "big num" }, sel.state === "OPEN" ? rText(sel.open_r) : rText(sel.result_r))),
     el("div", { class: "levels" },
-      el("div", { class: "t-info" }, el("div", { class: "k" }, "Entry"), el("div", { class: "v num" }, px2(sel.entry))),
-      el("div", { class: "t-bad" }, el("div", { class: "k" }, "Stop loss"), el("div", { class: "v num" }, px2(sel.sl))),
-      el("div", { class: "t-ok" }, el("div", { class: "k" }, "Take profit"), el("div", { class: "v num" }, px2(sel.tp)))),
+      el("div", { class: "t-info" }, el("div", { class: "k" }, "Entry"), el("div", { class: "v num" }, pxs(sel.entry, sel.symbol))),
+      el("div", { class: "t-bad" }, el("div", { class: "k" }, "Stop loss"), el("div", { class: "v num" }, pxs(sel.sl, sel.symbol))),
+      el("div", { class: "t-ok" }, el("div", { class: "k" }, "Take profit"), el("div", { class: "v num" }, pxs(sel.tp, sel.symbol)))),
     el("dl", { class: "kv small" }, el("dt", {}, "Target"), el("dd", {}, show(sel.tp_source)), el("dt", {}, "POI zone"),
-      el("dd", { class: "num" }, sel.detail.poi ? `${sel.detail.poi.tf} ${sel.detail.poi.kind} ${px2(sel.detail.poi.bottom)} – ${px2(sel.detail.poi.top)}` : "—"),
-      el("dt", {}, "Exit"), el("dd", { class: "num" }, px2(sel.exit_price))),
+      el("dd", { class: "num" }, sel.detail.poi ? `${sel.detail.poi.tf} ${sel.detail.poi.kind} ${pxs(sel.detail.poi.bottom, sel.symbol)} – ${pxs(sel.detail.poi.top, sel.symbol)}` : "—"),
+      el("dt", {}, "Size"), el("dd", { class: "num" }, `${grp(String(+sel.qty))} · ${usd(sel.notional)} $ · margin ${usd(sel.margin)} $`),
+      el("dt", {}, "Exit"), el("dd", { class: "num" }, pxs(sel.exit_price, sel.symbol)),
+      el("dt", {}, "PnL"), el("dd", { class: `num ${toneOf(sel.pnl_usdt)}` }, sel.pnl_usdt !== null ? `${usdSigned(sel.pnl_usdt)} $ (fees ${usd(sel.fees_usdt)} $)` : "—")),
     el("div", { class: "factors" }, Object.entries(sel.detail.factors || {}).map(([f, on]) => el("span", { class: `factor${on ? " on" : ""}` }, ft[f] || f))),
     el("ol", { class: "timeline" }, ev.items.map((e) => el("li", { class: `t-${{ CREATED: "info", FILLED: "warn", TP: "ok", SL: "bad" }[e.kind] || "neutral"}` },
-      el("b", {}, e.kind), " ", when(e.ts), e.price ? el("span", { class: "num muted" }, ` @ ${px2(e.price)}`) : null,
-      e.detail && e.detail.result_r ? el("span", {}, " · ", rEl(e.detail.result_r)) : null))),
+      el("b", {}, e.kind), " ", when(e.ts), e.price ? el("span", { class: "num muted" }, ` @ ${pxs(e.price, sel.symbol)}`) : null,
+      e.detail && e.detail.result_r ? el("span", {}, " · ", rEl(e.detail.result_r)) : null,
+      e.detail && e.detail.pnl_usdt ? el("span", { class: `num ${toneOf(e.detail.pnl_usdt)}` }, ` · ${usdSigned(e.detail.pnl_usdt)} $`) : null))),
     el("p", {}, el("button", { class: "btn", type: "button", onclick: () => showOnChart(sel) }, icon("target"), "Show on chart")));
 }
 function showOnChart(s) {
   state.focus = s.id;
+  if (s.symbol !== state.symbol) { state.symbol = s.symbol; savePrefs(); renderSymbols(); startLive(); }
   location.hash = "#/chart";
   setTimeout(() => {
     if (!state.chart) return;
@@ -581,33 +686,33 @@ function showOnChart(s) {
     const i = state.times.findIndex((x) => x >= t);
     if (i >= 0) state.chart.timeScale().setVisibleLogicalRange({ from: i - 60, to: i + 60 });
     state.layer.update();
-  }, 300);
+  }, 600);
 }
 
 /* ---- performance view ------------------------------------------------------------------------- */
-function stats(target, d) {
-  const s = (k, v, tone) => el("div", { class: "stat" }, el("div", { class: "k" }, k), el("div", { class: `v num ${tone || ""}` }, v));
+const statBox = (k, v, tone) => el("div", { class: "stat" }, el("div", { class: "k" }, k), el("div", { class: `v num ${tone || ""}` }, v));
+function rStats(target, d) {
   $(target).replaceChildren(
-    s("Closed trades", show(d.closed)), s("Win rate", pct(d.win_rate)), s("Total", rText(d.total_r), +d.total_r > 0 ? "pos" : +d.total_r < 0 ? "neg" : ""),
-    s("Average", rText(d.avg_r)), s("Profit factor", show(d.profit_factor)), s("Max drawdown", d.max_drawdown_r ? `${d.max_drawdown_r}R` : "—"));
+    statBox("Closed trades", show(d.closed)), statBox("Win rate", pct(d.win_rate)), statBox("Total", rText(d.total_r), toneOf(d.total_r)),
+    statBox("Average", rText(d.avg_r)), statBox("Profit factor", show(d.profit_factor)), statBox("Max drawdown", d.max_drawdown_r ? `${d.max_drawdown_r}R` : "—"));
 }
-function drawEquity(id, points) {
+function drawLine(id, values, labels) {
   const box = $(id);
-  if (!points || points.length < 2) { box.replaceChildren(el("p", { class: "empty" }, "The equity curve appears after two closed trades.")); return; }
-  const W = 1000, H = 220, P = 24;
-  const ys = points.map((p) => +p.r);
-  const lo = Math.min(0, ...ys), hi = Math.max(0, ...ys);
-  const x = (i) => P + (i / (points.length - 1)) * (W - 2 * P);
+  if (!values || values.length < 2) { box.replaceChildren(el("p", { class: "empty" }, "The curve appears after the first closed position.")); return; }
+  const W = 1000, H = 220, P = 28;
+  const base = labels && labels.base !== undefined ? labels.base : 0;
+  const lo = Math.min(base, ...values), hi = Math.max(base, ...values);
+  const x = (i) => P + (i / (values.length - 1)) * (W - 2 * P);
   const y = (v) => H - P - ((v - lo) / (hi - lo || 1)) * (H - 2 * P);
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("preserveAspectRatio", "none");
   const zero = document.createElementNS(ns, "line");
-  zero.setAttribute("x1", P); zero.setAttribute("x2", W - P); zero.setAttribute("y1", y(0)); zero.setAttribute("y2", y(0));
+  zero.setAttribute("x1", P); zero.setAttribute("x2", W - P); zero.setAttribute("y1", y(base)); zero.setAttribute("y2", y(base));
   zero.setAttribute("stroke", css("--border-strong")); zero.setAttribute("stroke-dasharray", "4 4");
   const path = document.createElementNS(ns, "path");
-  path.setAttribute("d", ys.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(""));
-  path.setAttribute("fill", "none"); path.setAttribute("stroke", ys[ys.length - 1] >= 0 ? css("--ok") : css("--bad")); path.setAttribute("stroke-width", "2");
+  path.setAttribute("d", values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(""));
+  path.setAttribute("fill", "none"); path.setAttribute("stroke", values[values.length - 1] >= base ? css("--ok") : css("--bad")); path.setAttribute("stroke-width", "2");
   path.setAttribute("vector-effect", "non-scaling-stroke");
   svg.append(zero, path);
   box.replaceChildren(svg);
@@ -618,80 +723,106 @@ function bars(target, entries, tones) {
     el("span", {}, label || k), el("div", { class: "track" }, el("div", { class: "fill", style: `width:${(n / max) * 100}%` })), el("span", { class: "n" }, n))));
 }
 async function renderPerformance() {
-  const p = await api("/api/smc/performance");
-  stats("live-stats", p);
-  drawEquity("live-equity", p.equity);
+  const [w, p] = await Promise.all([api("/api/smc/wallet"), api("/api/smc/performance")]);
+  if (w.ready) {
+    $("wallet-meta").textContent = `wallet #${w.id} · ${w.symbols.map(symName).join(" + ")} · since ${fmtDay.format(new Date(w.started_at))}`;
+    $("wallet-stats").replaceChildren(statBox("Initial", `${usd(w.initial)} $`), statBox("Balance", `${usd(w.balance)} $`),
+      statBox("Equity", `${usd(w.equity)} $`, toneOf(+w.equity - +w.initial)), statBox("Return", pct(w.return_pct, 2), toneOf(w.return_pct)),
+      statBox("Fees paid", `${usd(w.fees)} $`), statBox("Margin in use", `${usd(w.margin_used)} $`));
+    drawLine("wallet-curve", w.curve.map((c) => +c.balance), { base: +w.initial });
+    table("ledger-table", ["Closed", "Market", "Side", "Result", "PnL $", "Balance $"], w.ledger, (l) => el("tr", {},
+      el("td", {}, when(l.ts)), el("td", {}, symName(l.symbol)), el("td", {}, l.side ? sideTag(l.side) : "—"), el("td", {}, l.state ? stateTag(l.state) : "—"),
+      el("td", { class: `num ${toneOf(l.amount)}` }, usdSigned(l.amount)), el("td", { class: "num" }, usd(l.balance_after))), "No closed position yet");
+  }
+  table("sym-table", ["Market", "Closed", "Win rate", "Total R", "Avg R", "Profit factor"], state.symbols, (s) => {
+    const d = p.by_symbol[s] || {};
+    return el("tr", {}, el("td", {}, symName(s)), el("td", { class: "num" }, show(d.closed)), el("td", { class: "num" }, pct(d.win_rate)),
+      el("td", {}, rEl(d.total_r)), el("td", {}, rEl(d.avg_r)), el("td", { class: "num" }, show(d.profit_factor)));
+  });
+  const bsym = state.btSym || state.symbol;
+  seg("bt-sym", state.symbols.map((s) => [s, symName(s)]), bsym, (k) => { state.btSym = k; renderPerformance(); });
   $("bt-meta").textContent = "running…";
-  const b = await api("/api/smc/backtest?days=30");
+  const b = await api(`/api/smc/backtest?days=30&symbol=${encodeURIComponent(bsym)}`);
   if (!b.ready) { $("bt-meta").textContent = "no history yet"; return; }
   $("bt-meta").textContent = `${fmtDay.format(new Date(b.from))} – ${fmtDay.format(new Date(b.to))} · ${grp(b.bars)} M1 bars · ${b.seconds}s`;
   $("bt-note").textContent = +b.total_r < 0
-    ? `With the current parameters and fees this backtest loses ${rText(b.total_r)} over ${b.closed} trades. Treat live signals as experimental until the parameters show a positive expectancy here.`
+    ? `${symName(bsym)}: with the current parameters and fees this backtest loses ${rText(b.total_r)} over ${b.closed} trades. Treat live positions as experimental until the parameters show a positive expectancy here.`
     : "";
-  stats("bt-stats", b);
-  drawEquity("bt-equity", b.equity);
-  const reasons = (state.params && state.params.reasons) || {};
+  rStats("bt-stats", b);
+  drawLine("bt-equity", b.equity.map((e) => +e.r), { base: 0 });
+  const reasons = (state.params[bsym] && state.params[bsym].reasons) || {};
   const st = b.stats;
   bars("bt-funnel", [["TRIGGERS", st.triggers, "M1 triggers"], ...Object.entries(st.rejections).map(([k, n]) => [k, n, reasons[k] || k]), ["ACCEPTED", st.accepted, "Qualified"], ["TRADED", st.signals, "Traded (capacity, one per POI)"]],
     { TRIGGERS: "neutral", ACCEPTED: "ok", TRADED: "ok" });
   bars("bt-outcomes", Object.entries(st.states).map(([k, n]) => [k, n, STATE[k] ? STATE[k][1] : k]), { TP: "ok", SL: "bad", OPEN: "warn", PENDING: "info", EXPIRED: "neutral", MISSED: "neutral", TIMEOUT: "neutral" });
   table("bt-trades", ["Created", "Side", "POI", "Entry", "SL", "TP", "Score", "State", "Result"], [...b.trades].reverse().slice(0, 60), (t) => el("tr", {},
-    el("td", {}, when(t.created_at)), el("td", {}, sideTag(t.side)), el("td", {}, show(t.poi_tf)), el("td", { class: "num" }, px2(t.entry)),
-    el("td", { class: "num" }, px2(t.sl)), el("td", { class: "num" }, px2(t.tp)), el("td", { class: "num" }, t.score), el("td", {}, stateTag(t.state)), el("td", {}, rEl(t.result_r))));
+    el("td", {}, when(t.created_at)), el("td", {}, sideTag(t.side)), el("td", {}, show(t.poi_tf)), el("td", { class: "num" }, pxs(t.entry, bsym)),
+    el("td", { class: "num" }, pxs(t.sl, bsym)), el("td", { class: "num" }, pxs(t.tp, bsym)), el("td", { class: "num" }, t.score), el("td", {}, stateTag(t.state)), el("td", {}, rEl(t.result_r))));
 }
 
 /* ---- strategy view ----------------------------------------------------------------------------- */
+async function loadParams(sym) {
+  if (!state.params[sym]) state.params[sym] = await api(`/api/smc/params?symbol=${encodeURIComponent(sym)}`);
+  return state.params[sym];
+}
 async function renderStrategy() {
-  const p = state.params || (state.params = await api("/api/smc/params"));
+  const p = await loadParams(state.symbol);
   const v = Object.fromEntries(p.groups.flatMap((g) => g.items.map((i) => [i.key, i.value])));
-  $("strat-ver").textContent = `${p.version} · parameters ${p.params_hash}`;
+  $("strat-ver").textContent = `${symName(state.symbol)} · ${p.version} · parameters ${p.params_hash}`;
   const step = (tone, h, tfs, text) => el("li", { class: `t-${tone}` }, el("div", { class: "h" }, h), el("div", { class: "tfs" }, tfs), el("p", {}, text));
   $("model-flow").replaceChildren(
     step("info", "Bias", `${v.bias_tf} (+ ${v.confirm_bias_tf})`, "The trend of the bias timeframe's last BOS / CHoCH decides the only direction that can be traded."),
-    step("violet", "Point of interest", v.poi_tfs.join(" → "), "An unmitigated order block or fair value gap with the bias. Price has to react inside it."),
+    step("violet", "Point of interest", v.poi_tfs.join(" → "), "A still-valid order block or fair value gap with the bias. Price has to react inside it."),
     step("warn", "Trigger", v.trigger_tf, "An M1 BOS / CHoCH whose order block overlaps the zone confirms the reaction (liquidity sweep and displacement add score)."),
-    step("ok", "Execution", `${v.trigger_tf} · ${v.entry_mode}`, `Stop ${v.sl_mode === "poi" ? "beyond the zone" : "beyond the M1 block"}, target the nearest liquidity paying ≥ ${v.min_net_rr}R after fees.`));
+    step("ok", "Execution", `${v.trigger_tf} · ${v.entry_mode}`, `Stop ${v.sl_mode === "poi" ? "beyond the zone" : "beyond the M1 block"}, target the nearest liquidity paying ≥ ${v.min_net_rr}R after fees. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
   $("param-grid").replaceChildren(...p.groups.map((g) => el("section", { class: "card" }, el("h2", {}, g.name),
     el("dl", { class: "kv" }, g.items.flatMap((i) => [el("dt", {}, el("code", {}, i.key)), el("dd", { class: "num" }, Array.isArray(i.value) ? i.value.join(", ") || "—" : show(i.value))])))),
   el("section", { class: "card" }, el("h2", {}, "Costs (from config)"), el("dl", { class: "kv" },
     ...Object.entries(p.costs).flatMap(([k, x]) => [el("dt", {}, el("code", {}, k)), el("dd", { class: "num" }, pct(x, 3))]))));
-  kv("factor-list", Object.entries(p.factors).map(([k, t]) => [el("code", {}, k), t]));
-  kv("reason-list", Object.entries(p.reasons).map(([k, t]) => [el("code", {}, k), t]));
+  const kvs = (target, pairs) => $(target).replaceChildren(...pairs.flatMap(([k, t]) => [el("dt", {}, el("code", {}, k)), el("dd", {}, t)]));
+  kvs("factor-list", Object.entries(p.factors));
+  kvs("reason-list", Object.entries(p.reasons));
 }
 
 /* ---- system view -------------------------------------------------------------------------------- */
 async function renderSystem() {
-  const [o, q] = await Promise.all([api("/api/overview"), api("/api/market/quality?minutes=180")]);
-  const run = o.smc.runner, h = o.smc.history;
-  kv("sys-runner", run ? [["Status", run.status === "RUNNING" ? tag("ok", "Running") : tag("bad", "Stale")], ["Heartbeat", ago(run.heartbeat_age_s)],
-    ["Started", when(run.started_at)], ["Last M1 analysed", when(run.last_m1)], ["Parameters", el("code", {}, show(run.params_hash))],
-    ["Config parameters", el("code", {}, o.smc.params_hash)], ["Costs", o.costs_problem ? tag("bad", "Missing") : tag("ok", "Configured")]]
-    : [["Status", tag("bad", "Not started")], ["Start", el("code", {}, "python -m sp2l smc")]]);
-  kv("sys-history", [["Source", "Tabdeal chart history (1-minute)"], ["From", when(h.first)], ["To", when(h.last)], ["Depth", h.days !== null ? `${h.days} days` : "—"],
-    ["Target", `${h.target_days} days`], ["Series lag", o.smc.series_lag_s !== null ? `${o.smc.series_lag_s} s` : "—"],
-    ["Last refresh", run && run.history && run.history.error ? tag("warn", "Retrying") : tag("ok", "OK")]]);
-  const c = o.collector;
-  kv("sys-collector", [["Status", c.status === "CONNECTED" ? tag("ok", "Connected") : tag(c.status === "NO_DATA" ? "neutral" : "warn", c.status)],
-    ["Heartbeat", ago(c.heartbeat_age_s)], ["Run started", when(c.run && c.run.started_at)], ["Last 60 min", o.market.quality.label]]);
-  $("dq-strip").replaceChildren(...q.timeline.map((m) => el("span", { class: m.status === "OK" ? "ok" : m.status === "SYNTHETIC" ? "syn" : "gap", title: `${fmtClock.format(new Date(m.minute))} ${m.status}` })));
-  table("sys-gaps", ["From", "To", "Reason", "Timeframe"], q.gaps, (g) => el("tr", {}, el("td", {}, when(g.gap_start)), el("td", {}, when(g.gap_end)), el("td", {}, show(g.reason)), el("td", {}, show(g.timeframe))), "No gaps recorded");
+  const o = state.overview || await api("/api/overview");
+  table("sys-markets", ["Market", "Engine", "Heartbeat", "Last M1 analysed", "History", "Collector", "Collector heartbeat", "Last 60 min"], o.markets, (m) => {
+    const run = m.smc.runner, h = m.smc.history, c = m.collector;
+    return el("tr", {}, el("td", {}, m.display),
+      el("td", {}, run ? (run.status === "RUNNING" ? tag("ok", "Running") : tag("bad", "Stale")) : tag("bad", "Not started")),
+      el("td", {}, run ? ago(run.heartbeat_age_s) : "—"), el("td", {}, when(run && run.last_m1)),
+      el("td", { class: "num" }, h.days !== null ? `${h.days} / ${h.target_days} d` : "—"),
+      el("td", {}, c.status === "CONNECTED" ? tag("ok", "Connected") : tag(c.status === "NO_DATA" ? "neutral" : "warn", c.status)),
+      el("td", {}, ago(c.heartbeat_age_s)), el("td", {}, m.market.quality.label));
+  });
+  $("dq-sym").textContent = symName(state.symbol);
+  const qd = await api(q("/api/market/quality?minutes=180"));
+  $("dq-strip").replaceChildren(...qd.timeline.map((m) => el("span", { class: m.status === "OK" ? "ok" : m.status === "SYNTHETIC" ? "syn" : "gap", title: `${fmtClock.format(new Date(m.minute))} ${m.status}` })));
+  table("sys-gaps", ["From", "To", "Reason", "Timeframe"], qd.gaps, (g) => el("tr", {}, el("td", {}, when(g.gap_start)), el("td", {}, when(g.gap_end)), el("td", {}, show(g.reason)), el("td", {}, show(g.timeframe))), "No gaps recorded");
 }
 
 /* ---- top bar, routing, refresh ----------------------------------------------------------------- */
-function renderTop(o) {
-  $("symbol").textContent = o.symbol_display;
-  $("chart-symbol").textContent = `${o.symbol_display} · ${state.tf}`;
-  const run = o.smc.runner;
+function applyOverview(o) {
+  state.overview = o;
+  state.symbols = o.symbols;
+  for (const m of o.markets) state.markets[m.symbol] = m;
+  if (!state.symbol || !state.markets[state.symbol]) state.symbol = o.symbols[0];
+  if (state.lastPrice === null && state.markets[state.symbol].price) setPrice(state.markets[state.symbol].price, false);
+  const m = state.markets[state.symbol];
+  const runs = o.markets.map((x) => x.smc.runner).filter(Boolean);
+  const allRun = runs.length === o.markets.length && runs.every((r) => r.status === "RUNNING");
   const rp = $("runner-pill");
-  rp.style.setProperty("--tone", css(run && run.status === "RUNNING" ? "--ok" : "--bad"));
-  rp.replaceChildren(el("span", { class: "dot" }), run && run.status === "RUNNING" ? "Engine running" : "Engine stopped");
+  rp.style.setProperty("--tone", css(allRun ? "--ok" : "--bad"));
+  rp.replaceChildren(el("span", { class: "dot" }), allRun ? "Engine running" : "Engine stopped");
+  const feedUp = m.collector.status === "CONNECTED";
   const fp = $("feed-pill");
-  fp.style.setProperty("--tone", css(o.collector.status === "CONNECTED" ? "--ok" : "--warn"));
-  fp.replaceChildren(el("span", { class: "dot" }), o.collector.status === "CONNECTED" ? "Live feed" : "History only");
-  fp.title = o.collector.status === "CONNECTED" ? "Live trades from the collector" : "No live collector: candles come from Tabdeal history, refreshed every minute";
-  state.feedUp = o.collector.status === "CONNECTED";
+  fp.style.setProperty("--tone", css(feedUp ? "--ok" : "--warn"));
+  fp.replaceChildren(el("span", { class: "dot" }), feedUp ? "Live feed" : "History only");
+  fp.title = feedUp ? `Live trades for ${m.display}` : "No live collector: candles come from Tabdeal history, refreshed every minute";
+  state.feedUp = feedUp;
   $("chart-live").hidden = !(state.streamUp && state.feedUp);
-  $("foot-ver").textContent = `SMC ${o.smc.params_hash}`;
+  $("foot-ver").textContent = `SMC · ${o.symbols.map(symName).join(" + ")} · shared wallet`;
 }
 function route() {
   const v = (location.hash.replace("#/", "") || "chart").split("?")[0];
@@ -704,33 +835,32 @@ function route() {
 }
 async function refreshFast() {
   try {
-    const [o, perf] = await Promise.all([api("/api/overview"), api("/api/smc/performance")]);
-    state.overview = o;
-    renderTop(o);
+    const [o, s] = await Promise.all([api("/api/overview"), api("/api/smc/signals?limit=200")]);
+    applyOverview(o);
+    notifyChanges(s.items);
+    state.allSignals = s.items;
+    renderSymbols();
     if (state.view === "chart") {
       await refreshAnalysis();
-      renderKpis(o, state.radar, perf);
-      renderTicket();
-    } else {
-      const s = await api("/api/smc/signals?limit=100");
-      notifyChanges(s.items);
-      state.signals = s.items;
+      renderKpis(o.wallet, state.radar);
+      renderTicket(o.wallet);
     }
   } catch { /* transient; next tick retries */ }
 }
 async function refreshSlow() {
   try {
     if (state.view === "chart") {
-      state.radar = await api("/api/smc/radar");
+      state.radar = await api(q("/api/smc/radar"));
       renderRadar(state.radar);
       renderControls();
     }
   } catch { /* transient */ }
 }
 async function refreshView() {
+  if (!state.overview) await refreshFast();
   if (state.view === "chart") { await loadChart(true); await refreshSlow(); await refreshFast(); }
   else if (state.view === "signals") await renderSignals();
-  else if (state.view === "performance") await renderPerformance();
+  else if (state.view === "performance") { await Promise.all(state.symbols.map(loadParams)).catch(() => {}); await renderPerformance(); }
   else if (state.view === "strategy") await renderStrategy();
   else if (state.view === "system") await renderSystem();
 }
@@ -739,8 +869,9 @@ function setTheme(t) {
   try { localStorage.setItem("smc-theme", t); } catch { /* storage unavailable */ }
   $("theme-btn").replaceChildren(icon(t === "dark" ? "sun" : "moon"));
   restyle();
+  renderLegend();
 }
-function init() {
+async function init() {
   let theme = "dark";
   try { theme = localStorage.getItem("smc-theme") || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"); } catch { /* default */ }
   setTheme(theme);
@@ -750,8 +881,13 @@ function init() {
     state.alerts = !state.alerts; savePrefs(); renderAlertBtn();
     if (state.alerts && window.Notification && Notification.permission === "default") Notification.requestPermission();
   });
+  renderFullBtn();
+  $("full-btn").addEventListener("click", toggleFull);
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("chart-card").classList.contains("maximized")) toggleFull(); });
   $("tz-label").textContent = `Times in ${tzText()}`;
-  api("/api/smc/params").then((p) => { state.params = p; }).catch(() => {});
+  try { await refreshFast(); } catch { /* retried below */ }
+  if (state.symbol) loadParams(state.symbol).catch(() => {});
   renderControls();
   renderLegend();
   window.addEventListener("hashchange", route);

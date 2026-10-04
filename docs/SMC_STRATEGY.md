@@ -1,5 +1,8 @@
 # SMC engine — strategy specification (SMC-1.0)
 
+Markets: **BTC/USDT and XRP/USDT**, traded together on **one shared simulated wallet**
+(100 USDT). Each market has its own price tick / quantity step (`instruments`).
+
 The SP2L strategy (Spike / P-Gap / Context / Exhaustion, branch `context-v6`) is retired.
 This engine trades Smart Money Concepts top-down and **executes on M1**. No orders are
 sent: signals and their simulated lifecycle are recorded for review.
@@ -20,7 +23,7 @@ sent: signals and their simulated lifecycle are recorded for review.
 | BOS / CHoCH | a bar **closes** beyond the last unbroken swing: BOS with the trend, CHoCH against it (first break = BOS) |
 | Order block | on a break, the candle with the extreme low (bullish) / high (bearish) between the broken swing and the break (max `ob_lookback` bars); zone = its full range |
 | Fair value gap | 3-bar imbalance (`low[i] > high[i-2]` / `high[i] < low[i-2]`) larger than `fvg_min_atr` × ATR |
-| Zone status | TESTED when traded into, MITIGATED when a bar closes through the far side, expired after the timeframe's lookback |
+| Zone status | TESTED when traded into. Invalid (removed from chart and model): an OB once a bar **closes** through its far side, an FVG once it is **completely filled** (a wick reaches its far side; `fvg_fill: close` keeps the close rule); expired after the timeframe's lookback |
 | Liquidity (display) | unswept swing highs (BSL) / lows (SSL) |
 | Premium / discount (display) | last swing high/low range and its equilibrium |
 
@@ -37,8 +40,19 @@ sent: signals and their simulated lifecycle are recorded for review.
 5. **Quality** — score from fresh POI, CHoCH, liquidity sweep, M1 displacement FVG, OB/FVG
    confluence at the POI, `confirm_bias_tf` agreement; `score >= min_score`, `require`d factors
    present, stop ≤ `max_risk_pct`, advisory size ≤ `max_leverage` (`account_usdt` × `risk_pct`).
-6. Capacity `max_active` (1) open/pending signal; a POI is traded once (backtest); triggers are
-   never created retroactively (only within 3 minutes of their close).
+6. Capacity: `max_active` (1) position per market and `max_positions` (2) across markets; a
+   POI is traded once (backtest); triggers are never created retroactively (only within 3
+   minutes of their close).
+
+## Shared wallet
+- Sizing at entry: risk `risk_pct` (1 %) of the current wallet balance; quantity rounded down
+  to the market's step. The position's margin (notional / `max_leverage`, cross 10x) must fit
+  the free balance (balance minus every open position's margin, on any market); otherwise the
+  quantity is reduced to fit (MARGIN_LIMITED) or the trade is skipped (NO_FREE_MARGIN).
+- Booking at exit: PnL = qty × move − entry fee − exit fee, appended to `smc_wallet_ledger`
+  with the running balance. Open positions are marked to the last price for equity.
+- A new wallet starts (the old one is closed, never rewritten) when the initial balance or
+  the set of markets changes.
 
 ## Lifecycle (M1 bars)
 PENDING → OPEN → TP / SL, or EXPIRED (no fill in `pending_expiry_min`), MISSED (target before
@@ -46,7 +60,13 @@ fill), TIMEOUT (market exit after `max_hold_min`). Conservative intrabar reading
 target in the same minute; no target credit in the fill minute. R = net PnL / (stop distance +
 entry fee + stop exit fee + slippage), so a full stop is exactly −1R.
 
-## Backtest findings (2026-10-04, XAUT/USDT, Tabdeal fees 0.08 % maker / 0.095 % taker)
+## Backtest findings, BTC and XRP (2026-10-04, 30 days, after fees, FVG = fill rule)
+| Market | Trades | Win rate | Total | Profit factor |
+|---|---|---|---|---|
+| BTC/USDT | 60 | 20 % | −30.9R | 0.26 |
+| XRP/USDT | 42 | 17 % | −21.3R | 0.35 |
+
+## Earlier backtest findings (2026-10-04, XAUT/USDT, Tabdeal fees 0.08 % maker / 0.095 % taker)
 Fees are ~7 USDT per unit round trip, about the size of a typical 15m–1h structural stop.
 Over 60 days no tested variant was profitable after fees (default: PF ≈ 0.15–0.26); before
 fees the default model is close to break-even (PF ≈ 0.95). The dashboard's Performance page

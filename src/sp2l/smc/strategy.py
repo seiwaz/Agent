@@ -140,7 +140,9 @@ def evaluate(
     ctx: Mapping[str, Analysis],
     p: SmcParams,
     costs: Costs,
+    equity: Decimal | None = None,
 ) -> Setup:
+    """`equity` = the wallet balance the advisory size is based on (default account_usdt)."""
     m1 = ctx[p.trigger_tf]
     i = ev.break_idx
     side = ev.direction
@@ -277,10 +279,10 @@ def evaluate(
     if missing:
         reasons.append("MISSING_" + "_".join(m.upper() for m in missing))
 
-    risk_cash = p.account_usdt * p.risk_pct
-    qty = (risk_cash / ru).quantize(Decimal("0.001"), rounding=ROUND_DOWN)
+    bal = equity if equity is not None and equity > 0 else p.account_usdt
+    qty = (bal * p.risk_pct / ru).quantize(Decimal("0.00001"), rounding=ROUND_DOWN)
     notional = qty * entry
-    leverage = notional / p.account_usdt
+    leverage = notional / bal
     if leverage > p.max_leverage:
         reasons.append("LEVERAGE")
     return Setup(

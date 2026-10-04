@@ -8,8 +8,9 @@
   --info-bg: rgba(116,167,218,.13); --neutral-bg: rgba(155,164,176,.10); --violet-bg: rgba(169,147,217,.13);
   --focus: #74a7da; --shadow: 0 1px 2px rgba(0,0,0,.25);
   /* chart layers */
-  --c-bull: 79,179,147; --c-bear: 226,122,112; --c-fvg-bull: 116,167,218; --c-fvg-bear: 221,170,85;
-  --c-liq: 169,147,217; --c-text: 231,233,236; --c-pd-hi: 226,122,112; --c-pd-lo: 79,179,147;
+  --c-bull: 38,201,148; --c-bear: 246,103,93; --c-fvg-bull: 84,160,255; --c-fvg-bear: 247,176,64;
+  --c-liq: 196,148,255; --c-text: 231,233,236; --c-pd-hi: 246,103,93; --c-pd-lo: 38,201,148;
+  --c-on: 10,14,19; --c-pill: 22,26,32;
 }
 :root[data-theme="light"] {
   --bg: #f4f5f7; --surface: #ffffff; --surface-2: #f1f3f6; --border: #dde1e7; --border-strong: #c6ccd5;
@@ -18,8 +19,9 @@
   --ok-bg: rgba(29,122,91,.09); --bad-bg: rgba(179,68,58,.08); --warn-bg: rgba(143,94,15,.09);
   --info-bg: rgba(43,98,165,.08); --neutral-bg: rgba(85,96,110,.07); --violet-bg: rgba(106,79,176,.08);
   --focus: #2b62a5; --shadow: 0 1px 2px rgba(20,30,40,.06);
-  --c-bull: 29,122,91; --c-bear: 179,68,58; --c-fvg-bull: 43,98,165; --c-fvg-bear: 143,94,15;
-  --c-liq: 106,79,176; --c-text: 27,34,44; --c-pd-hi: 179,68,58; --c-pd-lo: 29,122,91;
+  --c-bull: 10,140,98; --c-bear: 205,57,46; --c-fvg-bull: 30,98,214; --c-fvg-bear: 196,118,0;
+  --c-liq: 120,64,210; --c-text: 27,34,44; --c-pd-hi: 205,57,46; --c-pd-lo: 10,140,98;
+  --c-on: 255,255,255; --c-pill: 255,255,255;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -140,7 +142,7 @@ main { padding: 16px 20px 24px; max-width: 1640px; margin: 0 auto; min-width: 0;
 .ladder li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); border-left: 3px solid var(--tone); }
 .ladder .tf { font: 600 14px "IBM Plex Mono", monospace; }
 .ladder .role { font-size: 12px; color: var(--text-2); }
-.ladder .ev { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ladder .ev { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; line-height: 1.45; }
 .ladder .tr { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: var(--tone); }
 
 .poi-list, .trig-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
@@ -230,4 +232,34 @@ td.empty { text-align: center; padding: 18px; white-space: normal; }
   .tf-seg { width: 100%; grid-auto-columns: 1fr; }
   .dq-strip { grid-template-columns: repeat(90, minmax(0, 1fr)); }
   .dq-strip span:nth-child(-n+90) { display: none; }
+}
+
+/* ---- markets, fullscreen, positions (v2) ---- */
+.sym-seg { display: inline-flex; gap: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+.sym-seg button { display: grid; gap: 0; text-align: left; border: 0; background: transparent; color: var(--text-2); border-radius: 8px; padding: 3px 12px; cursor: pointer; font: 600 14px "IBM Plex Sans", sans-serif; min-height: 40px; }
+.sym-seg button .p { font: 500 12px "IBM Plex Mono", monospace; color: var(--text-3); }
+.sym-seg button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.sym-seg button[aria-selected="true"] .p { color: var(--text-2); }
+.sym-seg .pos-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); margin-left: 6px; vertical-align: middle; }
+.chart-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.filters-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chart-card:fullscreen, .chart-card.maximized { position: fixed; inset: 0; z-index: 50; border-radius: 0; border: 0; margin: 0;
+  display: flex; flex-direction: column; padding: 12px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--surface); }
+.chart-card:fullscreen .chart-slot, .chart-card.maximized .chart-slot { flex: 1; min-height: 0; }
+.chart-card:fullscreen .chart, .chart-card.maximized .chart { height: 100%; }
+body.has-max { overflow: hidden; }
+.pos-list { display: grid; gap: 10px; }
+.pos-card { border: 1px solid var(--border); border-left: 3px solid var(--tone); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; cursor: pointer; background: var(--surface); text-align: left; color: var(--text); font: inherit; width: 100%; }
+.pos-card:hover { background: var(--surface-2); }
+.pos-card .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.pos-card .sym { font-weight: 600; }
+.pos-card .pnl { font: 600 17px "IBM Plex Mono", monospace; }
+.pos-card .meta { font-size: 12.5px; color: var(--text-2); display: flex; gap: 10px; flex-wrap: wrap; }
+.wallet-mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.wallet-mini div { background: var(--surface-2); border-radius: 8px; padding: 6px 10px; }
+.wallet-mini .k { font-size: 12px; color: var(--text-2); } .wallet-mini .v { font: 600 15px "IBM Plex Mono", monospace; }
+@media (max-width: 760px) {
+  .sym-seg { order: 2; }
+  .sym-seg button { padding: 3px 8px; }
+  .chart-tools { width: 100%; } .chart-tools .tf-seg { flex: 1; }
 }

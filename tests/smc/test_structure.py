@@ -66,6 +66,21 @@ def test_break_against_the_trend_is_choch():
     assert ("CHOCH", Side.SHORT) in kinds
 
 
+def test_fvg_is_invalid_once_completely_filled_by_a_wick():
+    rows = [
+        (10, 10.5, 9.5, 10),
+        (10, 12, 9.9, 11.9),
+        (12, 13, 11, 12.9),
+        (12.9, 13, 10.4, 12.0),
+    ]  # the wick fills the whole gap, the close stays above
+    a = analyze(bars(rows), "1m", P)
+    assert a.fvgs[0].status is ZoneStatus.MITIGATED and a.fvgs[0].mitigated_idx == 3
+    keep = analyze(
+        bars(rows), "1m", SmcParams(swing_len=2, atr_len=3, fvg_min_atr=D(0), fvg_fill="close")
+    )
+    assert keep.fvgs[0].status is ZoneStatus.TESTED
+
+
 def test_fvg_detection_and_mitigation_by_close():
     rows = [
         (10, 10.5, 9.5, 10),

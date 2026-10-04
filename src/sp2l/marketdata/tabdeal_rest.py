@@ -26,6 +26,7 @@ class ExchangeFilters:
     min_notional: Decimal | None
     verified: bool  # established by a runtime probe; precision-derived = False
 
+
 BASE = "https://api1.tabdeal.org"
 
 

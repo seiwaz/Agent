@@ -15,8 +15,8 @@
     <div class="brand">
       <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" class="logo-mark"><path d="M3 17 9 11l4 4 8-8"/><path d="M14 7h7v7"/></svg></span>
       <span class="brand-name">SMC Console</span>
-      <span class="brand-sub" id="symbol">—</span>
     </div>
+    <div class="sym-seg" role="tablist" id="sym-seg" aria-label="Market"></div>
     <nav class="nav" id="nav" aria-label="Sections">
       <a href="#/chart" data-view="chart">Chart</a>
       <a href="#/signals" data-view="signals">Signals</a>
@@ -38,14 +38,17 @@
       <h1 class="sr-only" id="chart-h">Chart</h1>
       <div class="kpi-strip" id="kpis" aria-label="Summary"></div>
       <div class="main-row">
-        <section class="card chart-card" aria-label="Price chart with Smart Money structure">
+        <section class="card chart-card" id="chart-card" aria-label="Price chart with Smart Money structure">
           <div class="chart-head">
             <div class="chart-title">
               <h2><span id="chart-symbol">—</span></h2>
               <span class="price num" id="chart-price" aria-live="off">—</span>
               <span class="live-dot" id="chart-live" hidden title="Live candles from the canonical trade stream">Live</span>
             </div>
-            <div class="seg tf-seg" role="tablist" id="tf-seg" aria-label="Timeframe"></div>
+            <div class="chart-tools">
+              <div class="seg tf-seg" role="tablist" id="tf-seg" aria-label="Timeframe"></div>
+              <button class="icon-btn" id="full-btn" type="button" aria-pressed="false" aria-label="Full screen chart" title="Full screen (Esc to leave)"></button>
+            </div>
           </div>
           <div class="chips" id="layer-chips" aria-label="Chart layers"></div>
           <div class="chart-slot"><div id="chart" class="chart" role="img" aria-label="Candlestick chart with order blocks, fair value gaps, structure breaks and positions"></div>
@@ -57,7 +60,7 @@
         </section>
         <aside class="side-col">
           <section class="card ticket" id="ticket" aria-labelledby="ticket-h">
-            <div class="card-head"><h2 id="ticket-h">Position</h2><span id="ticket-state"></span></div>
+            <div class="card-head"><h2 id="ticket-h">Positions</h2><span id="ticket-state"></span></div>
             <div id="ticket-body"></div>
           </section>
           <section class="card" aria-labelledby="ladder-h">
@@ -79,7 +82,8 @@
     <!-- SIGNALS: everything the engine traded, with its full lifecycle -->
     <section class="view" id="view-signals" aria-labelledby="sig-h" hidden>
       <div class="view-head"><h1 class="view-title" id="sig-h">Signals</h1>
-        <div class="seg seg-inline" role="tablist" id="sig-filter" aria-label="Filter"></div></div>
+        <div class="filters-row"><div class="seg seg-inline" role="tablist" id="sig-sym" aria-label="Market filter"></div>
+        <div class="seg seg-inline" role="tablist" id="sig-filter" aria-label="State filter"></div></div></div>
       <div class="sig-layout">
         <section class="card"><div class="table-wrap tall"><table id="sig-table"></table></div></section>
         <section class="card sig-detail" aria-labelledby="sigd-h"><h2 id="sigd-h">Signal detail</h2><div id="sig-detail"><p class="empty">Select a signal to see its timeline.</p></div></section>
@@ -89,9 +93,12 @@
     <!-- PERFORMANCE: live results and the backtest of the same parameters -->
     <section class="view" id="view-performance" aria-labelledby="perf-h" hidden>
       <h1 class="view-title" id="perf-h">Performance</h1>
-      <section class="card"><div class="card-head"><h2>Live signals</h2><span class="muted small">R after fees and slippage</span></div>
-        <div class="stat-grid" id="live-stats"></div><div class="equity" id="live-equity" role="img" aria-label="Live equity curve in R"></div></section>
-      <section class="card"><div class="card-head"><h2>Backtest · same engine, same parameters</h2><span class="muted small" id="bt-meta"></span></div>
+      <section class="card"><div class="card-head"><h2>Shared wallet</h2><span class="muted small" id="wallet-meta"></span></div>
+        <div class="stat-grid" id="wallet-stats"></div><div class="equity" id="wallet-curve" role="img" aria-label="Wallet balance in USDT"></div>
+        <h3>By market</h3><div class="table-wrap"><table id="sym-table"></table></div>
+        <h3>Wallet ledger</h3><div class="table-wrap"><table id="ledger-table"></table></div></section>
+      <section class="card"><div class="card-head"><h2>Backtest · same engine, same parameters</h2>
+        <div class="filters-row"><div class="seg seg-inline" role="tablist" id="bt-sym" aria-label="Backtest market"></div><span class="muted small" id="bt-meta"></span></div></div>
         <p class="note" id="bt-note"></p>
         <div class="stat-grid" id="bt-stats"></div>
         <div class="equity" id="bt-equity" role="img" aria-label="Backtest equity curve in R"></div>
@@ -118,10 +125,8 @@
     <section class="view" id="view-system" aria-labelledby="sys-h" hidden>
       <h1 class="view-title" id="sys-h">System</h1>
       <div class="diag-grid">
-        <section class="card"><h2>SMC engine</h2><dl class="kv" id="sys-runner"></dl></section>
-        <section class="card"><h2>Exchange history <span class="muted small">(warmup source)</span></h2><dl class="kv" id="sys-history"></dl></section>
-        <section class="card"><h2>Live collector</h2><dl class="kv" id="sys-collector"></dl></section>
-        <section class="card wide"><h2>Live data quality · last 180 min</h2>
+        <section class="card wide"><h2>Markets</h2><div class="table-wrap"><table id="sys-markets"></table></div></section>
+        <section class="card wide"><h2>Live data quality · <span id="dq-sym">—</span> · last 180 min</h2>
           <div class="dq-strip" id="dq-strip" aria-label="Per-minute data quality"></div>
           <ul class="legend">
             <li><span class="dq ok" aria-hidden="true"></span>Live trades</li>

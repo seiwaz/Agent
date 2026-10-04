@@ -1,5 +1,8 @@
 """SMC runner: the process that turns closed M1 bars into signals and tracks them.
 
+One runner per market; all runners of the process share one simulated wallet (sizing at
+entry, realized PnL at exit, `max_positions` across markets).
+
 Loop (every couple of seconds):
 1. keep the Tabdeal chart history current (full depth on start: no live warmup);
 2. when a new final minute exists in the merged series: rebuild the timeframes whose bar
@@ -19,6 +22,7 @@ import contextlib
 import json
 import logging
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import Engine, text
@@ -30,6 +34,7 @@ from sp2l.smc.lifecycle import Tracked, advance, risk_unit
 from sp2l.smc.model import Analysis, Costs, SmcParams
 from sp2l.smc.strategy import evaluate, trend_at
 from sp2l.smc.timeframes import MINUTE
+from sp2l.smc.wallet import Wallet
 
 log = logging.getLogger("sp2l.smc")
 FRESH = timedelta(minutes=3)
@@ -60,9 +65,18 @@ def tf_status(ctx: dict[str, Analysis], upto: datetime) -> list[dict[str, Any]]:
 
 class SmcRunner:
     def __init__(
-        self, db: Engine, symbol: str, params: SmcParams, costs: Costs, fetch: Fetch | None
+        self,
+        db: Engine,
+        symbol: str,
+        params: SmcParams,
+        costs: Costs,
+        fetch: Fetch | None,
+        wallet: Wallet | None = None,
+        qty_step: Decimal = Decimal("0.001"),
     ) -> None:
         self.db = db
+        self.wallet = wallet
+        self.qty_step = qty_step
         self.symbol = symbol
         self.params = params
         self.costs = costs
@@ -111,25 +125,24 @@ class SmcRunner:
         act = store.active(self.db, self.symbol)
         if not act:
             return
-        since = min(t.last_m1 or (t.created_at - MINUTE) for _, t in act)
+        since = min(t.last_m1 or (t.created_at - MINUTE) for _, t, _ in act)
         minutes = max(1, int((upto - since) / MINUTE))
         bars = load_bars(self.db, self.symbol, "1m", min(minutes, 60 * 24 * 30), upto)
         with self.db.begin() as c:
-            for sid, t in act:
+            for sid, t, qty in act:
                 for b in bars:
                     if b.open_time < t.created_at:
                         continue
                     ev = advance(t, b, self.params, self.costs)
                     if ev is not None:
                         price = t.entry if ev == "FILLED" else t.exit_price
-                        store.event(
-                            c,
-                            sid,
-                            b.open_time + MINUTE,
-                            ev,
-                            price,
-                            {"result_r": str(t.result_r)} if t.result_r is not None else None,
-                        )
+                        detail: dict[str, Any] | None = None
+                        if t.result_r is not None:
+                            detail = {"result_r": str(t.result_r)}
+                        if ev in ("TP", "SL", "TIMEOUT") and self.wallet is not None and qty > 0:
+                            pnl = self.wallet.book_close(c, sid, self.symbol, t, qty, self.costs)
+                            detail = {**(detail or {}), "pnl_usdt": str(pnl)}
+                        store.event(c, sid, b.open_time + MINUTE, ev, price, detail)
                     if not t.active:
                         break
                 store.save(c, sid, t)
@@ -147,13 +160,22 @@ class SmcRunner:
         if not fresh:
             return out
         n_active = len(store.active(self.db, self.symbol))
+        mkt = p.entry_mode == "market"
         with self.db.begin() as c:
             for e in fresh:
-                s = evaluate(e, ctx, p, self.costs)
+                bal = self.wallet.balance(c) if self.wallet is not None else None
+                s = evaluate(e, ctx, p, self.costs, equity=bal)
                 if not s.accepted or n_active >= p.max_active:
                     continue
+                if self.wallet is not None and self.wallet.active_count(c) >= p.max_positions:
+                    log.info(
+                        "%s: %s skipped, all %d positions in use",
+                        self.symbol,
+                        s.key,
+                        p.max_positions,
+                    )
+                    continue
                 assert s.entry is not None and s.sl is not None and s.tp is not None
-                mkt = p.entry_mode == "market"
                 t = Tracked(
                     key=s.key,
                     side=s.direction,
@@ -164,7 +186,15 @@ class SmcRunner:
                     risk=risk_unit(s.direction, s.entry, s.sl, self.costs, market=mkt),
                     market=mkt,
                 )
-                if store.insert_signal(c, self.symbol, s, t, p.digest()):
+                size = None
+                if self.wallet is not None:
+                    sized = self.wallet.size(c, s.entry, t.risk, self.qty_step)
+                    if isinstance(sized, str):
+                        log.info("%s: %s not opened: %s", self.symbol, s.key, sized)
+                        continue
+                    size = sized
+                wid = self.wallet.id if self.wallet is not None else None
+                if store.insert_signal(c, self.symbol, s, t, p.digest(), size, wid):
                     n_active += 1
                     out.append(s.key)
         return out
@@ -202,20 +232,24 @@ class SmcRunner:
                 )
 
 
-async def run_smc(runner: SmcRunner, stop: asyncio.Event, poll: float = 2.0) -> None:
-    log.info(
-        "SMC runner for %s (params %s): bias %s, POI %s, trigger %s",
-        runner.symbol,
-        runner.params.digest(),
-        runner.params.bias_tf,
-        ",".join(runner.params.poi_tfs),
-        runner.params.trigger_tf,
-    )
-    runner.heartbeat(datetime.now(UTC))  # visible as "loading history" right away
+async def run_smc(runners: list[SmcRunner], stop: asyncio.Event, poll: float = 2.0) -> None:
+    for r in runners:
+        log.info(
+            "SMC runner for %s (params %s): bias %s, POI %s, trigger %s",
+            r.symbol,
+            r.params.digest(),
+            r.params.bias_tf,
+            ",".join(r.params.poi_tfs),
+            r.params.trigger_tf,
+        )
+        r.heartbeat(datetime.now(UTC))  # visible as "loading history" right away
     while not stop.is_set():
-        try:
-            await asyncio.to_thread(runner.step)
-        except Exception:
-            log.exception("SMC step failed; retrying")
+        for r in runners:
+            if stop.is_set():
+                break
+            try:
+                await asyncio.to_thread(r.step)
+            except Exception:
+                log.exception("SMC step failed for %s; retrying", r.symbol)
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=poll)

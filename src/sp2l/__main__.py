@@ -1,16 +1,18 @@
 """Command line.
 
-    python -m sp2l [--config PATH] collect [--duration S] [--log-file PATH]
+    python -m sp2l [--config PATH] [--symbol S] collect [--duration S] [--log-file PATH]
     python -m sp2l [--config PATH] smc [--duration S] [--log-file PATH]
-    python -m sp2l [--config PATH] backtest [--days N] [--set key=value ...]
+    python -m sp2l [--config PATH] [--symbol S] backtest [--days N] [--set key=value ...]
     python -m sp2l [--config PATH] api [--host 127.0.0.1] [--port 8765]
     python -m sp2l [--config PATH] validate-readonly [--only ITEM,ITEM]
     python -m sp2l [--config PATH] reconcile-history [--apply]
 
-`collect` runs the always-on Tabdeal market-data collector on the public stream (no API
-key): raw trades, candles, gaps and the market-event journal (live chart + canonical M1).
-`smc` runs the Smart Money Concepts engine: it loads the full warmup from Tabdeal's chart
-history (no live warmup), analyses every timeframe and creates / tracks M1 signals.
+`collect` runs the always-on Tabdeal market-data collector of ONE market (`--symbol`, default
+the first of `symbols`) on the public stream (no API key): raw trades, candles, gaps and the
+market-event journal (live chart + canonical M1). Run one collector per market.
+`smc` runs the Smart Money Concepts engine for every configured market on one shared wallet:
+it loads the full warmup from Tabdeal's chart history (no live warmup), analyses every
+timeframe and creates / tracks M1 positions.
 It requires validated maker_fee / taker_fee / slippage_allowance.
 `backtest` replays the same engine over the stored history and prints the statistics.
 `validate-readonly` performs authenticated READ-ONLY account checks and records the
@@ -204,21 +206,29 @@ async def smc(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
     from sp2l.marketdata.tabdeal_public import chart_history
     from sp2l.marketdata.tabdeal_ws import ws_market
     from sp2l.smc.runner import SmcRunner, run_smc
+    from sp2l.smc.wallet import Wallet
 
-    params = cfg.smc_params()
     costs = cfg.costs()
     db = create_engine(cfg.database_url, pool_pre_ping=True)
-    market = ws_market(cfg.symbol)
-    runner = SmcRunner(
-        db, cfg.symbol, params, costs, lambda a, b: chart_history(market, "1", a, b, timeout=180)
-    )
+    wallet = Wallet(db, cfg.smc_params(), cfg.symbols)
+    log.info("shared wallet %s for %s", wallet.id, ", ".join(cfg.symbols))
+    runners = []
+    for sym in cfg.symbols:
+        market = ws_market(sym)
+
+        def fetch(a: Any, b: Any, m: str = market) -> Any:
+            return chart_history(m, "1", a, b, timeout=180)
+
+        runners.append(
+            SmcRunner(db, sym, cfg.symbol_params(sym), costs, fetch, wallet, cfg.instrument(sym)[1])
+        )
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, stop.set)
     loop.add_signal_handler(signal.SIGTERM, stop.set)
     if args.duration:
         loop.call_later(args.duration, stop.set)
-    await run_smc(runner, stop)
+    await run_smc(runners, stop)
 
 
 def backtest(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
@@ -231,7 +241,7 @@ def backtest(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
     from sp2l.smc.history import ensure_history, load_bars, series_end
     from sp2l.smc.model import SmcParams
 
-    base = cfg.smc_params().as_dict()
+    base = cfg.symbol_params(cfg.symbol).as_dict()
     for kv in args.set or []:
         k, _, v = kv.partition("=")
         base[k] = v
@@ -244,12 +254,14 @@ def backtest(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
     upto = series_end(db, cfg.symbol) or datetime.now(UTC)
     m1 = load_bars(db, cfg.symbol, "1m", int(args.days * 1440), upto)
     res = run(m1, params, cfg.costs())
-    print(_json.dumps({"params": params.digest(), "bars": len(m1), **res["stats"]}, indent=2))
+    out = {"symbol": cfg.symbol, "params": params.digest(), "bars": len(m1), **res["stats"]}
+    print(_json.dumps(out, indent=2))
 
 
 def main() -> None:
     p = argparse.ArgumentParser(prog="sp2l", description="SMC trading-signal system")
     p.add_argument("--config", default="config/runtime.yaml")
+    p.add_argument("--symbol", default=None, help="market for per-market commands (BTCUSDT)")
     sub = p.add_subparsers(dest="cmd", required=True)
     col = sub.add_parser("collect", help="run the market-data collector")
     col.add_argument("--duration", type=float, default=None, help="stop after N seconds")
@@ -291,6 +303,10 @@ def main() -> None:
     setup_logging(getattr(args, "log_file", None))
     try:
         cfg = RuntimeConfig.load(Path(args.config))
+        if args.symbol:
+            if args.cmd in ("smc", "api"):
+                raise ConfigError("--symbol is for per-market commands; smc/api run every market")
+            cfg = cfg.with_symbol(args.symbol)
         if args.cmd == "collect":
             asyncio.run(collect(args, cfg))
         elif args.cmd == "smc":

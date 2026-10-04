@@ -1,5 +1,5 @@
 [Unit]
-Description=SMC market-data collector (Tabdeal public stream; no API key, no orders)
+Description=SMC market-data collector for %i (Tabdeal public stream; no API key, no orders)
 After=network-online.target postgresql.service
 Wants=network-online.target
 Requires=postgresql.service
@@ -8,7 +8,7 @@ Requires=postgresql.service
 Type=simple
 User=smc
 WorkingDirectory=/home/smc/SMC
-ExecStart=/home/smc/SMC/.venv/bin/python -m sp2l --config config/server.yaml collect --log-file /home/smc/logs/collector.log
+ExecStart=/home/smc/SMC/.venv/bin/python -m sp2l --config config/server.yaml --symbol %i collect --log-file /home/smc/logs/collector-%i.log
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM

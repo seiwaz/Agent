@@ -13,9 +13,11 @@ One causal pass over closed bars. Nothing at bar i uses a later bar:
   candle's full range.
 - Fair value gap: three-bar imbalance - bullish when low[i] > high[i-2], bearish when
   high[i] < low[i-2] - larger than `fvg_min_atr` x ATR.
-- Zone status: TESTED once a later bar trades into it, MITIGATED once a later bar closes
-  through its far side. A zone older than the timeframe's lookback expires (the live engine
-  only ever sees that many bars, so a full-history backtest must forget it too).
+- Zone status: TESTED once a later bar trades into it. An order block is MITIGATED (invalid)
+  once a later bar CLOSES through its far side; a fair value gap once it is completely filled
+  (a wick reaches its far side; `fvg_fill: close` keeps the close rule). A zone older than
+  the timeframe's lookback expires (the live engine only ever sees that many bars, so a
+  full-history backtest must forget it too).
 """
 
 from __future__ import annotations
@@ -69,13 +71,16 @@ def _pivot_low(bars: Sequence[Candle], p: int, n: int) -> bool:
     )
 
 
-def _update_zone(z: Zone, i: int, b: Candle) -> None:
+def _update_zone(z: Zone, i: int, b: Candle, fvg_wick: bool) -> None:
     if z.status is ZoneStatus.MITIGATED or i <= z.created_idx:
         return
+    wick = fvg_wick and z.kind == "FVG"  # a gap traded through end to end is filled
     if z.direction is Side.LONG:
-        touched, broken = b.low <= z.top, b.close < z.bottom
+        touched = b.low <= z.top
+        broken = b.low <= z.bottom if wick else b.close < z.bottom
     else:
-        touched, broken = b.high >= z.bottom, b.close > z.top
+        touched = b.high >= z.bottom
+        broken = b.high >= z.top if wick else b.close > z.top
     if (touched or broken) and z.tested_idx is None:
         z.tested_idx = i
         z.status = ZoneStatus.TESTED
@@ -95,7 +100,7 @@ def analyze(bars: Sequence[Candle], tf: str, p: SmcParams) -> Analysis:
     seen = 0
     for i, b in enumerate(bars):
         for z in live:
-            _update_zone(z, i, b)
+            _update_zone(z, i, b, p.fvg_fill == "wick")
         live = [z for z in live if z.status is not ZoneStatus.MITIGATED and i < z.expires_idx]
         piv = i - sl_
         if piv >= sl_:

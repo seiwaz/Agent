@@ -36,6 +36,8 @@ REASON_TEXT = {
     "NO_TARGET": "No liquidity target pays the minimum net R:R after fees",
     "LOW_SCORE": "Confluence score below the minimum",
     "LEVERAGE": "Position size would need more than the allowed leverage",
+    "MISSING_SWEEP": "Required liquidity sweep missing",
+    "MISSING_FRESH": "Required fresh POI missing",
 }
 FACTOR_TEXT = {
     "fresh": "Fresh POI (first touch)",
@@ -122,15 +124,7 @@ class SmcView:
             return upto, self.ctx.build(upto, tfs)
 
     def _price(self) -> Decimal | None:
-        """Latest live trade, else the last close of the merged series."""
-        t = last_trade(self.db, self.symbol)
-        if t:
-            return Decimal(str(t["price"]))
-        upto = series_end(self.db, self.symbol)
-        if upto is None:
-            return None
-        last = load_bars(self.db, self.symbol, "1m", 1, upto)
-        return last[-1].close if last else None
+        return last_price(self.db, self.symbol)
 
     # ---- chart --------------------------------------------------------------------------
     def candles(self, tf: str, limit: int) -> dict[str, Any]:
@@ -164,15 +158,8 @@ class SmcView:
         first = a.bars[max(0, k - bars + 1)].open_time if a.bars else upto
         price = self._price() or (a.bars[-1].close if a.bars else None)
 
-        def visible(z: Zone) -> bool:
-            alive = z.valid_at(k)
-            return alive or (
-                z.mitigated_idx is not None and a.bars[z.mitigated_idx].open_time >= first
-            )
-
-        zones = [
-            zone_out(z, a, k) for z in a.zones if z.time >= first - length(tf) * 50 and visible(z)
-        ]
+        # an order block closed through or a fair value gap filled is invalid: never drawn
+        zones = [zone_out(z, a, k) for z in a.zones if z.valid_at(k)]
         htf_zones = []
         for h in htfs:
             ha = ctx[h]
@@ -192,6 +179,7 @@ class SmcView:
         ]
         return {
             "tf": tf,
+            "symbol": self.symbol,
             "ready": True,
             "version": VERSION,
             "params_hash": p.digest(),
@@ -300,67 +288,9 @@ class SmcView:
             "factor_text": FACTOR_TEXT,
         }
 
-    # ---- signals ------------------------------------------------------------------------
-    def signals(
-        self, *, active: bool | None, limit: int, since: datetime | None = None
-    ) -> list[dict[str, Any]]:
-        where = ["symbol = :s"]
-        if active is True:
-            where.append("state IN ('PENDING', 'OPEN')")
-        elif active is False:
-            where.append("state NOT IN ('PENDING', 'OPEN')")
-        if since is not None:
-            where.append("(closed_at IS NULL OR closed_at >= :since)")
-        out = rows(
-            self.db,
-            "SELECT id, key, side, state, created_at, entry, sl, tp, rr, net_rr, score, tp_source,"
-            " trigger_kind, poi_tf, detail, qty, notional, leverage, filled_at, closed_at,"
-            " exit_price, result_r, updated_at FROM smc_signals WHERE "
-            + " AND ".join(where)
-            + " ORDER BY created_at DESC LIMIT :n",
-            s=self.symbol,
-            n=limit,
-            since=since,
-        )
-        price = self._price()
-        for r in out:
-            r["result_r"] = (
-                None if r["result_r"] is None else _dec(round(Decimal(r["result_r"]), 2))
-            )
-            r["net_rr"] = None if r["net_rr"] is None else _dec(round(Decimal(r["net_rr"]), 2))
-            r["rr"] = None if r["rr"] is None else _dec(round(Decimal(r["rr"]), 2))
-            if r["state"] == "OPEN" and price is not None:
-                sgn = 1 if r["side"] == "LONG" else -1
-                risk = abs(Decimal(r["entry"]) - Decimal(r["sl"]))
-                r["open_r"] = (
-                    _dec(round((price - Decimal(r["entry"])) * sgn / risk, 2)) if risk else None
-                )
-        return out
-
-    def signal_events(self, sid: int) -> list[dict[str, Any]]:
-        return rows(
-            self.db,
-            "SELECT ts, kind, price, detail FROM smc_signal_events WHERE signal_id = :i"
-            " ORDER BY id",
-            i=sid,
-        )
-
+    # ---- per-market performance ----------------------------------------------------------
     def performance(self) -> dict[str, Any]:
-        closed = rows(
-            self.db,
-            "SELECT closed_at, result_r, state, side FROM smc_signals WHERE symbol = :s"
-            " AND result_r IS NOT NULL ORDER BY closed_at",
-            s=self.symbol,
-        )
-        counts = {
-            r["state"]: int(r["n"])
-            for r in rows(
-                self.db,
-                "SELECT state, COUNT(*) AS n FROM smc_signals WHERE symbol = :s GROUP BY 1",
-                s=self.symbol,
-            )
-        }
-        return {"counts": counts, **summarize([Decimal(r["result_r"]) for r in closed], closed)}
+        return performance(self.db, [self.symbol])
 
     # ---- backtest -----------------------------------------------------------------------
     def backtest(self, days: int = 30) -> dict[str, Any]:
@@ -430,7 +360,7 @@ class SmcView:
             "runner": None
             if st is None
             else {
-                "status": "RUNNING" if age is not None and age < 30 else "STALE",
+                "status": "RUNNING" if age is not None and age < 120 else "STALE",
                 "heartbeat_age_s": age,
                 "started_at": st["started_at"],
                 "last_m1": st["last_m1"],
@@ -450,9 +380,16 @@ class SmcView:
         }
 
     def params_view(self) -> dict[str, Any]:
+        """Every parameter in force for this market (tick = its own price increment)."""
         p = self.params
         groups = {
-            "Structure (every timeframe)": ["swing_len", "atr_len", "ob_lookback", "fvg_min_atr"],
+            "Structure (every timeframe)": [
+                "swing_len",
+                "atr_len",
+                "ob_lookback",
+                "fvg_min_atr",
+                "fvg_fill",
+            ],
             "Top-down model": ["bias_tf", "confirm_bias_tf", "poi_tfs", "trigger_tf"],
             "Entry / stop / target": [
                 "entry_mode",
@@ -466,9 +403,9 @@ class SmcView:
                 "tick",
             ],
             "Quality": ["min_score", "require"],
-            "Lifecycle": ["pending_expiry_min", "max_hold_min", "max_active"],
+            "Lifecycle": ["pending_expiry_min", "max_hold_min", "max_active", "max_positions"],
             "Data": [f"lookback_{tf}" for tf in ORDER] + ["history_days"],
-            "Advisory sizing": ["account_usdt", "risk_pct", "max_leverage"],
+            "Shared wallet": ["account_usdt", "risk_pct", "max_leverage"],
         }
         d = p.as_dict()
         return {
@@ -497,6 +434,164 @@ class SmcView:
             "factors": FACTOR_TEXT,
             "reasons": REASON_TEXT,
         }
+
+
+def last_price(db: Engine, symbol: str) -> Decimal | None:
+    """The newest of: the last live trade, the last close of the merged 1-minute series."""
+    t = last_trade(db, symbol)
+    upto = series_end(db, symbol)
+    if t and (upto is None or datetime.fromisoformat(t["exch_ts"]) >= upto - timedelta(minutes=2)):
+        return Decimal(str(t["price"]))
+    bars = load_bars(db, symbol, "1m", 1, upto) if upto else []
+    if bars:
+        return bars[-1].close
+    return Decimal(str(t["price"])) if t else None
+
+
+def last_prices(db: Engine, symbols: list[str]) -> dict[str, Decimal]:
+    out = {}
+    for sym in symbols:
+        p = last_price(db, sym)
+        if p is not None:
+            out[sym] = p
+    return out
+
+
+def open_pnl(
+    r: dict[str, Any], price: Decimal | None, costs: Costs
+) -> tuple[str | None, str | None]:
+    """(open R, open PnL in USDT after the entry fee and the exit fee at `price`)."""
+    if r["state"] != "OPEN" or price is None:
+        return None, None
+    sgn = 1 if r["side"] == "LONG" else -1
+    entry, sl = Decimal(r["entry"]), Decimal(r["sl"])
+    risk = abs(entry - sl)
+    open_r = _dec(round((price - entry) * sgn / risk, 2)) if risk else None
+    qty = Decimal(r["qty"]) if r.get("qty") else Decimal(0)
+    fee_in = costs.taker_fee if (r.get("detail") or {}).get("market") else costs.maker_fee
+    pnl = qty * ((price - entry) * sgn - entry * fee_in - price * costs.taker_fee)
+    return open_r, _dec(round(pnl, 4))
+
+
+def signals(
+    db: Engine,
+    symbols: list[str],
+    *,
+    active: bool | None,
+    limit: int,
+    since: datetime | None = None,
+    costs: Costs | None = None,
+) -> list[dict[str, Any]]:
+    where = ["symbol = ANY(:syms)"]
+    if active is True:
+        where.append("state IN ('PENDING', 'OPEN')")
+    elif active is False:
+        where.append("state NOT IN ('PENDING', 'OPEN')")
+    if since is not None:
+        where.append("(closed_at IS NULL OR closed_at >= :since)")
+    out = rows(
+        db,
+        "SELECT id, symbol, key, side, state, created_at, entry, sl, tp, rr, net_rr, score,"
+        " tp_source, trigger_kind, poi_tf, detail, qty, notional, leverage, margin, filled_at,"
+        " closed_at, exit_price, result_r, pnl_usdt, fees_usdt, updated_at FROM smc_signals WHERE "
+        + " AND ".join(where)
+        + " ORDER BY created_at DESC LIMIT :n",
+        syms=symbols,
+        n=limit,
+        since=since,
+    )
+    prices = last_prices(db, sorted({r["symbol"] for r in out if r["state"] == "OPEN"}))
+    for r in out:
+        for k, dp in (("result_r", 2), ("net_rr", 2), ("rr", 2), ("pnl_usdt", 4), ("fees_usdt", 4)):
+            r[k] = None if r[k] is None else _dec(round(Decimal(r[k]), dp))
+        r["open_r"], r["open_pnl"] = open_pnl(r, prices.get(r["symbol"]), costs or Costs())
+    return out
+
+
+def signal_events(db: Engine, sid: int) -> list[dict[str, Any]]:
+    return rows(
+        db,
+        "SELECT ts, kind, price, detail FROM smc_signal_events WHERE signal_id = :i ORDER BY id",
+        i=sid,
+    )
+
+
+def performance(db: Engine, symbols: list[str]) -> dict[str, Any]:
+    closed = rows(
+        db,
+        "SELECT closed_at, result_r, state, side, symbol, pnl_usdt FROM smc_signals"
+        " WHERE symbol = ANY(:s) AND result_r IS NOT NULL ORDER BY closed_at",
+        s=symbols,
+    )
+    counts = {
+        r["state"]: int(r["n"])
+        for r in rows(
+            db,
+            "SELECT state, COUNT(*) AS n FROM smc_signals WHERE symbol = ANY(:s) GROUP BY 1",
+            s=symbols,
+        )
+    }
+    by_symbol = {
+        sym: summarize(
+            [Decimal(r["result_r"]) for r in closed if r["symbol"] == sym],
+            [r for r in closed if r["symbol"] == sym],
+        )
+        for sym in symbols
+    }
+    for v in by_symbol.values():
+        v.pop("equity")
+    pnl = sum((Decimal(r["pnl_usdt"]) for r in closed if r["pnl_usdt"] is not None), Decimal(0))
+    return {
+        "counts": counts,
+        "pnl_usdt": _dec(round(pnl, 4)),
+        "by_symbol": by_symbol,
+        **summarize([Decimal(r["result_r"]) for r in closed], closed),
+    }
+
+
+def wallet(db: Engine, symbols: list[str], costs: Costs | None = None) -> dict[str, Any]:
+    """The shared simulated wallet: balance, open positions marked to the last price, ledger."""
+    w = one(
+        db, "SELECT id, initial_usdt, symbols, started_at FROM smc_wallets WHERE ended_at IS NULL"
+    )
+    if w is None:
+        return {"ready": False}
+    ledger = rows(
+        db,
+        "SELECT l.ts, l.symbol, l.kind, l.amount, l.balance_after, l.signal_id, s.side, s.state"
+        " FROM smc_wallet_ledger l LEFT JOIN smc_signals s ON s.id = l.signal_id"
+        " WHERE l.wallet_id = :w ORDER BY l.id",
+        w=w["id"],
+    )
+    balance = Decimal(ledger[-1]["balance_after"]) if ledger else Decimal(w["initial_usdt"])
+    act = signals(db, symbols, active=True, limit=50, costs=costs)
+    margin = sum((Decimal(r["margin"]) for r in act if r.get("margin")), Decimal(0))
+    upnl = sum((Decimal(r["open_pnl"]) for r in act if r.get("open_pnl")), Decimal(0))
+    realized = [r for r in ledger if r["kind"] == "REALIZED_PNL"]
+    fees = one(
+        db,
+        "SELECT COALESCE(SUM(fees_usdt), 0) AS f FROM smc_signals WHERE wallet_id = :w",
+        w=w["id"],
+    ) or {"f": "0"}
+    initial = Decimal(w["initial_usdt"])
+    return {
+        "ready": True,
+        "id": w["id"],
+        "symbols": w["symbols"],
+        "started_at": w["started_at"],
+        "initial": _dec(initial),
+        "balance": _dec(round(balance, 4)),
+        "equity": _dec(round(balance + upnl, 4)),
+        "unrealized": _dec(round(upnl, 4)),
+        "margin_used": _dec(round(margin, 4)),
+        "free": _dec(round(balance - margin, 4)),
+        "realized": _dec(round(balance - initial, 4)),
+        "return_pct": float(round((balance + upnl - initial) / initial, 5)),
+        "fees": _dec(round(Decimal(fees["f"]), 4)),
+        "positions": act,
+        "curve": [{"t": r["ts"], "balance": r["balance_after"]} for r in ledger],
+        "ledger": list(reversed(realized[-100:])),
+    }
 
 
 def summarize(rs: list[Decimal], closed: list[dict[str, Any]]) -> dict[str, Any]:

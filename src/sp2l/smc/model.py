@@ -112,6 +112,7 @@ class SmcParams:
     atr_len: int = 14
     ob_lookback: int = 60  # bars before a break searched for the order-block candle
     fvg_min_atr: Decimal = Decimal("0.1")  # smaller gaps are noise
+    fvg_fill: str = "wick"  # an FVG is gone once fully filled (wick) / only on a close (close)
     # top-down model: bias -> point of interest -> M1 trigger
     bias_tf: str = "4h"
     confirm_bias_tf: str = "1h"  # +1 score when it agrees
@@ -137,10 +138,11 @@ class SmcParams:
     lookback_4h: int = 180
     history_days: int = 35
     # lifecycle
-    max_active: int = 1  # simultaneous PENDING/OPEN signals
+    max_active: int = 1  # simultaneous PENDING/OPEN signals per symbol
+    max_positions: int = 2  # simultaneous PENDING/OPEN signals across all symbols
     pending_expiry_min: int = 45
     max_hold_min: int = 360
-    # advisory sizing
+    # shared simulated wallet: initial balance, risk per position, cross leverage cap
     account_usdt: Decimal = Decimal(100)
     risk_pct: Decimal = Decimal("0.01")
     max_leverage: Decimal = Decimal(10)
