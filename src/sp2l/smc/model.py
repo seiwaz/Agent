@@ -113,6 +113,7 @@ class SmcParams:
     ob_lookback: int = 60  # bars before a break searched for the order-block candle
     fvg_min_atr: Decimal = Decimal("0.1")  # smaller gaps are noise
     ob_min_atr: Decimal = Decimal(0)  # higher-timeframe order blocks below this x ATR are noise
+    ob_require_fvg: bool = False  # a higher-timeframe OB needs an FVG in the move leaving it
     fvg_fill: str = "wick"  # an FVG is gone once fully filled (wick) / only on a close (close)
     # top-down model: bias -> point of interest -> M1 trigger
     bias_tf: str = "4h"
@@ -148,6 +149,9 @@ class SmcParams:
     max_positions: int = 2  # simultaneous PENDING/OPEN signals across all symbols
     pending_expiry_min: int = 45
     max_hold_min: int = 360
+    tp1_rr: Decimal = Decimal(0)  # partial take-profit at 1:tp1_rr (0 = off; backtest only)
+    tp1_frac: Decimal = Decimal("0.5")  # share of the position closed at tp1
+    tp1_be: bool = False  # after tp1 the stop of the rest moves to break-even (after fees)
     be_at_r: Decimal = Decimal(0)  # move the stop to break-even (after fees) at +N R; 0 = off
     # shared simulated wallet: initial balance, risk per position, cross leverage cap
     account_usdt: Decimal = Decimal(100)

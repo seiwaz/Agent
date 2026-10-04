@@ -454,6 +454,7 @@ class SmcView:
                 "ob_lookback",
                 "fvg_min_atr",
                 "ob_min_atr",
+                "ob_require_fvg",
                 "fvg_fill",
             ],
             "Top-down model": ["bias_tf", "confirm_bias_tf", "poi_tfs", "poi_kinds", "trigger_tf"],

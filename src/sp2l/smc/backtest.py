@@ -58,6 +58,10 @@ def run(
             risk_unit(s.direction, s.entry, s.sl, costs, market=mkt),
             market=mkt,
         )
+        if p.tp1_rr > 0:
+            d = abs(s.entry - s.sl) * p.tp1_rr
+            t.tp1 = s.entry + d if s.direction.value == "LONG" else s.entry - d
+            t.tp1_frac, t.tp1_be = p.tp1_frac, p.tp1_be
         i = index.get(s.created_at)
         while i is not None and i < len(m1) and t.active:
             advance(t, m1[i], p, costs)

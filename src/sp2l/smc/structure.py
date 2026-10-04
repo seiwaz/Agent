@@ -160,6 +160,16 @@ def _detect_fvg(a: Analysis, i: int, p: SmcParams) -> None:
     )
 
 
+def _imbalance(bars: Sequence[Candle], j: int, i: int, side: Side) -> bool:
+    """The move from the block candle j to the break i left a gap (any size): a three-bar
+    imbalance whose middle bar lies in (j, i)."""
+    for m in range(j + 1, i):
+        before, after = bars[m - 1], bars[m + 1]
+        if (after.low > before.high) if side is Side.LONG else (after.high < before.low):
+            return True
+    return False
+
+
 def _break(a: Analysis, i: int, level: Swing, side: Side, kind: str, p: SmcParams) -> None:
     b = a.bars[i]
     ev = StructureEvent(
@@ -190,6 +200,12 @@ def _break(a: Analysis, i: int, level: Swing, side: Side, kind: str, p: SmcParam
         and c.high - c.low < p.ob_min_atr * atr
     ):
         return  # the break stands, the block is too small to matter
+    if (
+        p.ob_require_fvg
+        and a.tf != p.trigger_tf
+        and not _imbalance(a.bars, j, i, side)
+    ):
+        return  # no displacement (imbalance) left the block: not an order block
     z = Zone(
         id=f"{a.tf}:OB:{side.value}:{_epoch(c.open_time)}",
         kind="OB",

@@ -67,6 +67,10 @@ class Tracked:
     last_m1: datetime | None = None  # open time of the last M1 applied
     market: bool = False  # entered at the trigger close (OPEN from creation)
     sl0: Decimal | None = None  # the initial stop (sl moves to break-even)
+    tp1: Decimal | None = None  # partial target (backtest only)
+    tp1_frac: Decimal = Decimal(0)
+    tp1_be: bool = False
+    part_r: Decimal | None = None  # R already realised by the partial (weighted)
 
     def __post_init__(self) -> None:
         if self.market and self.state is State.PENDING:
@@ -89,7 +93,10 @@ def _close(t: Tracked, state: State, price: Decimal, at: datetime, costs: Costs)
     fee_in = costs.taker_fee if t.market else costs.maker_fee
     net = gross - t.entry * fee_in - price * costs.taker_fee
     t.state, t.exit_price, t.closed_at = state, price, at
-    t.result_r = net / t.risk
+    if t.part_r is not None:  # the rest after a partial take-profit
+        t.result_r = t.part_r + (1 - t.tp1_frac) * net / t.risk
+    else:
+        t.result_r = net / t.risk
     return state.value
 
 
@@ -124,6 +131,15 @@ def advance(t: Tracked, bar: Candle, p: SmcParams, costs: Costs) -> str | None:
     stop = bar.low <= t.sl if long else bar.high >= t.sl
     if stop:
         return _stop(t, end, costs)
+    if t.tp1 is not None and t.part_r is None and (bar.high >= t.tp1 if long else bar.low <= t.tp1):
+        sgn = 1 if long else -1
+        fee_in = costs.taker_fee if t.market else costs.maker_fee
+        net1 = (t.tp1 - t.entry) * sgn - t.entry * fee_in - t.tp1 * costs.taker_fee
+        t.part_r = t.tp1_frac * net1 / t.risk
+        if t.tp1_be:
+            cost = t.entry * (fee_in + costs.taker_fee)
+            t.sl = t.entry + cost if long else t.entry - cost
+        return "TP1"
     hit = bar.high >= t.tp if long else bar.low <= t.tp
     if hit:
         return _close(t, State.TP, t.tp, end, costs)
