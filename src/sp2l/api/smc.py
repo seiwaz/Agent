@@ -110,7 +110,7 @@ class SmcView:
         self.symbol = symbol
         self.params = params
         self.costs = costs or Costs()
-        self.ctx = ContextBuilder(db, symbol, params)
+        self.ctx = ContextBuilder(db, symbol, params, max_age=60.0)
         self._lock = threading.Lock()
         self._bt_lock = threading.Lock()
         self._bt: tuple[float, dict[str, Any]] | None = None
