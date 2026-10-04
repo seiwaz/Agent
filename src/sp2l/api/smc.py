@@ -462,6 +462,7 @@ class SmcView:
                 "min_sl_atr",
                 "max_risk_pct",
                 "tp_mode",
+                "tp_rr",
                 "min_net_rr",
                 "tick",
             ],

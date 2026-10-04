@@ -259,7 +259,12 @@ def evaluate(
     gross: Decimal | None = None
     ru = risk_unit(side, entry, sl, costs, market=market)
     cands = targets(ctx, p, m1, ob, i, t, side, entry)
-    if p.tp_mode == "rr" and cands:
+    if p.tp_mode == "fixed":
+        # classic price R:R: the target is tp_rr stop distances away, wherever liquidity is
+        dist = abs(entry - sl) * p.tp_rr
+        px = _round(entry + dist if long else entry - dist, tick, ROUND_HALF_UP)
+        cands = [(px, f"1:{p.tp_rr.normalize()} R:R")]
+    elif p.tp_mode == "rr" and cands:
         # exact net target, provided some liquidity lies at or beyond it
         fee_in = entry * (costs.taker_fee if market else costs.maker_fee)
         need = p.min_net_rr * ru + fee_in
@@ -278,7 +283,7 @@ def evaluate(
     for price, src in cands:
         px = (
             price
-            if p.tp_mode == "rr"
+            if p.tp_mode in ("rr", "fixed")
             else _round(price, tick, ROUND_FLOOR if long else ROUND_CEILING)
         )
         # keep the target on the entry side of the liquidity it sits at

@@ -126,6 +126,8 @@ class SmcParams:
     max_risk_pct: Decimal = Decimal("0.01")  # entry-to-SL distance cap (fraction of price)
     min_net_rr: Decimal = Decimal("1.5")  # reward/risk after fees and slippage
     tp_mode: str = "liquidity"  # liquidity: nearest pool paying min_net_rr / rr: exactly that
+    # / fixed: TP = entry +- tp_rr x stop distance (price R:R 1:tp_rr; still >= min_net_rr net)
+    tp_rr: Decimal = Decimal(3)
     entry_on: str = "m1"  # m1: the M1 order block / poi: the higher-timeframe zone
     min_score: int = 2
     require: tuple[str, ...] = ()  # confluence factors that are mandatory (e.g. sweep, fresh)
