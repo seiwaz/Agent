@@ -122,3 +122,11 @@ def test_analysis_is_causal(seed, cut):
             continue
         zp = next(z for z in part.zones if z.id == zf.id)
         assert zf.valid_at(cut - 1) == zp.valid_at(cut - 1)
+
+
+def test_small_higher_timeframe_order_blocks_are_dropped_but_never_the_m1_block():
+    small_ob = SmcParams(swing_len=2, atr_len=3, fvg_min_atr=D(0), ob_min_atr=D(5))
+    htf = analyze(bars(UP), "15m", small_ob)
+    assert htf.events and not htf.order_blocks  # the break is kept, the block is not
+    m1 = analyze(bars(UP), "1m", small_ob)  # the trigger timeframe keeps its block
+    assert m1.event_ob[m1.events[0].id].kind == "OB"

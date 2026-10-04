@@ -27,16 +27,20 @@ sent: signals and their simulated lifecycle are recorded for review.
 | Liquidity (display) | unswept swing highs (BSL) / lows (SSL) |
 | Premium / discount (display) | last swing high/low range and its equilibrium |
 
-## Entry model
+## Entry model (configuration of 2026-10-04, see "Evidence" below)
 1. **Bias** — trend of `bias_tf` (4h) must match the trade direction.
-2. **POI** — an unmitigated OB / FVG of `poi_tfs` (1h, then 15m) with the bias must overlap the
-   M1 order block of the trigger (price reacted inside the higher-timeframe zone).
+2. **POI** — an unmitigated **order block** (`poi_kinds: [OB]`) of `poi_tfs` (4h, then 1h) with
+   the bias, at least `ob_min_atr` (0.5) ATR tall, must overlap the M1 order block of the
+   trigger. Fair value gaps (at least `fvg_min_atr` = 0.5 ATR) only add confluence.
 3. **Trigger** — an M1 BOS / CHoCH in the bias direction.
-4. **Execution (M1)** — `entry_mode: market` enters at the trigger candle's close (limit modes:
-   proximal / mid / distal of the M1 block or of the POI). Stop beyond the POI and the M1 block
-   plus `sl_buffer_atr` × ATR (`sl_mode: poi`). Target = nearest unswept liquidity on any
-   analysed timeframe (or the M1 leg extreme) that pays ≥ `min_net_rr` **after fees and stop
-   slippage** (`tp_mode: liquidity`; `rr` = exactly that R with liquidity beyond).
+4. **Execution (M1)** — a limit order (maker fee) at the near edge of the POI
+   (`entry_mode: proximal`, `entry_on: poi`), cancelled after `pending_expiry_min` (120);
+   `entry_mode: market` enters at the trigger candle's close instead. Stop beyond the POI and the M1 block
+   plus `sl_buffer_atr` × ATR (`sl_mode: poi`). Target = 3 × the stop distance
+   (`tp_mode: fixed`, `tp_rr: 3`), provided it still pays ≥ `min_net_rr` (1) after fees and stop
+   slippage. Alternatives: `tp_mode: liquidity` (nearest unswept liquidity, optionally on
+   `target_tfs` with a price minimum `min_rr`) and `rr` (exactly `min_net_rr` with liquidity
+   beyond). Optional: `be_at_r` moves the stop to break-even after fees at +N R.
 5. **Quality** — score from fresh POI, CHoCH, liquidity sweep, M1 displacement FVG, OB/FVG
    confluence at the POI, `confirm_bias_tf` agreement; `score >= min_score`, `require`d factors
    present, stop ≤ `max_risk_pct`, advisory size ≤ `max_leverage` (`account_usdt` × `risk_pct`).
@@ -59,6 +63,19 @@ PENDING → OPEN → TP / SL, or EXPIRED (no fill in `pending_expiry_min`), MISS
 fill), TIMEOUT (market exit after `max_hold_min`). Conservative intrabar reading: stop beats
 target in the same minute; no target credit in the fill minute. R = net PnL / (stop distance +
 entry fee + stop exit fee + slippage), so a full stop is exactly −1R.
+
+## Evidence for the configuration (270 days, 2026-01-07 .. 10-04, after fees)
+| Setup | BTC/USDT | XRP/USDT |
+|---|---|---|
+| previous: market entry, liquidity target, 6 h, all zones | −206.7R / 680, PF 0.49 | −189.1R / 670, PF 0.54 |
+| limit at the 4h/1h zone edge, 1:3, 24 h | −34.4R / 191, PF 0.73 | −33.9R / 181, PF 0.73 |
+| **+ zone filters (OB-only POI, ≥ 0.5 ATR zones)** — deployed | **−5.0R / 67, PF 0.88** | **−13.0R / 63, PF 0.69** |
+
+Still not profitable: the least-loss setup found. Also measured (90 days): FVGs are filled
+93–99 % of the time and react worse than random ranges as entry zones; OBs react 5–10
+percentage points better than random ranges on 15m / 1h (none on 5m); zones below half an ATR
+behave like random ranges; a break-even stop at +1R and the higher-timeframe sweep filter
+did not help; the "standard" liquidity target with ≥ 1:2 was worse than a fixed 1:2 / 1:3.
 
 ## Backtest findings, BTC and XRP (2026-10-04, 30 days, after fees, FVG = fill rule)
 | Market | Trades | Win rate | Total | Profit factor |

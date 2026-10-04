@@ -112,11 +112,13 @@ class SmcParams:
     atr_len: int = 14
     ob_lookback: int = 60  # bars before a break searched for the order-block candle
     fvg_min_atr: Decimal = Decimal("0.1")  # smaller gaps are noise
+    ob_min_atr: Decimal = Decimal(0)  # higher-timeframe order blocks below this x ATR are noise
     fvg_fill: str = "wick"  # an FVG is gone once fully filled (wick) / only on a close (close)
     # top-down model: bias -> point of interest -> M1 trigger
     bias_tf: str = "4h"
     confirm_bias_tf: str = "1h"  # +1 score when it agrees
     poi_tfs: tuple[str, ...] = ("1h", "15m")  # priority order
+    poi_kinds: tuple[str, ...] = ("OB", "FVG")  # zones that can be a POI (FVGs add confluence)
     trigger_tf: str = "1m"
     # entry / stop / target
     entry_mode: str = "market"  # market (trigger close) / proximal / mid / distal of the zone
@@ -128,6 +130,8 @@ class SmcParams:
     tp_mode: str = "liquidity"  # liquidity: nearest pool paying min_net_rr / rr: exactly that
     # / fixed: TP = entry +- tp_rr x stop distance (price R:R 1:tp_rr; still >= min_net_rr net)
     tp_rr: Decimal = Decimal(3)
+    min_rr: Decimal = Decimal(0)  # liquidity targets: price R:R at least 1:min_rr (SMC standard: 2)
+    target_tfs: tuple[str, ...] = ()  # timeframes whose swings are targets (empty = all analysed)
     entry_on: str = "m1"  # m1: the M1 order block / poi: the higher-timeframe zone
     min_score: int = 2
     require: tuple[str, ...] = ()  # confluence factors that are mandatory (e.g. sweep, fresh)

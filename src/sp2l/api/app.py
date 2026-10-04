@@ -75,6 +75,7 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
     except ConfigError as exc:
         costs, costs_problem = None, str(exc)
     views = {s: SmcView(db, s, cfg.symbol_params(s), costs) for s in symbols}
+    sparams = {s: v.params for s, v in views.items()}
     display = {s: ws_market(s).replace("_", "/") for s in symbols}
     app = FastAPI(title="SMC Console API", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(SecurityHeaders)
@@ -110,7 +111,7 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
         return {
             "symbols": symbols,
             "markets": markets,
-            "wallet": smc_q.wallet(db, symbols, costs),
+            "wallet": smc_q.wallet(db, symbols, costs, sparams),
             "costs_problem": costs_problem,
             "live": qx.live_status(db),
         }
@@ -138,7 +139,11 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
         since = None if since_hours is None else datetime.now(UTC) - timedelta(hours=since_hours)
         act = {"all": None, "active": True, "closed": False}[state]
         syms = symbols if symbol is None else [sym(symbol)]
-        return {"items": smc_q.signals(db, syms, active=act, limit=limit, since=since, costs=costs)}
+        return {
+            "items": smc_q.signals(
+                db, syms, active=act, limit=limit, since=since, costs=costs, params=sparams
+            )
+        }
 
     @app.get("/api/smc/signals/{sid}/events")
     def signal_events(sid: int) -> Any:
@@ -150,7 +155,7 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
 
     @app.get("/api/smc/wallet")
     def wallet() -> Any:
-        return smc_q.wallet(db, symbols, costs)
+        return smc_q.wallet(db, symbols, costs, sparams)
 
     @app.get("/api/smc/backtest")
     def backtest(symbol: str | None = None, days: int = Query(30, ge=1, le=90)) -> Any:

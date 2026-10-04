@@ -115,6 +115,8 @@ def targets(
     out: list[tuple[Decimal, str]] = []
     long = side is Side.LONG
     for tf, a in ctx.items():
+        if p.target_tfs and tf not in p.target_tfs:
+            continue  # only the configured (external) liquidity counts as a target
         k = last_closed(a, t)
         if k < 0:
             continue
@@ -132,15 +134,11 @@ def targets(
                 a, s.idx, k, s.price, long
             ):
                 out.append((s.price, f"{tf} swing {'high' if long else 'low'}"))
-    leg = m1.bars[ob.idx : i + 1]
-    if long:
-        ext = max(b.high for b in leg)
-        if ext > entry:
-            out.append((ext, "1m leg high"))
-    else:
-        ext = min(b.low for b in leg)
-        if ext < entry:
-            out.append((ext, "1m leg low"))
+    if not p.target_tfs or m1.tf in p.target_tfs:  # the M1 leg extreme = internal liquidity
+        leg = m1.bars[ob.idx : i + 1]
+        ext = max(b.high for b in leg) if long else min(b.low for b in leg)
+        if (ext > entry) if long else (ext < entry):
+            out.append((ext, f"1m leg {'high' if long else 'low'}"))
     seen: set[Decimal] = set()
     uniq = []
     for pr, src in sorted(out, key=lambda x: abs(x[0] - entry)):
@@ -164,7 +162,10 @@ def find_poi(
         found = [
             z
             for z in zones_at(a, k, p)
-            if z.direction is side and z.overlaps(ob) and not filled_live(z, rng, p)
+            if z.kind in p.poi_kinds
+            and z.direction is side
+            and z.overlaps(ob)
+            and not filled_live(z, rng, p)
         ]
         if found:
             found.sort(key=lambda z: (z.kind != "OB", -z.idx))
@@ -296,7 +297,7 @@ def evaluate(
             reward - entry * (costs.taker_fee if market else costs.maker_fee) - px * costs.taker_fee
         ) / ru
         best_net, gross = net, reward / abs(entry - sl)
-        if net >= p.min_net_rr:
+        if net >= p.min_net_rr and gross >= p.min_rr:
             tp, tp_src = px, src
             break
     if tp is None:

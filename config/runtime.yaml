@@ -72,22 +72,32 @@ validation:
   server_time_samples: 20           # B42: at least 20 samples
 
 # Smart Money Concepts engine. Top-down: bias (4h trend, 1h confirmation) -> POI (unmitigated
-# 1h / 15m order blocks and fair value gaps) -> M1 trigger (BOS/CHoCH reacting inside the POI)
-# -> entry on M1. Every timeframe uses the same structure parameters. Omitted keys keep the
+# 4h / 1h order blocks) -> M1 trigger (BOS/CHoCH reacting inside the POI) -> limit entry at the
+# zone, executed and tracked on M1. Every timeframe uses the same structure parameters. Omitted keys keep the
 # defaults of src/sp2l/smc/model.py; the dashboard's Strategy page lists the effective values.
 smc:
   swing_len: 5            # pivot = N bars on each side (all timeframes)
+  fvg_min_atr: 0.5        # smaller gaps are noise (tested 2026-10-04: they react worse than random)
+  ob_min_atr: 0.5         # higher-timeframe order blocks below half an ATR react like random ranges
   bias_tf: 4h
   confirm_bias_tf: 1h
-  poi_tfs: [1h, 15m]
+  poi_tfs: [4h, 1h]
+  poi_kinds: [OB]         # only order blocks are entry zones; fair value gaps add confluence
   trigger_tf: 1m
-  entry_mode: market      # market (trigger close) | proximal | mid | distal
+  entry_mode: proximal    # limit order (maker fee) at the near edge of the higher-timeframe zone
+  entry_on: poi
+  pending_expiry_min: 120 # the limit order is cancelled if not filled within 2 h
   sl_mode: poi            # stop beyond the higher-timeframe zone
-  tp_mode: liquidity      # nearest unswept swing that pays min_net_rr after fees
-  min_net_rr: 1.5
+  tp_mode: fixed          # target = 3 x the stop distance (price R:R 1:3)
+  tp_rr: 3
+  min_net_rr: 1           # after fees the trade must still pay at least 1:1
   min_score: 2
   history_days: 35        # Tabdeal chart history kept for warmup (4h needs ~30 days)
   account_usdt: 100       # the shared simulated wallet for all symbols
   risk_pct: 0.01          # risk per position, of the wallet balance at entry
   max_active: 1           # open/pending positions per symbol
   max_positions: 2        # open/pending positions across all symbols
+  max_hold_min: 1440      # a position is closed at market after 24 h (tests: 6 h cut winners)
+# Choice backed by a 270-day backtest (2026-01-07 .. 10-04, after fees): BTC -5.0R / 67 trades
+# (PF 0.88), XRP -13.0R / 63 trades (PF 0.69) - still not profitable, the least-loss setup found;
+# the previous settings lost -206.7R / -189.1R on the same data.

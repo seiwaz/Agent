@@ -27,8 +27,15 @@ def build_context(m1: Sequence[Candle], p: SmcParams) -> dict[str, Analysis]:
     return {tf: analyze(aggregate(m1, tf, upto), tf, p) for tf in needed_tfs(p)}
 
 
-def run(m1: Sequence[Candle], p: SmcParams, costs: Costs) -> dict[str, Any]:
-    ctx = build_context(m1, p)
+def run(
+    m1: Sequence[Candle],
+    p: SmcParams,
+    costs: Costs,
+    ctx: dict[str, Analysis] | None = None,
+) -> dict[str, Any]:
+    """`ctx` may be passed in to reuse one analysis for many parameter sets that share the
+    structure parameters (only the timeframes the parameters name are read from it)."""
+    ctx = build_context(m1, p) if ctx is None else {tf: ctx[tf] for tf in needed_tfs(p)}
     setups = find_setups(ctx, p, costs)
     index = {c.open_time: i for i, c in enumerate(m1)}
     trades: list[tuple[Setup, Tracked]] = []

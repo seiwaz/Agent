@@ -318,13 +318,13 @@ function drawPosition(ctx, p, size) {
     if (xx !== null && yx !== null) { ctx.strokeStyle = rgba("--c-text", a); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(xx - 4, yx - 4); ctx.lineTo(xx + 4, yx + 4); ctx.moveTo(xx + 4, yx - 4); ctx.lineTo(xx - 4, yx + 4); ctx.stroke(); }
   }
   const long = p.side === "LONG";
-  const money = open ? (p.state === "OPEN" ? ` · ${rText(p.open_r)} · ${usdSigned(p.open_pnl)} $` : " · pending")
+  const money = open ? (p.state === "OPEN" ? ` · ${rText(p.open_r)} · ${usdSigned(p.open_pnl)} $` : ` · limit ${pxs(p.entry)}${p.deadline ? ` · until ${fmtClock.format(new Date(p.deadline))}` : ""}`)
     : ` · ${STATE[p.state] ? STATE[p.state][1] : p.state} ${rText(p.result_r)}${p.pnl_usdt !== null ? ` · ${usdSigned(p.pnl_usdt)} $` : ""}`;
   const yLab = long ? Math.min(yt, ye) - 11 : Math.max(yt, ye) + 11;
   pill(ctx, `${long ? "Long" : "Short"}${money}`, Math.max(x1, 0) + 2, yLab, long ? "--c-bull" : "--c-bear", size, "left");
   if (open) {
     plainLabel(ctx, `TP ${pxs(p.tp)}`, x2 - 6, yt + (long ? 10 : -10), "--c-bull", size, "right");
-    plainLabel(ctx, `SL ${pxs(p.sl)}`, x2 - 6, ys + (long ? -10 : 10), "--c-bear", size, "right");
+    plainLabel(ctx, p.at_breakeven ? `SL at break-even ${pxs(p.sl)}` : `SL ${pxs(p.sl)}`, x2 - 6, ys + (long ? -10 : 10), "--c-bear", size, "right");
   }
 }
 
@@ -447,11 +447,18 @@ function showOhlc(param) {
   if (!c) { box.textContent = ""; return; }
   box.textContent = `${fmtDay.format(new Date(c.open_time))} ${fmtClock.format(new Date(c.open_time))} · O ${pxs(c.open)}  H ${pxs(c.high)}  L ${pxs(c.low)}  C ${pxs(c.close)}${c.forming ? " · forming" : ""}`;
 }
+function poiKinds() {
+  const ps = state.params[state.symbol];
+  const it = ps ? ps.groups.flatMap((g) => g.items).find((i) => i.key === "poi_kinds") : null;
+  return it ? it.value : ["OB", "FVG"];
+}
 function renderLegend() {
   const items = [];
   const sw = (c, text) => el("li", {}, el("span", { class: "sw", style: `--c:${rgba(c, 0.35)};--b:${rgba(c, 0.95)}` }), text);
   if (state.layers.ob) items.push(sw("--c-bull", "Bullish OB"), sw("--c-bear", "Bearish OB"));
-  if (state.layers.fvg) items.push(sw("--c-fvg-bull", "Bullish FVG"), sw("--c-fvg-bear", "Bearish FVG"));
+  const pk = poiKinds();
+  if (state.layers.fvg) items.push(sw("--c-fvg-bull", pk.includes("FVG") ? "Bullish FVG" : "Bullish FVG (imbalance: target, not an entry zone)"), sw("--c-fvg-bear", "Bearish FVG"));
+  if (state.layers.ob && !pk.includes("FVG")) items.push(el("li", { class: "muted" }, "Entry zones (POI): order blocks only"));
   if (state.layers.htf) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${css("--text-2")}` }), "Higher-TF zone (hatched, label on the right)"));
   if (state.layers.structure) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${css("--text-2")}` }), "BOS / CHoCH"));
   if (state.layers.liquidity) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${rgba("--c-liq", 1)}` }), "BSL / SSL liquidity"));
@@ -483,6 +490,7 @@ function selectSymbol(s) {
   if (s === state.symbol) return;
   state.symbol = s; state.radar = null; state.analysis = null; state.focus = null;
   savePrefs(); renderSymbols(); renderControls();
+  loadParams(s).then(renderLegend).catch(() => {});
   startLive();
   refreshView().catch(() => {});
 }
@@ -574,9 +582,12 @@ function posCard(p) {
     el("div", { class: "t-info" }, el("div", { class: "k" }, "Entry"), el("div", { class: "v num" }, pxs(p.entry, p.symbol))),
     el("div", { class: "t-bad" }, el("div", { class: "k" }, "Stop loss"), el("div", { class: "v num" }, pxs(p.sl, p.symbol))),
     el("div", { class: "t-ok" }, el("div", { class: "k" }, "Take profit"), el("div", { class: "v num" }, pxs(p.tp, p.symbol)))),
-  el("div", { class: "meta" }, el("span", {}, live ? rText(p.open_r) : "pending"), el("span", {}, `net ${p.net_rr ? (+p.net_rr).toFixed(2) : "—"}R`),
+  el("div", { class: "meta" }, el("span", {}, live ? rText(p.open_r) : `limit order at ${pxs(p.entry, p.symbol)}`), el("span", {}, `net ${p.net_rr ? (+p.net_rr).toFixed(2) : "—"}R`),
     el("span", { class: "num" }, `qty ${grp(String(+p.qty))}`), el("span", { class: "num" }, `${usd(p.notional)} $ · margin ${usd(p.margin)} $`),
-    el("span", {}, "opened ", when(p.filled_at || p.created_at))));
+    el("span", {}, live ? "opened " : "placed ", when(p.filled_at || p.created_at)),
+    p.deadline ? el("span", { title: live ? "Closed at market if neither stop nor target is hit by then" : "The limit order is cancelled if not filled by then" },
+      live ? "time limit " : "expires ", when(p.deadline)) : null,
+    p.at_breakeven ? el("span", { class: "pos", title: `initial stop ${pxs(p.sl_initial, p.symbol)}` }, "stop at break-even") : null));
 }
 function renderTicket(w) {
   const act = state.allSignals.filter((s) => s.state === "OPEN" || s.state === "PENDING");
@@ -691,7 +702,7 @@ async function renderSignals() {
       el("dt", {}, "Exit"), el("dd", { class: "num" }, pxs(sel.exit_price, sel.symbol)),
       el("dt", {}, "PnL"), el("dd", { class: `num ${toneOf(sel.pnl_usdt)}` }, sel.pnl_usdt !== null ? `${usdSigned(sel.pnl_usdt)} $ (fees ${usd(sel.fees_usdt)} $)` : "—")),
     el("div", { class: "factors" }, Object.entries(sel.detail.factors || {}).map(([f, on]) => el("span", { class: `factor${on ? " on" : ""}` }, ft[f] || f))),
-    el("ol", { class: "timeline" }, ev.items.map((e) => el("li", { class: `t-${{ CREATED: "info", FILLED: "warn", TP: "ok", SL: "bad" }[e.kind] || "neutral"}` },
+    el("ol", { class: "timeline" }, ev.items.map((e) => el("li", { class: `t-${{ CREATED: "info", FILLED: "warn", BREAKEVEN: "info", TP: "ok", SL: "bad" }[e.kind] || "neutral"}` },
       el("b", {}, e.kind), " ", when(e.ts), e.price ? el("span", { class: "num muted" }, ` @ ${pxs(e.price, sel.symbol)}`) : null,
       e.detail && e.detail.result_r ? el("span", {}, " · ", rEl(e.detail.result_r)) : null,
       e.detail && e.detail.pnl_usdt ? el("span", { class: `num ${toneOf(e.detail.pnl_usdt)}` }, ` · ${usdSigned(e.detail.pnl_usdt)} $`) : null))),
@@ -793,9 +804,12 @@ async function renderStrategy() {
   const step = (tone, h, tfs, text) => el("li", { class: `t-${tone}` }, el("div", { class: "h" }, h), el("div", { class: "tfs" }, tfs), el("p", {}, text));
   $("model-flow").replaceChildren(
     step("info", "Bias", `${v.bias_tf} (+ ${v.confirm_bias_tf})`, "The trend of the bias timeframe's last BOS / CHoCH decides the only direction that can be traded."),
-    step("violet", "Point of interest", v.poi_tfs.join(" → "), "A still-valid order block or fair value gap with the bias. Price has to react inside it."),
+    step("violet", "Point of interest", v.poi_tfs.join(" → "), v.poi_kinds.includes("FVG")
+      ? "A still-valid order block or fair value gap with the bias. Price has to react inside it."
+      : `A still-valid order block (≥ ${v.ob_min_atr} ATR) with the bias; fair value gaps (≥ ${v.fvg_min_atr} ATR) only add confluence. Price has to react inside it.`),
     step("warn", "Trigger", v.trigger_tf, "An M1 BOS / CHoCH whose order block overlaps the zone confirms the reaction (liquidity sweep and displacement add score)."),
-    step("ok", "Execution", `${v.trigger_tf} · ${v.entry_mode}`, `Stop ${v.sl_mode === "poi" ? "beyond the zone" : "beyond the M1 block"}, target the nearest liquidity paying ≥ ${v.min_net_rr}R after fees. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
+    step("ok", "Execution", `${v.trigger_tf} · ${v.entry_mode === "market" ? "market" : `limit (${v.entry_mode}, ${v.entry_on === "poi" ? "zone" : "M1 block"})`}`,
+      `Stop ${v.sl_mode === "poi" ? "beyond the zone" : "beyond the M1 block"}, ${v.tp_mode === "fixed" ? `target 1:${v.tp_rr} R:R` : `target the nearest liquidity paying ≥ ${v.min_net_rr}R after fees`}${+v.be_at_r > 0 ? `, stop to break-even at +${v.be_at_r}R` : ""}, time limit ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
   $("param-grid").replaceChildren(...p.groups.map((g) => el("section", { class: "card" }, el("h2", {}, g.name),
     el("dl", { class: "kv" }, g.items.flatMap((i) => [el("dt", {}, el("code", {}, i.key)), el("dd", { class: "num" }, Array.isArray(i.value) ? i.value.join(", ") || "—" : show(i.value))])))),
   el("section", { class: "card" }, el("h2", {}, "Costs (from config)"), el("dl", { class: "kv" },
@@ -908,7 +922,7 @@ async function init() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("chart-card").classList.contains("maximized")) toggleFull(); });
   $("tz-label").textContent = `Times in ${tzText()}`;
   try { await refreshFast(); } catch { /* retried below */ }
-  if (state.symbol) loadParams(state.symbol).catch(() => {});
+  if (state.symbol) loadParams(state.symbol).then(renderLegend).catch(() => {});
   renderControls();
   renderLegend();
   window.addEventListener("hashchange", route);

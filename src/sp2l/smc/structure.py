@@ -11,6 +11,8 @@ One causal pass over closed bars. Nothing at bar i uses a later bar:
 - Order block: on a bullish break, the candle with the lowest low between the broken swing
   and the break (the origin of the impulse); mirrored for a bearish break. The zone is that
   candle's full range.
+- Order blocks smaller than `ob_min_atr` x ATR are not kept on the higher timeframes
+  (measured 2026-10-04: blocks under half an ATR react no better than random ranges).
 - Fair value gap: three-bar imbalance - bullish when low[i] > high[i-2], bearish when
   high[i] < low[i-2] - larger than `fvg_min_atr` x ATR.
 - Zone status: TESTED once a later bar trades into it. An order block is MITIGATED (invalid)
@@ -180,6 +182,14 @@ def _break(a: Analysis, i: int, level: Swing, side: Side, kind: str, p: SmcParam
     else:
         j = max(rng, key=lambda k: (a.bars[k].high, k))  # highest high, latest on ties
     c = a.bars[j]
+    atr = a.atr[i]
+    if (
+        p.ob_min_atr > 0
+        and a.tf != p.trigger_tf  # the M1 block is the entry refinement, never filtered
+        and atr is not None
+        and c.high - c.low < p.ob_min_atr * atr
+    ):
+        return  # the break stands, the block is too small to matter
     z = Zone(
         id=f"{a.tf}:OB:{side.value}:{_epoch(c.open_time)}",
         kind="OB",

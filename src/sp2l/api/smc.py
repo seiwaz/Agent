@@ -307,7 +307,7 @@ class SmcView:
             k = len(a.bars) - 1
             rng = self._live_range(a, upto, forming)
             for z in a.zones:
-                if z.direction is not side or not z.valid_at(k):
+                if z.direction is not side or z.kind not in p.poi_kinds or not z.valid_at(k):
                     continue
                 zd = live_zone(zone_out(z, a, k), rng, p)
                 if zd is None:
@@ -453,9 +453,10 @@ class SmcView:
                 "atr_len",
                 "ob_lookback",
                 "fvg_min_atr",
+                "ob_min_atr",
                 "fvg_fill",
             ],
-            "Top-down model": ["bias_tf", "confirm_bias_tf", "poi_tfs", "trigger_tf"],
+            "Top-down model": ["bias_tf", "confirm_bias_tf", "poi_tfs", "poi_kinds", "trigger_tf"],
             "Entry / stop / target": [
                 "entry_mode",
                 "entry_on",
@@ -465,6 +466,8 @@ class SmcView:
                 "max_risk_pct",
                 "tp_mode",
                 "tp_rr",
+                "min_rr",
+                "target_tfs",
                 "min_net_rr",
                 "tick",
             ],
@@ -553,7 +556,10 @@ def signals(
     limit: int,
     since: datetime | None = None,
     costs: Costs | None = None,
+    params: dict[str, SmcParams] | None = None,
 ) -> list[dict[str, Any]]:
+    """`params` (per market) adds when an active position ends on its own: a PENDING limit
+    expires at `deadline`, an OPEN one is closed at market at `deadline`."""
     where = ["symbol = ANY(:syms)"]
     if active is True:
         where.append("state IN ('PENDING', 'OPEN')")
@@ -577,6 +583,19 @@ def signals(
         for k, dp in (("result_r", 2), ("net_rr", 2), ("rr", 2), ("pnl_usdt", 4), ("fees_usdt", 4)):
             r[k] = None if r[k] is None else _dec(round(Decimal(r[k]), dp))
         r["open_r"], r["open_pnl"] = open_pnl(r, prices.get(r["symbol"]), costs or Costs())
+        sp = (params or {}).get(r["symbol"])
+        r["deadline"] = None
+        if sp is not None and r["state"] == "PENDING":
+            r["deadline"] = _t(
+                datetime.fromisoformat(r["created_at"]) + timedelta(minutes=sp.pending_expiry_min)
+            )
+        elif sp is not None and r["state"] == "OPEN" and r["filled_at"]:
+            r["deadline"] = _t(
+                datetime.fromisoformat(r["filled_at"]) + timedelta(minutes=sp.max_hold_min)
+            )
+        sl0 = (r.get("detail") or {}).get("sl_initial")
+        r["sl_initial"] = sl0
+        r["at_breakeven"] = sl0 is not None and Decimal(sl0) != Decimal(r["sl"])
     return out
 
 
@@ -621,7 +640,12 @@ def performance(db: Engine, symbols: list[str]) -> dict[str, Any]:
     }
 
 
-def wallet(db: Engine, symbols: list[str], costs: Costs | None = None) -> dict[str, Any]:
+def wallet(
+    db: Engine,
+    symbols: list[str],
+    costs: Costs | None = None,
+    params: dict[str, SmcParams] | None = None,
+) -> dict[str, Any]:
     """The shared simulated wallet: balance, open positions marked to the last price, ledger."""
     w = one(
         db, "SELECT id, initial_usdt, symbols, started_at FROM smc_wallets WHERE ended_at IS NULL"
@@ -636,7 +660,7 @@ def wallet(db: Engine, symbols: list[str], costs: Costs | None = None) -> dict[s
         w=w["id"],
     )
     balance = Decimal(ledger[-1]["balance_after"]) if ledger else Decimal(w["initial_usdt"])
-    act = signals(db, symbols, active=True, limit=50, costs=costs)
+    act = signals(db, symbols, active=True, limit=50, costs=costs, params=params)
     margin = sum((Decimal(r["margin"]) for r in act if r.get("margin")), Decimal(0))
     upnl = sum((Decimal(r["open_pnl"]) for r in act if r.get("open_pnl")), Decimal(0))
     realized = [r for r in ledger if r["kind"] == "REALIZED_PNL"]
