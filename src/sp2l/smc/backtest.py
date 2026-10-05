@@ -3,8 +3,8 @@
 Every timeframe is aggregated from the M1 series and analysed in one causal pass; every zone
 setup is armed at its first minute back into the FVG, evaluated as of that moment (or of the
 confirming execution-TF close) and accepted orders are walked through the following M1 bars
-with the live lifecycle rules: TP ladder, break-even, trailing stop, time stop (capacity
-`max_active` applies in time order).
+with the live lifecycle rules: one stop, one target, time stop (capacity `max_active` applies
+in time order).
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from sp2l.smc.lifecycle import Tracked, advance
 from sp2l.smc.model import Analysis, Costs, Setup, SmcParams
 from sp2l.smc.strategy import (
     ARMED_BEFORE,
-    bar_trail,
     evaluate,
     find_arming,
     order_for,
@@ -66,7 +65,6 @@ def run(
     setups = orders(ctx, p, costs)
     bars = ctx["1m"].bars
     index = {c.open_time: i for i, c in enumerate(bars)}
-    ax = ctx[p.exec_tf]
     trades: list[tuple[Setup, Tracked]] = []
     busy_until: list[datetime] = []
     for s in sorted((s for s in setups if s.accepted), key=lambda s: s.created_at):
@@ -76,15 +74,15 @@ def run(
         t = tracked(s, p, costs)
         i = index.get(s.created_at)
         while i is not None and i < len(bars) and t.active:
-            advance(t, bars[i], p, costs, bar_trail(t, ax, bars[i], p))
+            advance(t, bars[i], p, costs)
             i += 1
         busy_until.append(t.closed_at or bars[-1].open_time + MINUTE)
         trades.append((s, t))
     return {"context": ctx, "setups": setups, "trades": trades, "stats": stats(trades, setups)}
 
 
-def ladder_outcome(t: Tracked) -> str:
-    """The path of one trade, e.g. "TP1 > TP2 > TRAIL" or "SL"."""
+def exit_kind(t: Tracked) -> str:
+    """How one trade ended, e.g. "TP" or "SL"."""
     return " > ".join(x.kind for x in t.parts) or t.state.value
 
 
@@ -107,7 +105,7 @@ def stats(trades: Sequence[tuple[Setup, Tracked]], setups: Sequence[Setup]) -> d
         "accepted": sum(1 for s in setups if s.accepted),
         "signals": len(trades),
         "states": dict(Counter(t.state.value for _, t in trades)),
-        "ladder": dict(Counter(ladder_outcome(t) for _, t in trades if t.parts)),
+        "exits": dict(Counter(exit_kind(t) for _, t in trades if t.parts)),
         "closed": len(rs),
         "wins": len(wins),
         "win_rate": None if not rs else round(len(wins) / len(rs), 3),

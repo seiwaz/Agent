@@ -17,7 +17,6 @@ from sqlalchemy import Engine
 
 from sp2l.api.queries import _dec, jsonable, last_trade, one, rows
 from sp2l.core.types import Side
-from sp2l.smc.backtest import ladder_outcome
 from sp2l.smc.backtest import run as run_backtest
 from sp2l.smc.context import ContextBuilder, needed_tfs
 from sp2l.smc.history import coverage, extremes_since, load_bars, series_end
@@ -42,7 +41,7 @@ REASON_TEXT = {
     "ZONE_INVALID": "Order block closed through or expired before the order",
     "NOT_FRESH": "Order block already touched (only the first touch is an entry)",
     "BAD_STOP": "Stop would sit on the wrong side of the entry",
-    "NO_TARGET": "No internal liquidity / previous swing beyond the entry for TP1",
+    "NO_TARGET": "No previous HH (long) / LL (short) beyond the entry for the target",
     "LEVERAGE": "Position size would need more than the allowed leverage",
 }
 RULE_TEXT = {
@@ -56,7 +55,7 @@ RULE_TEXT = {
     "fresh": "Only the first touch: the order is armed when price first trades into the FVG",
     "bias": "Bias timeframe trend in the trade's direction when the order is placed",
 }
-SETUP_STATE = {"PENDING": "pending", "OPEN": "open", "TP1": "open", "TP2": "open"}
+SETUP_STATE = {"PENDING": "pending", "OPEN": "open"}
 FRESH_ARMING = timedelta(minutes=3)  # the runner's window for a new arming
 
 
@@ -67,9 +66,7 @@ def plan_json(s: Any) -> dict[str, Any]:
         "reasons": [{"code": r, "text": REASON_TEXT.get(r, r)} for r in s.reasons],
         "entry": None if s.entry is None else _dec(s.entry),
         "sl": None if s.sl is None else _dec(s.sl),
-        "tp1": target_json(s.tp1),
-        "tp2": target_json(s.tp2),
-        "tp3": target_json(s.tp3),
+        "tp": target_json(s.tp),
         "market": s.market,
     }
 
@@ -507,11 +504,8 @@ class SmcView:
                         "side": s.direction.value,
                         "entry": _dec(t.entry),
                         "sl": _dec(s.sl) if s.sl is not None else None,
-                        "tp1": target_json(s.tp1),
-                        "tp2": target_json(s.tp2),
-                        "tp3": target_json(s.tp3),
+                        "tp": target_json(s.tp),
                         "state": t.state.value,
-                        "ladder": ladder_outcome(t),
                         "result_r": None if t.result_r is None else _dec(round(t.result_r, 2)),
                         "filled_at": None if t.filled_at is None else _t(t.filled_at),
                         "closed_at": None if t.closed_at is None else _t(t.closed_at),
@@ -575,7 +569,7 @@ class SmcView:
                 "sweep_max_bars",
             ],
             "Top-down model": ["bias_tf", "zone_tf", "exec_tf", "confirm_exec"],
-            "Stop and take-profit ladder": ["tick", "tp1_frac", "tp2_frac", "day_boundary"],
+            "Stop and target": ["tick", "tp_ref"],
             "Lifecycle": [
                 "pending_expiry_min",
                 "time_stop_min",
@@ -637,7 +631,7 @@ def last_prices(db: Engine, symbols: list[str]) -> dict[str, Decimal]:
     return out
 
 
-FILLED_STATES = ("OPEN", "TP1", "TP2")
+FILLED_STATES = ("OPEN",)
 
 
 def open_pnl(
@@ -658,30 +652,6 @@ def open_pnl(
     open_r = _dec(round(done + rest * net / risk, 2)) if risk else None
     qty = Decimal(r["qty"]) if r.get("qty") else Decimal(0)
     return open_r, _dec(round(qty * rest * net, 4))
-
-
-def ladder_view(r: dict[str, Any]) -> list[dict[str, Any]]:
-    """TP1-TP3 of a signal with their net R, share and whether they were hit."""
-    tg = r.get("targets") or {}
-    d = r.get("detail") or {}
-    hit = {x["kind"] for x in (r.get("parts") or [])}
-    fr = {"tp1": d.get("frac1"), "tp2": d.get("frac2")}
-    out = []
-    for name in ("tp1", "tp2", "tp3"):
-        x = tg.get(name)
-        if not x:
-            continue
-        out.append(
-            {
-                "name": name.upper(),
-                "price": x["price"],
-                "net_r": x["net_r"],
-                "source": x["source"],
-                "frac": fr.get(name),
-                "hit": (name.upper() in hit) or (name == "tp3" and "TP" in hit),
-            }
-        )
-    return out
 
 
 def signals(
@@ -707,8 +677,8 @@ def signals(
         db,
         "SELECT id, symbol, key, side, state, created_at, entry, sl, tp, risk, rr, net_rr, score,"
         " tp_source, trigger_kind, poi_tf, detail, qty, notional, leverage, margin, filled_at,"
-        " closed_at, exit_price, result_r, pnl_usdt, fees_usdt, updated_at, tp1, tp2, tp3, targets,"
-        " parts, qty_open, realized_r, version FROM smc_signals WHERE "
+        " closed_at, exit_price, result_r, pnl_usdt, fees_usdt, updated_at, targets, parts,"
+        " version FROM smc_signals WHERE "
         + " AND ".join(where)
         + " ORDER BY created_at DESC LIMIT :n",
         syms=symbols,
@@ -722,7 +692,6 @@ def signals(
         r["open_r"], r["open_pnl"] = open_pnl(r, prices.get(r["symbol"]), costs or Costs())
         sp = (params or {}).get(r["symbol"])
         r["deadline"] = r["time_stop_at"] = None
-        r["ladder"] = ladder_view(r)
         ts_min = int((r.get("detail") or {}).get("time_stop_min") or 0)
         if sp is not None and r["state"] == "PENDING":
             r["deadline"] = _t(
@@ -731,11 +700,8 @@ def signals(
         elif sp is not None and r["state"] in FILLED_STATES and r["filled_at"]:
             filled = datetime.fromisoformat(r["filled_at"])
             r["deadline"] = _t(filled + timedelta(minutes=sp.max_hold_min))
-            if r["state"] == "OPEN" and ts_min > 0:
+            if ts_min > 0:
                 r["time_stop_at"] = _t(filled + timedelta(minutes=ts_min))
-        sl0 = (r.get("detail") or {}).get("sl_initial")
-        r["sl_initial"] = sl0
-        r["at_breakeven"] = sl0 is not None and Decimal(sl0) != Decimal(r["sl"])
     return out
 
 

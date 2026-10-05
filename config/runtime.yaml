@@ -71,12 +71,12 @@ validation:
   server_time_max_offset_ms: 500    # B42 Live target: worst |server - local midpoint| offset
   server_time_samples: 20           # B42: at least 20 samples
 
-# Smart Money Concepts engine, SMC-2.0 (docs/SMC_STRATEGY.md). Top-down: 4h bias -> 1h zone
-# setup in strict order (liquidity sweep -> displacement BOS/CHoCH by close -> order block = last
-# opposite candle, with the FVG right after it) -> limit (maker) at the OB edge touching the FVG,
-# armed when price first trades into the FVG -> TP ladder (TP1 internal liquidity, TP2 opposing
-# 1h FVG, TP3 external liquidity + trailing stop behind 15m swings). Fills and exits are walked on
-# M1. Every key below is in the parameter hash; omitted keys keep src/sp2l/smc/model.py defaults.
+# Smart Money Concepts engine, SMC-2.0 (docs/SMC_STRATEGY.md). Top-down: 4h bias -> 1h setup in strict
+# order (liquidity sweep -> displacement BOS/CHoCH by close -> order block = last opposite candle,
+# with the FVG right after it) -> limit (maker) at the OB edge touching the FVG, armed when price
+# first trades into the FVG -> SL one tick beyond the OB wick, one TP at the previous HH / LL.
+# Fills and exits are walked on M1. Every key below is in the parameter hash; omitted keys keep
+# src/sp2l/smc/model.py defaults.
 smc:
   # structure (every timeframe)
   swing_len: 5            # pivot = N bars on each side
@@ -91,22 +91,17 @@ smc:
   # top-down model
   bias_tf: 4h
   zone_tf: 1h             # sweep, displacement, OB + FVG
-  exec_tf: 15m            # confirmation (optional), trailing swings, time units
+  exec_tf: 15m            # confirmation (optional), time units
   confirm_exec: false     # true: after arming wait for a 15m BOS/CHoCH and enter at market
-  # stop and targets: independent of each other (owner 2026-10-05)
-  # SL one tick beyond the OB's wick. TP1 = nearest internal liquidity / previous swing (15m or 1h):
-  # close 50 %, stop to break-even. TP2 = next unfilled 1h FVG: close 30 %. TP3 = external
-  # liquidity (previous day / week high-low, equal highs / lows) for the runner, trailing stop one
-  # tick beyond the last confirmed 15m swing. No TP1 level: no trade.
-  tp1_frac: 0.5
-  tp2_frac: 0.3
-  day_boundary: utc       # previous day / ISO week levels for TP3
+  # stop and target: independent of each other (owner 2026-10-05)
+  # SL one tick beyond the OB's wick; one TP at the edge of the previous HH candle (long: its high)
+  # / LL candle (short: its low). No HH / LL beyond the entry: no trade.
+  tp_ref: leg             # leg: the HH / LL the displacement made (break bar .. order); swing: last confirmed 1h swing
   # time
   pending_expiry_min: 120 # unfilled limit cancelled 8 x 15m after arming
-  time_stop_min: 180      # market exit if neither TP1 nor SL within 12 x 15m of the fill
+  time_stop_min: 180      # market exit if neither TP nor SL within 12 x 15m of the fill
   max_hold_min: 1440
   # data
-  lookback_15m: 1400      # covers the previous ISO week
   history_days: 35        # Tabdeal chart history kept for warmup (4h needs ~30 days)
   # chart (display only)
   chart_near_atr: 3       # setups within 3 x ATR(1h) of price (or tied to a position)

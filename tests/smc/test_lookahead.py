@@ -26,9 +26,7 @@ def view(s):
         s.reasons,
         s.entry,
         s.sl,
-        s.tp1,
-        s.tp2,
-        s.tp3,
+        s.tp,
     )
 
 

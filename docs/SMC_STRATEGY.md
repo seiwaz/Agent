@@ -44,59 +44,47 @@ kept at the end of this file.
    (taker) at its close.
 4. **Stop** — one tick beyond the order block's wick (below its low for a long, above its
    high for a short). Nothing else: no ATR buffer, no cap on the distance.
-5. **Targets (ladder)** — from the market alone, **never derived from the stop** (owner rule
-   2026-10-05; no R-based fallback, no R:R or cost filter):
-   - TP1 = nearest internal liquidity / previous swing: the nearest unswept confirmed swing
-     high (low) of the **15m or 1h** timeframe beyond the entry. `tp1_frac` (50 %) closes; the
-     stop moves to break-even net of fees. No such level: no trade (NO_TARGET).
-   - TP2 = the near edge of the next **unfilled 1h FVG** beyond TP1. `tp2_frac` (30 %) closes.
-     None: its share stays in the runner.
-   - TP3 (runner) = external liquidity beyond TP2 (or TP1): previous UTC day / ISO week high
-     (low) not yet taken, or 1h equal highs (lows). The runner trails one tick beyond the last
-     confirmed 15m swing (only ever tightened) from TP2 on, or from TP1 on when there is no
-     TP2. No TP3: the runner ends on the trailing stop or `max_hold_min`.
-   - The net R of each target after fees is computed and shown, for information only.
+5. **Target** — one, from the market alone, **never derived from the stop** (owner rule
+   2026-10-05): the edge of the previous **HH** candle (long: its high) / **LL** candle (short:
+   its low). `tp_ref: leg` (default): the extreme the displacement made, from the break bar up
+   to the order (closed 1h bars + the minutes of the forming one); `swing`: the last confirmed
+   1h swing high / low beyond the entry. None beyond the entry: no trade (NO_TARGET). Its net
+   R after fees is shown for information only.
 6. **Size** — risk `risk_pct` of the wallet over the stop distance plus costs; advisory size
    ≤ `max_leverage` (LEVERAGE).
 7. **Capacity** — `max_active` (1) per market, `max_positions` (2) across markets; orders are
    never created retroactively (only within 3 minutes of the arming minute / confirmation).
 
 ## Lifecycle (`lifecycle.py`, walked on M1 bars)
-PENDING → OPEN → **TP1** (50 % out, stop at break-even) → **TP2** (30 % out, trailing) →
-**TP** (TP3, rest out). Exits of the rest: **SL** (before TP1, exactly −1R), **BE** (after TP1),
-**TRAIL** (the trailing stop of the runner), **TIME_STOP** (neither TP1 nor SL within `time_stop_min` = 180 min =
-12 × 15m of the fill, market exit), **TIMEOUT** (`max_hold_min` 1440). Without a fill:
-EXPIRED, MISSED (TP1 traded before the fill).
-Conservative reading: a stop beats any target in the same minute; no target in the fill
-minute; a moved stop (break-even, trailing) counts from the next minute.
-R = Σ partᵢ × net per unitᵢ / risk unit, risk unit = stop distance + entry fee + slippage +
-taker fee on the slipped stop fill, so a full stop-out is exactly −1R.
+PENDING → OPEN → **TP** / **SL**, or **TIME_STOP** (neither TP nor SL within `time_stop_min`
+= 180 min = 12 × 15m of the fill, market exit), **TIMEOUT** (`max_hold_min` 1440). Without a
+fill: EXPIRED, MISSED (the target traded before the fill). Conservative reading: a stop beats
+the target in the same minute; no target in the fill minute. R = net PnL per unit / risk
+unit, risk unit = stop distance + entry fee + slippage + taker fee on the slipped stop fill,
+so a stop-out is exactly −1R.
 
 ## Shared wallet
 - Sizing at entry: risk `risk_pct` (1 %) of the current wallet balance; quantity rounded down
   to the market's step; margin (notional / `max_leverage`) must fit the free balance
-  (MARGIN_LIMITED / NO_FREE_MARGIN). The ladder shares are whole quantity steps; a share that
-  rounds to nothing passes to the next part.
-- Booking: **every exit** (TP1, TP2, the final one) is a REALIZED_PNL row in
-  `smc_wallet_ledger` with its exit (`part`) and its own fees (its share of the entry fee +
-  its exit fee). The signal's PnL / fees are the sums. Margin in use shrinks with the open
-  quantity.
+  (MARGIN_LIMITED / NO_FREE_MARGIN).
+- Booking: the exit is a REALIZED_PNL row in `smc_wallet_ledger` with its kind (`part`) and
+  its fees (entry fee + exit fee).
 
 ## Chart
 - Default **Setups** view: only the setups the engine can trade — fresh, valid, unexpired 1h
   setups with the 4h bias within `chart_near_atr` (3) × ATR(1h) of price, or tied to a
   pending / open position; positions' setups first, then the nearest, `chart_top_n` (3). Each
   with its FVG, the sweep (dashed line at the swept level, dot at the wick), its BOS / CHoCH,
-  the planned SL and TP1–TP3 (dotted, with their net R). Label: timeframe · age · state;
-  colour by state (waiting = direction colour, armed, pending, open). Positions show entry, SL
-  (break-even / trailing), TP1–TP3 with net R and the time stop / order expiry.
+  the planned SL and TP (dotted, with its net R). Label: timeframe · age · state; colour by
+  state (waiting = direction colour, armed, pending, open). Positions show entry, SL, TP and
+  the time stop / order expiry.
 - **All zones (debug)**: every zone, every gap behind an order block, every BOS / CHoCH and
   liquidity level and every setup in any state (used, invalid, expired).
 
 ## Database
-Migration `0020_smc_ladder`: `smc_signals` gains `tp1`, `tp2`, `tp3`, `targets` (source and
-net R per target), `parts` (the exits), `qty_open`, `realized_r`, `version`; `tp` (= TP3) may
-be NULL; the active index covers TP1 / TP2. `smc_wallet_ledger` gains `part` and `fees`.
+Migration `0020_smc_ladder`: `smc_signals` gains `targets` (source and net R), `parts` (the
+exit), `qty_open`, `realized_r`, `version` (and `tp1` / `tp2` / `tp3`, unused since the
+single-target rule); `smc_wallet_ledger` gains `part` and `fees`.
 Signals of SMC-1.0 keep their single TP and finish under the old rule.
 
 ## Parameters

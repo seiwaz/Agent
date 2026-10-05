@@ -100,9 +100,8 @@ def insert_signal(
     size: Size | None = None,
     wallet_id: int | None = None,
 ) -> int:
-    targets = {"tp1": target_json(s.tp1), "tp2": target_json(s.tp2), "tp3": target_json(s.tp3)}
-    tp2 = s.tp2
-    gross = None if tp2 is None or s.entry is None else abs(tp2.price - s.entry) / t.risk
+    targets = {"tp": target_json(s.tp)}
+    gross = None if s.tp is None or s.entry is None else abs(s.tp.price - s.entry) / t.risk
     sid: int | None = c.execute(
         text(
             "INSERT INTO smc_signals (symbol, key, side, state, created_at, entry, sl, tp, risk,"
@@ -125,7 +124,7 @@ def insert_signal(
             "risk": t.risk,
             "rr": gross,
             "nrr": s.net_rr,
-            "src": None if s.tp3 is None else s.tp3.source,
+            "src": None if s.tp is None else s.tp.source,
             "tk": s.zone.event.kind,
             "ptf": s.zone.tf,
             "d": json.dumps(
@@ -133,8 +132,6 @@ def insert_signal(
                     **setup_detail(s),
                     "market": t.market,
                     "sl_initial": str(t.sl),
-                    "frac1": str(t.frac1),
-                    "frac2": str(t.frac2),
                     "time_stop_min": t.time_stop_min,
                 }
             ),
@@ -145,9 +142,9 @@ def insert_signal(
             "w": wallet_id,
             "m": size.margin if size else None,
             "fa": t.filled_at,  # a market entry is filled at creation
-            "tp1": t.tp1,
-            "tp2": t.tp2,
-            "tp3": t.tp,
+            "tp1": None,
+            "tp2": None,
+            "tp3": None,
             "tg": json.dumps(targets),
             "ver": VERSION,
         },
@@ -180,7 +177,7 @@ def active(db: Engine, symbol: str) -> list[tuple[int, Tracked, Decimal]]:
         rows = c.execute(
             text(
                 "SELECT id, key, side, entry, sl, tp, created_at, risk, state, filled_at, last_m1,"
-                " COALESCE(qty, 0), detail, tp1, tp2, parts"
+                " COALESCE(qty, 0), detail, parts"
                 " FROM smc_signals WHERE symbol = :s AND state IN "
                 + ACTIVE_SQL
                 + " ORDER BY created_at"
@@ -204,10 +201,6 @@ def active(db: Engine, symbol: str) -> list[tuple[int, Tracked, Decimal]]:
             last_m1=r[10],
             market=bool(d.get("market")),
             sl0=Decimal(d.get("sl_initial") or r[4]),
-            tp1=r[13],
-            tp2=r[14],
-            frac1=Decimal(d.get("frac1") or 0),
-            frac2=Decimal(d.get("frac2") or 0),
             time_stop_min=int(d.get("time_stop_min") or 0),
             parts=[
                 Part(
@@ -217,7 +210,7 @@ def active(db: Engine, symbol: str) -> list[tuple[int, Tracked, Decimal]]:
                     datetime.fromisoformat(x["at"]),
                     Decimal(x["r"]),
                 )
-                for x in (r[15] or [])
+                for x in (r[13] or [])
             ],
         )
         out.append((int(r[0]), t, Decimal(r[11])))

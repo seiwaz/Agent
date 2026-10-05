@@ -72,9 +72,7 @@ def make_setup(key: str, created: datetime, entry: D, sl: D, tp: D) -> Setup:
         bias=1,
         entry=entry,
         sl=sl,
-        tp1=tgt,
-        tp2=tgt,
-        tp3=None,
+        tp=tgt,
         qty=D(1),
         notional=entry,
         leverage=D(41),
@@ -323,7 +321,7 @@ def test_the_live_runner_replays_exactly_what_the_backtest_finds(clean):
     with clean.connect() as c:
         got = c.execute(
             text(
-                "SELECT key, entry, sl, tp1, tp2, tp, state, result_r, parts, created_at,"
+                "SELECT key, entry, sl, tp, state, result_r, parts, created_at,"
                 " filled_at FROM smc_signals WHERE symbol = :s ORDER BY created_at"
             ),
             {"s": sym},
@@ -331,8 +329,7 @@ def test_the_live_runner_replays_exactly_what_the_backtest_finds(clean):
     assert len(got) == len(want)
     for row, (s, tr) in zip(got, want, strict=True):
         assert row.key == s.key and row.created_at == s.created_at
-        assert (row.entry, row.tp1, row.tp2, row.tp) == (tr.entry, tr.tp1, tr.tp2, tr.tp)
-        assert row.sl == tr.sl  # the final (trailed) stop
+        assert (row.entry, row.sl, row.tp) == (tr.entry, tr.sl, tr.tp)
         assert row.state == tr.state.value and row.filled_at == tr.filled_at
         assert row.result_r == (None if tr.result_r is None else round(tr.result_r, 18))
         assert [(x["kind"], D(x["price"]), D(x["frac"])) for x in row.parts] == [

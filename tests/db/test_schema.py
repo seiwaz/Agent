@@ -71,7 +71,7 @@ def _order(c, cid, leg, rev=0, status="NEW", reduce_only=None):
 
 
 def test_no_second_target_columns_anywhere(conn):
-    # the retired SP2L tables never had a second target; the SMC-2.0 ladder (smc_*) does
+    # the retired SP2L tables never had a second target; smc_* keeps the (unused) ladder columns
     rows = (
         conn.execute(
             text(

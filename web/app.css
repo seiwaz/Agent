@@ -274,11 +274,3 @@ body.has-max { overflow: hidden; }
 .levels div { padding: 6px; }
 .levels .k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .levels .v { white-space: nowrap; font-size: 13px; overflow-wrap: normal; }
-
-/* TP ladder rows (position card, signal detail) */
-.ladder-rungs { display: grid; gap: 2px; margin: 6px 0; font-size: 12px; }
-.ladder-rungs .rung { display: grid; grid-template-columns: 34px minmax(0, 1fr) 52px minmax(0, 2fr) 14px; gap: 6px; align-items: center; }
-.ladder-rungs .rung .k { font-weight: 600; color: var(--ok); }
-.ladder-rungs .rung.hit { opacity: .6; }
-.ladder-rungs .rung .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ladder-rungs .rung svg { width: 12px; height: 12px; color: var(--ok); }

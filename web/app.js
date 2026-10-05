@@ -110,11 +110,11 @@ function sideTag(side) {
 }
 const symName = (s) => (state.markets[s] ? state.markets[s].display : s);
 const TREND = { BULLISH: ["ok", "up", "Bullish"], BEARISH: ["bad", "down", "Bearish"], UNDEFINED: ["neutral", "flat", "Undefined"] };
-const STATE = { PENDING: ["info", "Pending entry"], OPEN: ["warn", "Open"], TP1: ["ok", "TP1 · stop at break-even"], TP2: ["ok", "TP2 · trailing"],
-  TP: ["ok", "TP3 hit"], SL: ["bad", "Stopped out"], BE: ["neutral", "Break-even exit"], TRAIL: ["ok", "Trailing stop exit"],
+const STATE = { PENDING: ["info", "Pending entry"], OPEN: ["warn", "Open"],
+  TP: ["ok", "Target hit"], SL: ["bad", "Stopped out"],
   TIME_STOP: ["neutral", "Time stop"], EXPIRED: ["neutral", "Expired"], MISSED: ["neutral", "Missed"], TIMEOUT: ["neutral", "Timed out"],
   CANCELLED: ["neutral", "Cancelled"] };
-const ACTIVE = ["PENDING", "OPEN", "TP1", "TP2"], FILLED = ["OPEN", "TP1", "TP2"];
+const ACTIVE = ["PENDING", "OPEN"], FILLED = ["OPEN"];
 const isActive = (x) => ACTIVE.includes(x.state), isFilled = (x) => FILLED.includes(x.state);
 const stateTag = (s) => { const [t, l] = STATE[s] || ["neutral", s]; return tag(t, l); };
 function table(target, headers, data, rowFn, emptyText) {
@@ -343,7 +343,7 @@ function drawSetup(ctx, s, size) {
     if (!spent) zoneLabels.push(["Sweep", xs - 36, yl + (s.direction === "LONG" ? 11 : -11), "--c-liq", "left", false, "plain"]);
   }
 }
-/** Planned entry / stop / TP1-TP3 of a setup that has no order yet (dotted, from its break). */
+/** Planned stop and target of a setup that has no order yet (dotted, from its break). */
 function drawPlan(ctx, s, size, drawnPx) {
   const pl = s.plan, W = size.width;
   if (!pl || pl.entry === null) return;
@@ -359,10 +359,7 @@ function drawPlan(ctx, s, size, drawnPx) {
     plainLabel(ctx, text, W - 6, y + (long ? -9 : 9), c, size, "right");
   };
   if (pl.sl) line(pl.sl, "--c-bear", `planned SL ${pxs(pl.sl)}`, [2, 3]);
-  for (const name of ["tp1", "tp2", "tp3"]) {
-    const t = pl[name];
-    if (t) line(t.price, "--c-bull", `${name.toUpperCase()} ${t.source} · ${(+t.net_r).toFixed(2)}R`, [1, 3]);
-  }
+  if (pl.tp) line(pl.tp.price, "--c-bull", `planned TP ${pl.tp.source} · ${(+pl.tp.net_r).toFixed(2)}R`, [1, 3]);
 }
 function drawBelow(ctx, size) {
   zoneLabels = [];
@@ -429,7 +426,7 @@ function drawAbove(ctx, size) {
   }
 }
 /** TradingView-style long/short position object: risk box, reward box to the final target,
- * entry line, TP1-TP3 with their net R, the time stop / order expiry, the result. */
+ * entry line, target, the time stop / order expiry, the result. */
 function vMark(ctx, iso, text, c, size) {
   const x = iso ? xOf(secs(iso)) : null;
   if (x === null || x < 0 || x > size.width) return;
@@ -441,8 +438,7 @@ function drawPosition(ctx, p, size) {
   const W = size.width;
   const open = isActive(p), filled = isFilled(p);
   const s = span(p.created_at, open ? null : p.closed_at, W);
-  const ladder = p.ladder || [];
-  const fin = p.tp || (ladder.length ? ladder[ladder.length - 1].price : null);
+  const fin = p.tp;
   const ye = yOf(p.entry), ys = yOf(p.sl), yt = fin === null ? null : yOf(fin);
   if (!s || ye === null || ys === null) return;
   const x1 = s[0], x2 = Math.max(s[1], x1 + 24);
@@ -456,12 +452,6 @@ function drawPosition(ctx, p, size) {
   ctx.strokeStyle = rgba("--c-bear", 0.85 * a); ctx.lineWidth = focus ? 2 : 1.2; ctx.strokeRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
   ctx.strokeStyle = rgba("--c-text", 0.95 * a); ctx.setLineDash(p.state === "PENDING" ? [4, 3] : []); ctx.lineWidth = 1.6;
   ctx.beginPath(); ctx.moveTo(x1, ye); ctx.lineTo(x2, ye); ctx.stroke(); ctx.setLineDash([]);
-  for (const t of ladder) {  // the ladder rungs inside the reward box
-    const y = yOf(t.price);
-    if (y === null) continue;
-    ctx.strokeStyle = rgba("--c-bull", (t.hit ? 0.45 : 0.95) * a); ctx.lineWidth = 1; ctx.setLineDash(t.hit ? [2, 3] : []);
-    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke(); ctx.setLineDash([]);
-  }
   if (p.filled_at) {
     const xf = xOf(secs(p.filled_at));
     if (xf !== null) { ctx.fillStyle = rgba("--c-text", a); ctx.beginPath(); ctx.arc(xf, ye, 3.5, 0, Math.PI * 2); ctx.fill(); }
@@ -478,15 +468,11 @@ function drawPosition(ctx, p, size) {
   pill(ctx, `${long ? "Long" : "Short"}${money}`, Math.max(x1, 0) + 2, yLab, long ? "--c-bull" : "--c-bear", size, "left");
   if (!open) return;
   const off = (y) => y < EDGE || y > size.height - EDGE;
-  for (const t of ladder) {
-    const y = yOf(t.price);
-    if (y === null) continue;
-    const text = `${t.name} ${pxs(t.price)} · ${(+t.net_r).toFixed(2)}R${t.hit ? " ✓" : ""}`;
-    if (off(y)) pill(ctx, `${text} ${y < EDGE ? "↑" : "↓"}`, x2 - 6, y < EDGE ? EDGE : size.height - EDGE, "--c-bull", size, "right");
-    else plainLabel(ctx, text, x2 - 6, y + (long ? 10 : -10), "--c-bull", size, "right");
+  if (p.tp && yt !== null) {
+    if (off(yt)) pill(ctx, `TP ${pxs(p.tp)} ${yt < EDGE ? "↑" : "↓"}`, x2 - 6, yt < EDGE ? EDGE : size.height - EDGE, "--c-bull", size, "right");
+    else plainLabel(ctx, `TP ${pxs(p.tp)}`, x2 - 6, yt + (long ? 10 : -10), "--c-bull", size, "right");
   }
-  if (!ladder.length && p.tp && yt !== null && !off(yt)) plainLabel(ctx, `TP ${pxs(p.tp)}`, x2 - 6, yt + (long ? 10 : -10), "--c-bull", size, "right");
-  const slText = p.state === "TP2" ? `trailing SL ${pxs(p.sl)}` : p.at_breakeven ? `SL at break-even ${pxs(p.sl)}` : `SL ${pxs(p.sl)}`;
+  const slText = `SL ${pxs(p.sl)}`;
   if (off(ys)) pill(ctx, `${slText} ${ys < EDGE ? "↑" : "↓"}`, x2 - 6, ys < EDGE ? EDGE : size.height - EDGE, "--c-bear", size, "right");
   else plainLabel(ctx, slText, x2 - 6, ys + (long ? -10 : 10), "--c-bear", size, "right");
   if (p.state === "PENDING") vMark(ctx, p.deadline, "order expires", "--c-pending", size);
@@ -626,8 +612,8 @@ function renderLegend() {
     if (state.layers.ob) items.push(sw("--c-bull", `${zt} setup OB, waiting (long)`), sw("--c-bear", "waiting (short)"),
       sw("--c-armed", "armed: price in the FVG"), sw("--c-pending", "limit order resting"), sw("--c-open", "position open"));
     if (state.layers.ob) items.push(sw("--c-fvg-bull", "its FVG"), ln(rgba("--c-liq", 1), "liquidity sweep (dot = wick)"));
-    if (state.layers.liquidity) items.push(ln(rgba("--c-bull", 1), "planned TP1–TP3 (dotted, market levels) · planned SL (OB wick)"));
-    if (state.layers.positions) items.push(ln(css("--text-2"), "positions: entry, SL, TP ladder, time stop / expiry"));
+    if (state.layers.liquidity) items.push(ln(rgba("--c-bull", 1), "planned TP (previous HH / LL) · planned SL (OB wick), dotted"));
+    if (state.layers.positions) items.push(ln(css("--text-2"), "positions: entry, SL, TP, time stop / expiry"));
     items.push(el("li", { class: "muted" }, "Setups: (sweep →) BOS/CHoCH → OB + FVG, fresh, with the bias, near the price or with a position. Label: timeframe · age · state"));
   } else {
     if (state.layers.ob) items.push(sw("--c-bull", "Bullish OB"), sw("--c-bear", "Bearish OB"));
@@ -748,12 +734,6 @@ function renderKpis(w, r) {
     k(hist.days >= hist.target_days - 1 ? "ok" : "warn", `History · ${symName(state.symbol)}`, hist.days !== null && hist.days !== undefined ? `${hist.days} d` : "—", `target ${hist.target_days ?? "—"} d · Tabdeal chart`),
   );
 }
-function ladderRows(p) {
-  return (p.ladder || []).map((t) => el("div", { class: `rung${t.hit ? " hit" : ""}` },
-    el("span", { class: "k" }, t.name), el("span", { class: "v num" }, pxs(t.price, p.symbol)),
-    el("span", { class: "num" }, `${(+t.net_r).toFixed(2)}R`), el("span", { class: "muted" }, `${t.frac ? pct(t.frac, 0) : "rest"} · ${t.source}`),
-    t.hit ? icon("check") : null));
-}
 function posCard(p) {
   const long = p.side === "LONG";
   const live = isFilled(p);
@@ -763,13 +743,12 @@ function posCard(p) {
     el("span", { class: `pnl ${toneOf(p.open_pnl)}` }, live ? `${usdSigned(p.open_pnl)} $` : "—")),
   el("div", { class: "levels" },
     el("div", { class: "t-info" }, el("div", { class: "k" }, "Entry"), el("div", { class: "v num" }, pxs(p.entry, p.symbol))),
-    el("div", { class: "t-bad" }, el("div", { class: "k" }, p.state === "TP2" ? "Trailing stop" : p.at_breakeven ? "Stop (break-even)" : "Stop loss"), el("div", { class: "v num" }, pxs(p.sl, p.symbol))),
-    el("div", { class: "t-ok" }, el("div", { class: "k" }, (p.ladder || []).length ? "Final target" : "Take profit"), el("div", { class: "v num" }, p.tp ? pxs(p.tp, p.symbol) : "trailing"))),
-  (p.ladder || []).length ? el("div", { class: "ladder-rungs" }, ladderRows(p)) : null,
-  el("div", { class: "meta" }, el("span", {}, live ? rText(p.open_r) : `limit order at ${pxs(p.entry, p.symbol)}`), el("span", {}, `net to TP2 ${p.net_rr ? (+p.net_rr).toFixed(2) : "—"}R`),
+    el("div", { class: "t-bad" }, el("div", { class: "k" }, "Stop loss"), el("div", { class: "v num" }, pxs(p.sl, p.symbol))),
+    el("div", { class: "t-ok" }, el("div", { class: "k" }, "Take profit"), el("div", { class: "v num" }, pxs(p.tp, p.symbol)))),
+  el("div", { class: "meta" }, el("span", {}, live ? rText(p.open_r) : `limit order at ${pxs(p.entry, p.symbol)}`), el("span", {}, `net ${p.net_rr ? (+p.net_rr).toFixed(2) : "—"}R at TP`),
     el("span", { class: "num" }, `qty ${grp(String(+p.qty))}`), el("span", { class: "num" }, `${usd(p.notional)} $ · margin ${usd(p.margin)} $`),
     el("span", {}, live ? "opened " : "placed ", when(p.filled_at || p.created_at)),
-    p.time_stop_at ? el("span", { title: "Closed at market if neither TP1 nor the stop is hit by then" }, "time stop ", when(p.time_stop_at)) : null,
+    p.time_stop_at ? el("span", { title: "Closed at market if neither the target nor the stop is hit by then" }, "time stop ", when(p.time_stop_at)) : null,
     p.deadline ? el("span", { title: live ? "The rest is closed at market by then" : "The limit order is cancelled if not filled by then" },
       live ? "time limit " : "expires ", when(p.deadline)) : null));
 }
@@ -784,7 +763,7 @@ function renderTicket(w) {
   if (!act.length) {
     const last = state.allSignals.find((s) => s.closed_at);
     body.replaceChildren(mini || "", el("div", { class: "ticket-empty" },
-      el("p", { class: "muted small" }, `One shared ${w && w.ready ? usd(w.initial, 0) : "100"} USDT wallet for ${state.symbols.map(symName).join(" and ")}. A limit order rests at the order block of a 1h setup (break of structure → order block with its FVG) with the 4h bias, from the moment price first trades into the FVG; exits follow the TP1 / TP2 / TP3 ladder.`),
+      el("p", { class: "muted small" }, `One shared ${w && w.ready ? usd(w.initial, 0) : "100"} USDT wallet for ${state.symbols.map(symName).join(" and ")}. A limit order rests at the order block of a 1h setup (break of structure → order block with its FVG) with the 4h bias, from the moment price first trades into the FVG; the stop sits beyond the OB's wick, the target at the previous HH / LL.`),
       last ? el("p", { class: "small" }, "Last: ", symName(last.symbol), " ", sideTag(last.side), " ", stateTag(last.state), " ", rEl(last.result_r), last.pnl_usdt !== null ? ` · ${usdSigned(last.pnl_usdt)} $` : "") : null));
     return;
   }
@@ -807,7 +786,7 @@ function renderRadar(r) {
     onclick: () => { state.tf = z.tf; savePrefs(); renderControls(); loadChart(false); } },
   el("div", {}, el("div", { class: "z" }, `${z.tf} OB · ${ageText(z.age_min)} · `, tag(stTone[z.state] || "neutral", z.state)),
     el("div", { class: "px num" }, `${pxs(z.ob.bottom)} – ${pxs(z.ob.top)}`),
-    z.plan ? el("div", { class: "px small" }, z.plan.accepted ? `TP2 ${(+z.plan.tp2.net_r).toFixed(2)}R` : z.plan.reasons.map((x) => x.code).join(", ")) : null),
+    z.plan ? el("div", { class: "px small" }, z.plan.accepted ? `TP ${(+z.plan.tp.net_r).toFixed(2)}R` : z.plan.reasons.map((x) => x.code).join(", ")) : null),
   el("div", { class: "dist" }, z.distance_atr !== null ? `${(+z.distance_atr).toFixed(1)} ATR` : "—", el("div", { class: "px" }, "away")))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, r.bias === "UNDEFINED" ? "No bias, so no setup is tradable." : "No fresh setup with the bias near the price."))]));
   $("trig-list").replaceChildren(...(r.recent.length ? r.recent.map((t) => el("li", { class: `t-${stTone[t.state] || "neutral"}` },
     el("div", { class: "top" }, sideTag(t.direction), el("b", {}, `${t.tf} ${t.event.kind === "CHOCH" ? "CHoCH" : "BOS"}`), when(t.confirmed_at), tag(stTone[t.state] || "neutral", t.state),
@@ -840,10 +819,9 @@ function notifyChanges(items) {
       const before = state.known.get(s.id);
       if (before === s.state) continue;
       const head = `${symName(s.symbol)} ${s.side === "LONG" ? "Long" : "Short"}`;
-      if (before === undefined) toast(s.side === "LONG" ? "ok" : "bad", `New ${head}`, `Entry ${pxs(s.entry, s.symbol)} · SL ${pxs(s.sl, s.symbol)} · ${(s.ladder || []).map((t) => `${t.name} ${pxs(t.price, s.symbol)}`).join(" · ")} · ${usd(s.notional)} $`);
+      if (before === undefined) toast(s.side === "LONG" ? "ok" : "bad", `New ${head}`, `Entry ${pxs(s.entry, s.symbol)} · SL ${pxs(s.sl, s.symbol)} · TP ${pxs(s.tp, s.symbol)} · ${usd(s.notional)} $`);
       else if (s.state === "OPEN") toast("info", `${head} filled`, `Entry ${pxs(s.entry, s.symbol)}`);
-      else if (s.state === "TP1" || s.state === "TP2") toast("ok", `${head} ${s.state} hit`, `stop now ${pxs(s.sl, s.symbol)} · ${rText(s.open_r)}`);
-      else toast(["TP", "TRAIL"].includes(s.state) ? "ok" : s.state === "SL" ? "bad" : "neutral", `${head} ${STATE[s.state] ? STATE[s.state][1].toLowerCase() : s.state}`, `${rText(s.result_r)}${s.pnl_usdt !== null ? ` · ${usdSigned(s.pnl_usdt)} $` : ""}`);
+      else toast(s.state === "TP" ? "ok" : s.state === "SL" ? "bad" : "neutral", `${head} ${STATE[s.state] ? STATE[s.state][1].toLowerCase() : s.state}`, `${rText(s.result_r)}${s.pnl_usdt !== null ? ` · ${usdSigned(s.pnl_usdt)} $` : ""}`);
     }
   }
   state.known = now;
@@ -863,13 +841,12 @@ async function renderSignals() {
   seg("sig-filter", [["all", "All"], ["active", "Active"], ["closed", "Closed"]], state.sigFilter, (k) => { state.sigFilter = k; renderSignals(); });
   const symq = state.sigSym === "all" ? "" : `&symbol=${encodeURIComponent(state.sigSym)}`;
   const d = await api(`/api/smc/signals?state=${state.sigFilter}&limit=300${symq}`);
-  const tpOf = (s, n) => { const t = (s.ladder || []).find((x) => x.name === n); return t ? `${pxs(t.price, s.symbol)}${t.hit ? " ✓" : ""}` : n === "TP3" && s.tp ? pxs(s.tp, s.symbol) : "—"; };
-  table("sig-table", ["Created", "Market", "Side", "Setup", "Entry", "SL", "TP1", "TP2", "TP3", "Size $", "Net R:R TP2", "State", "Result", "PnL $"], d.items, (s) => el("tr", {
+  table("sig-table", ["Created", "Market", "Side", "Setup", "Entry", "SL", "TP", "Size $", "Net R:R", "State", "Result", "PnL $"], d.items, (s) => el("tr", {
     class: "click", "aria-current": String(state.selectedSig === s.id), onclick: () => { state.selectedSig = s.id; renderSignals(); } },
   el("td", {}, when(s.created_at)), el("td", {}, symName(s.symbol)), el("td", {}, sideTag(s.side)),
   el("td", {}, `${s.poi_tf || ""} ${s.trigger_kind === "CHOCH" ? "CHoCH" : "BOS"}${s.version ? "" : " · SMC-1.0"}`),
   el("td", { class: "num" }, pxs(s.entry, s.symbol)), el("td", { class: "num" }, pxs(s.sl, s.symbol)),
-  el("td", { class: "num" }, tpOf(s, "TP1")), el("td", { class: "num" }, tpOf(s, "TP2")), el("td", { class: "num" }, tpOf(s, "TP3")),
+  el("td", { class: "num" }, pxs(s.tp, s.symbol)),
   el("td", { class: "num" }, usd(s.notional)), el("td", { class: "num" }, s.net_rr ? `${s.net_rr}R` : "—"), el("td", {}, stateTag(s.state)),
   el("td", {}, isFilled(s) ? rEl(s.open_r) : rEl(s.result_r)),
   el("td", { class: `num ${toneOf(isFilled(s) ? s.open_pnl : s.pnl_usdt)}` }, usdSigned(isFilled(s) ? s.open_pnl : s.pnl_usdt))),
@@ -884,8 +861,7 @@ async function renderSignals() {
     el("div", { class: "levels" },
       el("div", { class: "t-info" }, el("div", { class: "k" }, "Entry"), el("div", { class: "v num" }, pxs(sel.entry, sel.symbol))),
       el("div", { class: "t-bad" }, el("div", { class: "k" }, "Stop loss"), el("div", { class: "v num" }, pxs(sel.sl, sel.symbol))),
-      el("div", { class: "t-ok" }, el("div", { class: "k" }, "Final target"), el("div", { class: "v num" }, sel.tp ? pxs(sel.tp, sel.symbol) : "trailing"))),
-    (sel.ladder || []).length ? el("div", { class: "ladder-rungs" }, ladderRows(sel)) : null,
+      el("div", { class: "t-ok" }, el("div", { class: "k" }, "Take profit"), el("div", { class: "v num" }, pxs(sel.tp, sel.symbol)))),
     el("dl", { class: "kv small" },
       el("dt", {}, "Setup"), el("dd", { class: "num" }, su ? `${su.tf} OB ${pxs(su.ob.bottom, sel.symbol)} – ${pxs(su.ob.top, sel.symbol)} · FVG ${pxs(su.fvg.bottom, sel.symbol)} – ${pxs(su.fvg.top, sel.symbol)}` : "—"),
       el("dt", {}, "Sweep"), el("dd", { class: "num" }, su && su.sweep ? `${pxs(su.sweep.level, sel.symbol)} (wick ${pxs(su.sweep.wick, sel.symbol)})` : "—"),
@@ -893,7 +869,7 @@ async function renderSignals() {
       el("dt", {}, "Size"), el("dd", { class: "num" }, `${grp(String(+sel.qty))} · ${usd(sel.notional)} $ · margin ${usd(sel.margin)} $`),
       el("dt", {}, "Exit"), el("dd", { class: "num" }, pxs(sel.exit_price, sel.symbol)),
       el("dt", {}, "PnL"), el("dd", { class: `num ${toneOf(sel.pnl_usdt)}` }, sel.pnl_usdt !== null ? `${usdSigned(sel.pnl_usdt)} $ (fees ${usd(sel.fees_usdt)} $)` : "—")),
-    el("ol", { class: "timeline" }, ev.items.map((e) => el("li", { class: `t-${{ CREATED: "info", FILLED: "warn", TP1: "ok", TP2: "ok", TP: "ok", TRAIL: "ok", SL: "bad", BOOKED: "violet" }[e.kind] || "neutral"}` },
+    el("ol", { class: "timeline" }, ev.items.map((e) => el("li", { class: `t-${{ CREATED: "info", FILLED: "warn", TP: "ok", SL: "bad", BOOKED: "violet" }[e.kind] || "neutral"}` },
       el("b", {}, e.kind), " ", when(e.ts), e.price ? el("span", { class: "num muted" }, ` @ ${pxs(e.price, sel.symbol)}`) : null,
       e.detail && e.detail.result_r ? el("span", {}, " · ", rEl(e.detail.result_r)) : null,
       e.detail && e.detail.part ? el("span", {}, ` · ${e.detail.part} ${pct(e.detail.frac, 0)}`) : null,
@@ -979,13 +955,13 @@ async function renderPerformance() {
   const st = b.stats;
   bars("bt-funnel", [["SETUPS", st.setups, "Armed setups"], ...Object.entries(st.rejections).map(([k, n]) => [k, n, reasons[k] || k]), ["ACCEPTED", st.accepted, "Accepted"], ["TRADED", st.signals, "Traded (capacity)"]],
     { SETUPS: "neutral", ACCEPTED: "ok", TRADED: "ok" });
-  bars("bt-outcomes", [...Object.entries(st.ladder || {}).map(([k, n]) => [k, n, k]), ...Object.entries(st.states).filter(([k]) => ["EXPIRED", "MISSED", "PENDING", "OPEN"].includes(k)).map(([k, n]) => [k, n, STATE[k] ? STATE[k][1] : k])],
-    Object.fromEntries(Object.keys(st.ladder || {}).map((k) => [k, k === "SL" ? "bad" : k.endsWith("TIME_STOP") || k.endsWith("TIMEOUT") || k.endsWith("BE") ? "neutral" : "ok"])));
+  bars("bt-outcomes", [...Object.entries(st.exits || {}).map(([k, n]) => [k, n, k]), ...Object.entries(st.states).filter(([k]) => ["EXPIRED", "MISSED", "PENDING", "OPEN"].includes(k)).map(([k, n]) => [k, n, STATE[k] ? STATE[k][1] : k])],
+    Object.fromEntries(Object.keys(st.exits || {}).map((k) => [k, k === "SL" ? "bad" : k === "TP" ? "ok" : "neutral"])));
   const tpx = (t) => (t ? pxs(t.price, bsym) : "—");
-  table("bt-trades", ["Created", "Side", "Entry", "SL", "TP1", "TP2", "TP3", "Path", "Result"], [...b.trades].reverse().slice(0, 60), (t) => el("tr", {},
+  table("bt-trades", ["Created", "Side", "Entry", "SL", "TP", "Exit", "Result"], [...b.trades].reverse().slice(0, 60), (t) => el("tr", {},
     el("td", {}, when(t.created_at)), el("td", {}, sideTag(t.side)), el("td", { class: "num" }, pxs(t.entry, bsym)),
-    el("td", { class: "num" }, pxs(t.sl, bsym)), el("td", { class: "num" }, tpx(t.tp1)), el("td", { class: "num" }, tpx(t.tp2)), el("td", { class: "num" }, tpx(t.tp3)),
-    el("td", {}, t.ladder), el("td", {}, rEl(t.result_r))));
+    el("td", { class: "num" }, pxs(t.sl, bsym)), el("td", { class: "num" }, tpx(t.tp)),
+    el("td", {}, stateTag(t.state)), el("td", {}, rEl(t.result_r))));
 }
 
 /* ---- strategy view ----------------------------------------------------------------------------- */
@@ -1004,7 +980,7 @@ async function renderStrategy() {
     step("warn", "Entry", `${v.zone_tf} → M1`, v.confirm_exec
       ? `When price first trades into the FVG, wait for a ${v.exec_tf} BOS / CHoCH with the bias and enter at its close.`
       : `Limit order (maker) at the order-block edge touching the FVG, resting from the setup; armed when price first trades into the FVG, cancelled ${v.pending_expiry_min / 60} h later. Only the first touch.`),
-    step("ok", "Exit", `${v.exec_tf} · M1`, `Stop one tick beyond the order block's wick. Targets come from the market, never from the stop: TP1 = nearest internal liquidity / previous swing (${v.exec_tf} or ${v.zone_tf}), ${pct(v.tp1_frac, 0)} out and the stop to break-even; TP2 = next unfilled ${v.zone_tf} FVG, ${pct(v.tp2_frac, 0)} out; TP3 = external liquidity (previous day / week, equal highs / lows) for the runner with a trailing stop behind ${v.exec_tf} swings. No TP1 level: no trade. Time stop ${v.time_stop_min / 60} h, limit ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
+    step("ok", "Exit", `${v.exec_tf} · M1`, `Stop one tick beyond the order block's wick. One target, from the market, never from the stop: the ${v.tp_ref === "swing" ? "last confirmed" : "previous"} ${v.zone_tf} HH (long: its high) / LL (short: its low). None beyond the entry: no trade. Time stop ${v.time_stop_min / 60} h, limit ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
   $("param-grid").replaceChildren(...p.groups.map((g) => el("section", { class: "card" }, el("h2", {}, g.name),
     el("dl", { class: "kv" }, g.items.flatMap((i) => [el("dt", {}, el("code", {}, i.key)), el("dd", { class: "num" }, Array.isArray(i.value) ? i.value.join(", ") || "—" : show(i.value))])))),
   el("section", { class: "card" }, el("h2", {}, "Costs (from config)"), el("dl", { class: "kv" },

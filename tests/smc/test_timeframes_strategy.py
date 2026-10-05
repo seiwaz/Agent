@@ -84,10 +84,8 @@ def test_every_accepted_setup_is_consistent():
         assert z.event.break_idx - z.sweep.idx <= DENSE.sweep_max_bars
         assert s.entry == z.edge and s.created_at >= z.confirmed_at
         assert s.sl == (z.ob.bottom - DENSE.tick if long else z.ob.top + DENSE.tick)
-        assert s.tp1 is not None
-        prices = [x.price for x in (s.tp1, s.tp2, s.tp3) if x is not None]
-        path = [s.sl, s.entry, *prices]
-        assert path == sorted(path) if long else path == sorted(path, reverse=True)
+        assert s.tp is not None
+        assert (s.sl < s.entry < s.tp.price) if long else (s.tp.price < s.entry < s.sl)
         assert s.bias == (1 if long else -1)
         ru = risk_unit(s.direction, s.entry, s.sl, costs)
         assert ru > abs(s.entry - s.sl)

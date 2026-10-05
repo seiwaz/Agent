@@ -3,9 +3,8 @@
 - Sizing at entry: risk `risk_pct` of the current balance per position; the position's
   margin (notional / `max_leverage`, cross) must fit into the free balance (balance minus the
   margin of every open position on any market), otherwise the quantity is reduced to fit.
-- Booking at every exit (TP1, TP2 and the final exit of the rest): realized PnL of that part
-  = its quantity x price move - its share of the entry fee - its exit fee (USDT), appended to
-  the ledger with the running balance; the signal's PnL / fees are the sums.
+- Booking at the exit: realized PnL = quantity x price move - entry fee - exit fee (USDT),
+  appended to the ledger with the running balance (the exit is named in `part`).
 Nothing here talks to an exchange.
 """
 
@@ -36,23 +35,11 @@ def floor_step(v: Decimal, step: Decimal) -> Decimal:
 
 
 def part_pnl(t: Tracked, part: Part, qty: Decimal, costs: Costs) -> tuple[Decimal, Decimal]:
-    """(net PnL, fees) in USDT of one exit of a position of `qty`."""
+    """(net PnL, fees) in USDT of an exit of a position of `qty`."""
     q = qty * part.frac
     fees = q * (t.entry * t.fee_in(costs) + part.price * costs.taker_fee)
     sgn = 1 if t.side is Side.LONG else -1
     return q * (part.price - t.entry) * sgn - fees, fees
-
-
-def ladder_fracs(qty: Decimal, p: SmcParams, step: Decimal) -> tuple[Decimal, Decimal]:
-    """Shares of the position closed at TP1 and TP2, in whole quantity steps; a part that
-    rounds down to nothing passes its share to the next one."""
-    if qty <= 0:
-        return p.tp1_frac, p.tp2_frac
-    q1 = floor_step(qty * p.tp1_frac, step)
-    carry = p.tp1_frac if q1 == 0 else Decimal(0)
-    q2 = floor_step(qty * (p.tp2_frac + carry), step)
-    q2 = min(q2, qty - q1)
-    return q1 / qty, q2 / qty
 
 
 class Wallet:

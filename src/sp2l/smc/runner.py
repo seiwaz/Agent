@@ -6,8 +6,8 @@ entry, realized PnL at exit, `max_positions` across markets).
 Loop (every couple of seconds):
 1. keep the Tabdeal chart history current (full depth on start: no live warmup);
 2. when a new final minute exists in the merged series: rebuild the timeframes whose bar
-   closed, advance every active signal through the new M1 bars (TP ladder, trailing stop
-   behind execution-TF swings, every exit booked in the wallet), then arm the zone setups
+   closed, advance every active signal through the new M1 bars (the exit booked in the
+   wallet), then arm the zone setups
    whose arming minute (first trade into the FVG) closed within the last `FRESH` window
    (`confirm_exec`: whose confirming bar did) and store accepted ones while capacity allows;
 3. write a heartbeat with the top-down status shown by the dashboard.
@@ -35,7 +35,6 @@ from sp2l.smc.lifecycle import advance
 from sp2l.smc.model import Analysis, Costs, SmcParams
 from sp2l.smc.strategy import (
     ARMED_BEFORE,
-    bar_trail,
     evaluate,
     find_arming,
     order_for,
@@ -44,7 +43,7 @@ from sp2l.smc.strategy import (
     zone_setups,
 )
 from sp2l.smc.timeframes import MINUTE
-from sp2l.smc.wallet import Wallet, ladder_fracs
+from sp2l.smc.wallet import Wallet
 
 log = logging.getLogger("sp2l.smc")
 FRESH = timedelta(minutes=3)
@@ -139,21 +138,14 @@ class SmcRunner:
         since = min(t.last_m1 or (t.created_at - MINUTE) for _, t, _ in act)
         minutes = max(1, int((upto - since) / MINUTE))
         bars = load_bars(self.db, self.symbol, "1m", min(minutes, 60 * 24 * 30), upto)
-        ax = ctx[p.exec_tf]
         with self.db.begin() as c:
             for sid, t, qty in act:
                 for b in bars:
                     if b.open_time < t.created_at:
                         continue
                     booked = len(t.parts)
-                    trail = bar_trail(t, ax, b, p)
-                    for ev in advance(t, b, p, self.costs, trail):
-                        price = {
-                            "FILLED": t.entry,
-                            "TP1": t.tp1,
-                            "TP2": t.tp2,
-                            "STOP_MOVED": t.sl,
-                        }.get(ev, t.exit_price)
+                    for ev in advance(t, b, p, self.costs):
+                        price = t.entry if ev == "FILLED" else t.exit_price
                         detail: dict[str, Any] = {}
                         if t.result_r is not None:
                             detail["result_r"] = str(t.result_r)
@@ -215,9 +207,6 @@ class SmcRunner:
                         log.info("%s: %s not opened: %s", self.symbol, s.key, sized)
                         continue
                     size = sized
-                    t.frac1, t.frac2 = ladder_fracs(size.qty, p, self.qty_step)
-                    if t.tp2 is None:  # no TP2 level: its share stays in the runner
-                        t.frac2 = Decimal(0)
                 wid = self.wallet.id if self.wallet is not None else None
                 if store.insert_signal(c, self.symbol, s, t, p.digest(), size, wid):
                     n_active += 1

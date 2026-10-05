@@ -122,9 +122,8 @@ def test_arming_is_the_first_minute_back_in_the_fvg_and_the_order_rests_at_the_e
     (s,) = orders(ctx, P, Costs())
     assert s.accepted and s.created_at == bars[i].open_time and s.entry == D("97.5")
     assert s.sl == D("93.99")  # one tick below the OB's wick (94), nothing else
-    assert s.tp1 is not None and (s.tp1.price, s.tp1.source) == (105, "15m swing high")
-    assert s.tp2 is None  # no unfilled 1h FVG above TP1: its share stays in the runner
-    assert s.tp3 is None  # no previous day / week or equal highs above
+    # the target: the high of the HH the displacement made (bar 17, 107.5), not the stop
+    assert s.tp is not None and (s.tp.price, s.tp.source) == (D("107.5"), "1h HH")
 
 
 def test_only_the_first_touch_is_an_entry():
@@ -136,7 +135,7 @@ def test_only_the_first_touch_is_an_entry():
     assert len(orders(ctx, P, Costs())) == 1  # one order per setup
 
 
-def test_targets_do_not_depend_on_the_stop_and_the_bias_still_filters():
+def test_the_target_does_not_depend_on_the_stop_and_the_bias_still_filters():
     m1 = expand(SETUP)
     ctx = build_context(m1, P)
     (zs,) = zone_setups(ctx["1h"], P)
@@ -150,10 +149,13 @@ def test_targets_do_not_depend_on_the_stop_and_the_bias_still_filters():
     assert why(replace(P, bias_tf="4h")) == ("NO_BIAS",)  # 21 hours: no 4h structure yet
     a = evaluate(zs, ctx, P, Costs(), t)
     b = evaluate(zs, ctx, P, Costs(D("0.01"), D("0.01")), t)
-    assert (a.tp1, a.sl) != (None, None) and a.tp1.price == b.tp1.price and a.sl == b.sl
+    assert a.tp is not None and b.tp is not None and a.tp.price == b.tp.price and a.sl == b.sl
+    sw = evaluate(zs, ctx, replace(P, tp_ref="swing"), Costs(), t)
+    # bar 17 (107.5) is not a confirmed swing yet at t: the last confirmed one is the broken 104
+    assert sw.tp is not None and sw.tp.price == 104
 
 
-def test_backtest_walks_tp1_then_the_trailing_runner():
+def test_backtest_takes_the_whole_position_out_at_the_previous_hh():
     rows = SETUP + [
         (98, 102, 97.8, 101.8),
         (101.8, 105, 101.5, 104.8),
@@ -165,10 +167,9 @@ def test_backtest_walks_tp1_then_the_trailing_runner():
     res = run(expand(rows), P, Costs())
     s, t = res["trades"][0]
     assert t.filled_at is not None and T0 + FILL_BAR * H <= t.filled_at < T0 + (FILL_BAR + 1) * H
-    assert [x.kind for x in t.parts] == ["TP1", "TRAIL"]  # no TP2: the runner trails at once
-    assert [x.frac for x in t.parts] == [D("0.5"), D("0.5")]
-    assert t.result_r == sum(x.r for x in t.parts) and t.result_r > 0
-    assert res["stats"]["ladder"] == {"TP1 > TRAIL": 1}
+    assert [(x.kind, x.price, x.frac) for x in t.parts] == [("TP", D("107.5"), 1)]
+    assert t.result_r == t.parts[0].r > 0
+    assert res["stats"]["exits"] == {"TP": 1}
 
 
 def test_without_require_sweep_a_break_with_ob_and_fvg_is_enough():

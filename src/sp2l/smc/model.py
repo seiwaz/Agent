@@ -142,17 +142,15 @@ class SmcParams:
     zone_tf: str = "1h"
     exec_tf: str = "15m"  # confirmation, trailing swings and time units
     confirm_exec: bool = False  # after arming wait for an exec-TF BOS/CHoCH, enter at its close
-    # stop: one tick beyond the order block's wick. Targets come from the market alone,
-    # independent of the stop: TP1 internal liquidity / previous swing, TP2 the next unfilled
-    # FVG, TP3 external liquidity with a trailing stop behind execution-TF swings.
+    # stop: one tick beyond the order block's wick; one target, independent of the stop: the
+    # edge of the previous HH candle (long: its high) / LL candle (short: its low)
     tick: Decimal = Decimal("0.01")
-    tp1_frac: Decimal = Decimal("0.5")  # closed at TP1; the stop then moves to break-even
-    tp2_frac: Decimal = Decimal("0.3")  # closed at TP2; the rest is the runner to TP3
-    day_boundary: str = "utc"  # previous day / week levels for TP3
+    tp_ref: str = "leg"  # leg: the HH / LL the displacement made (break bar .. order) /
+    # swing: the last confirmed zone-TF swing high / low beyond the entry
     # data: closed bars analysed per timeframe, and the exchange history kept for them
     lookback_1m: int = 720
     lookback_5m: int = 600
-    lookback_15m: int = 1400  # covers the previous ISO week for TP3
+    lookback_15m: int = 500
     lookback_1h: int = 400
     lookback_4h: int = 180
     lookback_1d: int = 120
@@ -231,7 +229,7 @@ class ZoneSetup:
 @dataclass(frozen=True, slots=True)
 class Target:
     price: Decimal
-    source: str  # what the level is (e.g. "15m swing high", "1h FVG", "PDH")
+    source: str  # what the level is (e.g. "1h HH")
     net_r: Decimal  # information: R after fees if the whole position closed there
 
 
@@ -249,13 +247,11 @@ class Setup:
     market: bool = False  # confirm_exec: entered at the exec-TF close (taker)
     entry: Decimal | None = None
     sl: Decimal | None = None
-    tp1: Target | None = None
-    tp2: Target | None = None
-    tp3: Target | None = None
+    tp: Target | None = None
     qty: Decimal | None = None
     notional: Decimal | None = None
     leverage: Decimal | None = None
 
     @property
     def net_rr(self) -> Decimal | None:
-        return None if self.tp2 is None else self.tp2.net_r
+        return None if self.tp is None else self.tp.net_r

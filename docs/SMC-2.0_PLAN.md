@@ -139,3 +139,7 @@ Commit per phase. No service restart until you confirm. Then: migration 0020 →
   `max_risk_pct`, `max_cost_frac`, `tp_inside_r`, `tp1_fallback_r`, `tp2_fallback_r`,
   `min_net_rr_tp2`, `trail_buffer_atr`, opposing OB as TP2. No TP2 level: its share stays in the
   runner, which trails from TP1 on.
+- One target instead of the ladder (owner, 2026-10-05): TP at the edge of the previous HH
+  candle (long) / LL candle (short), `tp_ref: leg` by default; TP1 / TP2 / TP3, break-even,
+  trailing stop and their states (TP1, TP2, BE, TRAIL) removed. The ladder columns of 0020 stay
+  in the schema, unused.
