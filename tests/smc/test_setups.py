@@ -121,12 +121,10 @@ def test_arming_is_the_first_minute_back_in_the_fvg_and_the_order_rests_at_the_e
     assert bars[i].low <= 99 and all(b.low > 99 for b in bars[(BREAK_BAR + 1) * 60 : i])
     (s,) = orders(ctx, P, Costs())
     assert s.accepted and s.created_at == bars[i].open_time and s.entry == D("97.5")
-    atr = ctx["1h"].atr[ARMING_BAR - 1]
-    assert s.sl == ((94 - D("0.2") * atr) / D("0.01")).to_integral_value(
-        rounding="ROUND_FLOOR"
-    ) * D("0.01")
-    assert s.tp1 is not None and s.tp2 is not None and s.tp1.price < s.tp2.price
-    assert s.tp2.fallback and s.tp2.source == "2R" and s.tp2.net_r == 2  # no opposing 1h zone
+    assert s.sl == D("93.99")  # one tick below the OB's wick (94), nothing else
+    assert s.tp1 is not None and (s.tp1.price, s.tp1.source) == (105, "15m swing high")
+    assert s.tp2 is None  # no unfilled 1h FVG above TP1: its share stays in the runner
+    assert s.tp3 is None  # no previous day / week or equal highs above
 
 
 def test_only_the_first_touch_is_an_entry():
@@ -138,7 +136,7 @@ def test_only_the_first_touch_is_an_entry():
     assert len(orders(ctx, P, Costs())) == 1  # one order per setup
 
 
-def test_filters_fee_stop_width_rr_and_bias():
+def test_targets_do_not_depend_on_the_stop_and_the_bias_still_filters():
     m1 = expand(SETUP)
     ctx = build_context(m1, P)
     (zs,) = zone_setups(ctx["1h"], P)
@@ -148,14 +146,14 @@ def test_filters_fee_stop_width_rr_and_bias():
         return evaluate(zs, ctx, p, costs or Costs(), t).reasons
 
     assert why(P) == ()
-    assert "FEE_TOO_HIGH" in why(replace(P, max_cost_frac=D("0.15")), Costs(D("0.01"), D("0.01")))
-    assert "FEE_TOO_HIGH" not in why(replace(P, max_cost_frac=D(0)), Costs(D("0.01"), D("0.01")))
-    assert "SL_TOO_WIDE" in why(replace(P, max_risk_pct=D("0.01")))
-    assert "LOW_RR" in why(replace(P, min_net_rr_tp2=D(5)))
+    assert why(P, Costs(D("0.01"), D("0.01"), D("0.01"))) == ()  # costs never reject a trade
     assert why(replace(P, bias_tf="4h")) == ("NO_BIAS",)  # 21 hours: no 4h structure yet
+    a = evaluate(zs, ctx, P, Costs(), t)
+    b = evaluate(zs, ctx, P, Costs(D("0.01"), D("0.01")), t)
+    assert (a.tp1, a.sl) != (None, None) and a.tp1.price == b.tp1.price and a.sl == b.sl
 
 
-def test_backtest_walks_the_ladder_to_the_trailing_exit():
+def test_backtest_walks_tp1_then_the_trailing_runner():
     rows = SETUP + [
         (98, 102, 97.8, 101.8),
         (101.8, 105, 101.5, 104.8),
@@ -167,7 +165,7 @@ def test_backtest_walks_the_ladder_to_the_trailing_exit():
     res = run(expand(rows), P, Costs())
     s, t = res["trades"][0]
     assert t.filled_at is not None and T0 + FILL_BAR * H <= t.filled_at < T0 + (FILL_BAR + 1) * H
-    assert [x.kind for x in t.parts] == ["TP1", "TP2", "TRAIL"]
-    assert [x.frac for x in t.parts] == [D("0.5"), D("0.3"), D("0.2")]
+    assert [x.kind for x in t.parts] == ["TP1", "TRAIL"]  # no TP2: the runner trails at once
+    assert [x.frac for x in t.parts] == [D("0.5"), D("0.5")]
     assert t.result_r == sum(x.r for x in t.parts) and t.result_r > 0
-    assert res["stats"]["ladder"] == {"TP1 > TP2 > TRAIL": 1}
+    assert res["stats"]["ladder"] == {"TP1 > TRAIL": 1}

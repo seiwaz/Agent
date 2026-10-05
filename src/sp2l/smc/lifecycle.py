@@ -2,7 +2,9 @@
 
 PENDING (limit resting) -> OPEN -> TP1 (tp1 share out, stop to break-even net of fees)
 -> TP2 (tp2 share out, the stop trails behind execution-TF swings) -> TP (TP3, the rest out).
-Exits of what is still open: SL (before TP1: exactly -1R), BE (after TP1), TRAIL (after TP2),
+Without a TP2 level its share stays in the runner, which trails from TP1 on.
+Exits of what is still open: SL (before TP1: exactly -1R), BE (after TP1, stop still at
+break-even), TRAIL (the trailing stop),
 TIME_STOP (neither TP1 nor SL within `time_stop_min` of the fill), TIMEOUT (`max_hold_min`).
 Without a fill: EXPIRED (`pending_expiry_min` after creation), MISSED (the first target traded
 before the fill). A signal without TP1/TP2 (SMC-1.0) runs its single TP.
@@ -104,7 +106,12 @@ class Tracked:
 
     @property
     def ladder(self) -> bool:
-        return self.tp1 is not None and self.tp2 is not None
+        return self.tp1 is not None
+
+    @property
+    def runner(self) -> bool:
+        """Only the runner is left: it trails."""
+        return self.state is State.TP2 or (self.state is State.TP1 and self.tp2 is None)
 
     @property
     def at_breakeven(self) -> bool:
@@ -159,7 +166,12 @@ def _stopped(t: Tracked, bar: Candle) -> bool:
 def _stop(t: Tracked, at: datetime, costs: Costs) -> str:
     slip = t.sl * costs.slippage
     price = t.sl - slip if t.side is Side.LONG else t.sl + slip
-    state = {State.TP1: State.BE, State.TP2: State.TRAIL}.get(t.state, State.SL)
+    if t.state is State.OPEN:
+        state = State.SL
+    elif t.state is State.TP1 and t.sl == breakeven(t, costs):
+        state = State.BE
+    else:
+        state = State.TRAIL
     return _close(t, state, price, at, costs)
 
 
@@ -195,16 +207,16 @@ def advance(
         return [_stop(t, end, costs)]
     events: list[str] = []
     if t.ladder:
-        assert t.tp1 is not None and t.tp2 is not None
+        assert t.tp1 is not None
         if t.state is State.OPEN and _hit(t, bar, t.tp1):
             _part(t, "TP1", t.tp1, t.frac1, end, costs)
             t.state, t.sl = State.TP1, breakeven(t, costs)
             events.append("TP1")
-        if t.state is State.TP1 and _hit(t, bar, t.tp2):
+        if t.state is State.TP1 and t.tp2 is not None and _hit(t, bar, t.tp2):
             _part(t, "TP2", t.tp2, t.frac2, end, costs)
             t.state = State.TP2
             events.append("TP2")
-        if t.state is State.TP2 and t.tp is not None and _hit(t, bar, t.tp):
+        if t.runner and t.tp is not None and _hit(t, bar, t.tp):
             return [*events, _close(t, State.TP, t.tp, end, costs)]
     elif t.tp is not None and _hit(t, bar, t.tp):
         return [_close(t, State.TP, t.tp, end, costs)]
@@ -214,7 +226,7 @@ def advance(
         return [*events, _close(t, State.TIME_STOP, bar.close, end, costs)]
     if held >= timedelta(minutes=p.max_hold_min):
         return [*events, _close(t, State.TIMEOUT, bar.close, end, costs)]
-    if t.state is State.TP2 and trail is not None and (trail > t.sl if long else trail < t.sl):
+    if t.runner and trail is not None and (trail > t.sl if long else trail < t.sl):
         t.sl = trail  # only ever tightened; counts from the next minute
         events.append("STOP_MOVED")
     return events

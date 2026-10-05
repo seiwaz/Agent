@@ -102,19 +102,12 @@ def stats(trades: Sequence[tuple[Setup, Tracked]], setups: Sequence[Setup]) -> d
     for st in setups:
         for code in st.reasons:
             reasons[code] += 1
-    fallbacks = Counter(
-        name
-        for s, _ in trades
-        for name, x in (("tp1", s.tp1), ("tp2", s.tp2))
-        if x is not None and x.fallback
-    )
     return {
         "setups": len(setups),
         "accepted": sum(1 for s in setups if s.accepted),
         "signals": len(trades),
         "states": dict(Counter(t.state.value for _, t in trades)),
         "ladder": dict(Counter(ladder_outcome(t) for _, t in trades if t.parts)),
-        "fallbacks": dict(fallbacks),
         "closed": len(rs),
         "wins": len(wins),
         "win_rate": None if not rs else round(len(wins) / len(rs), 3),

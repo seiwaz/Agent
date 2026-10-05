@@ -141,19 +141,12 @@ class SmcParams:
     zone_tf: str = "1h"
     exec_tf: str = "15m"  # confirmation, trailing swings and time units
     confirm_exec: bool = False  # after arming wait for an exec-TF BOS/CHoCH, enter at its close
-    # entry / stop / filters
-    sl_buffer_atr: Decimal = Decimal("0.2")  # x ATR of the zone timeframe beyond sweep / OB
-    max_risk_pct: Decimal = Decimal("0.01")  # entry-to-SL distance cap (fraction of price)
-    max_cost_frac: Decimal = Decimal(0)  # round-trip cost at most this share of the stop; 0 = off
+    # stop: one tick beyond the order block's wick. Targets come from the market alone,
+    # independent of the stop: TP1 internal liquidity / previous swing, TP2 the next unfilled
+    # FVG, TP3 external liquidity with a trailing stop behind execution-TF swings.
     tick: Decimal = Decimal("0.01")
-    # take-profit ladder: TP1 (internal liquidity), TP2 (opposing zone), TP3 (external liquidity)
     tp1_frac: Decimal = Decimal("0.5")  # closed at TP1; the stop then moves to break-even
-    tp2_frac: Decimal = Decimal("0.3")  # closed at TP2; the rest trails to TP3
-    tp_inside_r: Decimal = Decimal(1)  # a market level closer than this net R is "inside 1R"
-    tp1_fallback_r: Decimal = Decimal(1)  # net R used when TP1 is missing or inside 1R
-    tp2_fallback_r: Decimal = Decimal(2)  # net R used when TP2 is missing or inside 1R
-    min_net_rr_tp2: Decimal = Decimal(2)  # net R:R to TP2 after fees and slippage
-    trail_buffer_atr: Decimal = Decimal("0.1")  # x ATR(exec TF) behind the last exec-TF swing
+    tp2_frac: Decimal = Decimal("0.3")  # closed at TP2; the rest is the runner to TP3
     day_boundary: str = "utc"  # previous day / week levels for TP3
     # data: closed bars analysed per timeframe, and the exchange history kept for them
     lookback_1m: int = 720
@@ -236,9 +229,8 @@ class ZoneSetup:
 @dataclass(frozen=True, slots=True)
 class Target:
     price: Decimal
-    source: str  # what the level is (e.g. "15m swing high", "1h OB", "PDH")
-    fallback: bool  # fixed net-R fallback instead of a market level
-    net_r: Decimal  # R after fees if the whole position closed there
+    source: str  # what the level is (e.g. "15m swing high", "1h FVG", "PDH")
+    net_r: Decimal  # information: R after fees if the whole position closed there
 
 
 @dataclass(frozen=True, slots=True)

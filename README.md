@@ -14,7 +14,7 @@ their lifecycle are recorded.
 uv run python -m sp2l --symbol BTCUSDT collect   # live market data of one market (one per market)
 uv run python -m sp2l smc              # SMC engine: every market, shared wallet, history from Tabdeal
 uv run python -m sp2l api --port 8765  # read-only API + WebUI
-uv run python -m sp2l --symbol XRPUSDT backtest --days 30 [--set min_net_rr_tp2=2 --set confirm_exec=true]
+uv run python -m sp2l --symbol XRPUSDT backtest --days 30 [--set tp1_frac=0.4 --set confirm_exec=true]
 ```
 The engine loads `smc.history_days` of 1-minute history from Tabdeal's chart on start and tops
 it up every minute, so every timeframe is complete immediately; live collector candles take

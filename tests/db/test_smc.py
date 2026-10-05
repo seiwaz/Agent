@@ -61,7 +61,7 @@ def make_setup(key: str, created: datetime, entry: D, sl: D, tp: D) -> Setup:
         ev,
         created,
     )
-    tgt = Target(tp, "test", False, D(2))
+    tgt = Target(tp, "test", D(2))
     return Setup(
         key=key,
         direction=Side.LONG,

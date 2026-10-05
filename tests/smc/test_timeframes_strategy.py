@@ -67,9 +67,6 @@ DENSE = SmcParams(
     zone_tf="5m",
     exec_tf="1m",
     bias_tf="15m",
-    max_risk_pct=D("0.05"),
-    min_net_rr_tp2=D(0),
-    max_cost_frac=D(1),
 )
 
 
@@ -85,18 +82,11 @@ def test_every_accepted_setup_is_consistent():
         assert z.sweep.idx <= z.ob.idx < z.event.break_idx  # sweep -> OB -> break
         assert z.event.break_idx - z.sweep.idx <= DENSE.sweep_max_bars
         assert s.entry == z.edge and s.created_at >= z.confirmed_at
-        assert s.sl is not None and s.tp1 is not None and s.tp2 is not None
-        assert (
-            (s.sl < s.entry < s.tp1.price < s.tp2.price)
-            if long
-            else (s.tp2.price < s.tp1.price < s.entry < s.sl)
-        )
-        assert (
-            s.sl <= min(z.sweep.wick, z.ob.bottom) if long else s.sl >= max(z.sweep.wick, z.ob.top)
-        )
-        assert s.tp1.net_r >= DENSE.tp_inside_r and s.tp2.net_r >= DENSE.tp_inside_r
-        if s.tp3 is not None:
-            assert (s.tp3.price > s.tp2.price) if long else (s.tp3.price < s.tp2.price)
+        assert s.sl == (z.ob.bottom - DENSE.tick if long else z.ob.top + DENSE.tick)
+        assert s.tp1 is not None
+        prices = [x.price for x in (s.tp1, s.tp2, s.tp3) if x is not None]
+        path = [s.sl, s.entry, *prices]
+        assert path == sorted(path) if long else path == sorted(path, reverse=True)
         assert s.bias == (1 if long else -1)
         ru = risk_unit(s.direction, s.entry, s.sl, costs)
         assert ru > abs(s.entry - s.sl)

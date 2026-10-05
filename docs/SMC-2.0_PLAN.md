@@ -130,3 +130,12 @@ Commit per phase. No service restart until you confirm. Then: migration 0020 →
   armed → **0 accepted**; XRP: 18 armed → 0 accepted. `max_cost_frac` 0.15 with Tabdeal costs
   (≈ 0.21 % round trip) needs a stop ≥ 1.38 % of price while `max_risk_pct` caps it at 1 %:
   no order can pass both. With `max_risk_pct` 0.03 each market trades once in 270 days.
+
+## Owner changes after the plan (2026-10-05)
+- Fee filter off, then removed: costs never reject a trade.
+- Stop and targets are independent: SL one tick beyond the OB's wick; TP1 nearest internal
+  liquidity / previous swing (15m or 1h), TP2 next unfilled 1h FVG, TP3 external liquidity with
+  a trailing stop one tick beyond 15m swings. Removed: `sl_buffer_atr`, sweep wick in the stop,
+  `max_risk_pct`, `max_cost_frac`, `tp_inside_r`, `tp1_fallback_r`, `tp2_fallback_r`,
+  `min_net_rr_tp2`, `trail_buffer_atr`, opposing OB as TP2. No TP2 level: its share stays in the
+  runner, which trails from TP1 on.

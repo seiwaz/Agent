@@ -75,7 +75,7 @@ validation:
 # setup in strict order (liquidity sweep -> displacement BOS/CHoCH by close -> order block = last
 # opposite candle, with the FVG right after it) -> limit (maker) at the OB edge touching the FVG,
 # armed when price first trades into the FVG -> TP ladder (TP1 internal liquidity, TP2 opposing
-# 1h zone, TP3 external liquidity + trailing stop behind 15m swings). Fills and exits are walked on
+# 1h FVG, TP3 external liquidity + trailing stop behind 15m swings). Fills and exits are walked on
 # M1. Every key below is in the parameter hash; omitted keys keep src/sp2l/smc/model.py defaults.
 smc:
   # structure (every timeframe)
@@ -92,19 +92,14 @@ smc:
   zone_tf: 1h             # sweep, displacement, OB + FVG
   exec_tf: 15m            # confirmation (optional), trailing swings, time units
   confirm_exec: false     # true: after arming wait for a 15m BOS/CHoCH and enter at market
-  # entry / stop / filters
-  sl_buffer_atr: 0.2      # beyond the farther of sweep wick and OB far edge, x ATR(1h)
-  max_risk_pct: 0.01      # stop at most 1 % of price
-  max_cost_frac: 0        # off (owner 2026-10-05): fees count only through the net R:R to TP2
-  # take-profit ladder
-  tp1_frac: 0.5           # TP1 (nearest 15m swing liquidity): close 50 %, stop to break-even
-  tp2_frac: 0.3           # TP2 (next opposing 1h OB/FVG): close 30 %, then trail the rest
-  tp_inside_r: 1          # a level closer than 1R net counts as missing ...
-  tp1_fallback_r: 1       # ... TP1 then sits at exactly 1R net
-  tp2_fallback_r: 2       # ... TP2 at exactly 2R net (recorded as a fallback)
-  min_net_rr_tp2: 2       # skip unless TP2 pays >= 2R after fees and slippage
-  trail_buffer_atr: 0.1   # trailing stop behind the last confirmed 15m swing, x ATR(15m)
-  day_boundary: utc       # previous day / ISO week high-low for TP3
+  # stop and targets: independent of each other (owner 2026-10-05)
+  # SL one tick beyond the OB's wick. TP1 = nearest internal liquidity / previous swing (15m or 1h):
+  # close 50 %, stop to break-even. TP2 = next unfilled 1h FVG: close 30 %. TP3 = external
+  # liquidity (previous day / week high-low, equal highs / lows) for the runner, trailing stop one
+  # tick beyond the last confirmed 15m swing. No TP1 level: no trade.
+  tp1_frac: 0.5
+  tp2_frac: 0.3
+  day_boundary: utc       # previous day / ISO week levels for TP3
   # time
   pending_expiry_min: 120 # unfilled limit cancelled 8 x 15m after arming
   time_stop_min: 180      # market exit if neither TP1 nor SL within 12 x 15m of the fill

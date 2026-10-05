@@ -39,8 +39,8 @@ def test_valid_values_map_to_costs():
 
 
 def test_smc_section_overrides_defaults_and_rejects_unknown_keys():
-    p = cfg({}, {"swing_len": 3, "zone_tf": "15m", "min_net_rr_tp2": "2.5"}).smc_params()
-    assert (p.swing_len, p.zone_tf, p.min_net_rr_tp2) == (3, "15m", D("2.5"))
+    p = cfg({}, {"swing_len": 3, "zone_tf": "15m", "tp1_frac": "0.4"}).smc_params()
+    assert (p.swing_len, p.zone_tf, p.tp1_frac) == (3, "15m", D("0.4"))
     with pytest.raises(ConfigError, match="unknown"):
         cfg({}, {"poi_tfs": ["1h"]}).smc_params()  # SMC-1.0 keys are gone
     with pytest.raises(ConfigError, match="unknown"):

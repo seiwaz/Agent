@@ -42,10 +42,7 @@ REASON_TEXT = {
     "ZONE_INVALID": "Order block closed through or expired before the order",
     "NOT_FRESH": "Order block already touched (only the first touch is an entry)",
     "BAD_STOP": "Stop would sit on the wrong side of the entry",
-    "SL_TOO_WIDE": "Stop farther than max_risk_pct of the price",
-    "FEE_TOO_HIGH": "Round-trip cost above max_cost_frac of the stop distance",
-    "NO_TARGET": "The fixed TP2 would sit inside TP1",
-    "LOW_RR": "TP2 pays less than min_net_rr_tp2 after fees and slippage",
+    "NO_TARGET": "No internal liquidity / previous swing beyond the entry for TP1",
     "LEVERAGE": "Position size would need more than the allowed leverage",
 }
 RULE_TEXT = {
@@ -577,17 +574,7 @@ class SmcView:
                 "sweep_max_bars",
             ],
             "Top-down model": ["bias_tf", "zone_tf", "exec_tf", "confirm_exec"],
-            "Entry / stop / filters": ["sl_buffer_atr", "max_risk_pct", "max_cost_frac", "tick"],
-            "Take-profit ladder": [
-                "tp1_frac",
-                "tp2_frac",
-                "tp_inside_r",
-                "tp1_fallback_r",
-                "tp2_fallback_r",
-                "min_net_rr_tp2",
-                "trail_buffer_atr",
-                "day_boundary",
-            ],
+            "Stop and take-profit ladder": ["tick", "tp1_frac", "tp2_frac", "day_boundary"],
             "Lifecycle": [
                 "pending_expiry_min",
                 "time_stop_min",
@@ -689,7 +676,6 @@ def ladder_view(r: dict[str, Any]) -> list[dict[str, Any]]:
                 "price": x["price"],
                 "net_r": x["net_r"],
                 "source": x["source"],
-                "fallback": x["fallback"],
                 "frac": fr.get(name),
                 "hit": (name.upper() in hit) or (name == "tp3" and "TP" in hit),
             }

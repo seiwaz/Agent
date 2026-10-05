@@ -56,9 +56,6 @@ P = SmcParams(
     fvg_min_atr=D(0),
     bias_tf="1h",
     lookback_15m=1400,
-    max_risk_pct=D("0.2"),
-    max_cost_frac=D(1),
-    min_net_rr_tp2=D(0),
 )
 
 

@@ -119,3 +119,17 @@ def test_ladder_shares_follow_the_quantity_step():
     assert (f1, f2) == (D(1) / 3, D(0))
     f1, f2 = ladder_fracs(D(1), p, D(1))  # TP1 rounds to 0: its share moves to TP2 (0.8 -> 0)
     assert (f1, f2) == (D(0), D(0))
+
+
+def test_without_tp2_the_runner_trails_right_after_tp1():
+    t = ladder(tp2=None, frac2=D(0))
+    assert advance(t, bar(1, 102.5, 100.5), P, C) == ["TP1"]
+    assert t.runner and t.sl == breakeven(t, C)
+    assert advance(t, bar(2, 104, 102, 103), P, C, trail=D(101)) == ["STOP_MOVED"]
+    assert advance(t, bar(3, 101.5, 100.9), P, C) == ["TRAIL"]
+    assert [x.kind for x in t.parts] == ["TP1", "TRAIL"] and t.parts[1].frac == D("0.5")
+    t2 = ladder(tp2=None, frac2=D(0))
+    advance(t2, bar(1, 102.5, 100.5), P, C)
+    assert advance(t2, bar(2, 101, t2.sl - D("0.01")), P, C) == ["BE"]  # never trailed
+    t3 = ladder(tp2=None, frac2=D(0))
+    assert advance(t3, bar(1, 110.5, 100.5), P, C) == ["TP1", "TP"]  # runner to TP3

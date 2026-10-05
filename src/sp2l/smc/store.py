@@ -66,7 +66,6 @@ def target_json(x: Target | None) -> dict[str, Any] | None:
     return {
         "price": str(x.price),
         "source": x.source,
-        "fallback": x.fallback,
         "net_r": str(round(x.net_r, 4)),
     }
 

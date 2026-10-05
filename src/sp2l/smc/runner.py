@@ -216,6 +216,8 @@ class SmcRunner:
                         continue
                     size = sized
                     t.frac1, t.frac2 = ladder_fracs(size.qty, p, self.qty_step)
+                    if t.tp2 is None:  # no TP2 level: its share stays in the runner
+                        t.frac2 = Decimal(0)
                 wid = self.wallet.id if self.wallet is not None else None
                 if store.insert_signal(c, self.symbol, s, t, p.digest(), size, wid):
                     n_active += 1

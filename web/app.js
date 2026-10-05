@@ -360,7 +360,7 @@ function drawPlan(ctx, s, size, drawnPx) {
   if (pl.sl) line(pl.sl, "--c-bear", `planned SL ${pxs(pl.sl)}`, [2, 3]);
   for (const name of ["tp1", "tp2", "tp3"]) {
     const t = pl[name];
-    if (t) line(t.price, "--c-bull", `${name.toUpperCase()} ${t.source}${t.fallback ? " (fixed)" : ""} · ${(+t.net_r).toFixed(2)}R`, [1, 3]);
+    if (t) line(t.price, "--c-bull", `${name.toUpperCase()} ${t.source} · ${(+t.net_r).toFixed(2)}R`, [1, 3]);
   }
 }
 function drawBelow(ctx, size) {
@@ -480,7 +480,7 @@ function drawPosition(ctx, p, size) {
   for (const t of ladder) {
     const y = yOf(t.price);
     if (y === null) continue;
-    const text = `${t.name} ${pxs(t.price)} · ${(+t.net_r).toFixed(2)}R${t.fallback ? " (fixed)" : ""}${t.hit ? " ✓" : ""}`;
+    const text = `${t.name} ${pxs(t.price)} · ${(+t.net_r).toFixed(2)}R${t.hit ? " ✓" : ""}`;
     if (off(y)) pill(ctx, `${text} ${y < EDGE ? "↑" : "↓"}`, x2 - 6, y < EDGE ? EDGE : size.height - EDGE, "--c-bull", size, "right");
     else plainLabel(ctx, text, x2 - 6, y + (long ? 10 : -10), "--c-bull", size, "right");
   }
@@ -625,7 +625,7 @@ function renderLegend() {
     if (state.layers.ob) items.push(sw("--c-bull", `${zt} setup OB, waiting (long)`), sw("--c-bear", "waiting (short)"),
       sw("--c-armed", "armed: price in the FVG"), sw("--c-pending", "limit order resting"), sw("--c-open", "position open"));
     if (state.layers.ob) items.push(sw("--c-fvg-bull", "its FVG"), ln(rgba("--c-liq", 1), "liquidity sweep (dot = wick)"));
-    if (state.layers.liquidity) items.push(ln(rgba("--c-bull", 1), "planned TP1–TP3 (dotted) · planned SL"));
+    if (state.layers.liquidity) items.push(ln(rgba("--c-bull", 1), "planned TP1–TP3 (dotted, market levels) · planned SL (OB wick)"));
     if (state.layers.positions) items.push(ln(css("--text-2"), "positions: entry, SL, TP ladder, time stop / expiry"));
     items.push(el("li", { class: "muted" }, "Setups: sweep → BOS/CHoCH → OB + FVG, fresh, with the bias, near the price or with a position. Label: timeframe · age · state"));
   } else {
@@ -750,7 +750,7 @@ function renderKpis(w, r) {
 function ladderRows(p) {
   return (p.ladder || []).map((t) => el("div", { class: `rung${t.hit ? " hit" : ""}` },
     el("span", { class: "k" }, t.name), el("span", { class: "v num" }, pxs(t.price, p.symbol)),
-    el("span", { class: "num" }, `${(+t.net_r).toFixed(2)}R`), el("span", { class: "muted" }, `${t.frac ? pct(t.frac, 0) : "rest"} · ${t.source}${t.fallback ? " (fixed)" : ""}`),
+    el("span", { class: "num" }, `${(+t.net_r).toFixed(2)}R`), el("span", { class: "muted" }, `${t.frac ? pct(t.frac, 0) : "rest"} · ${t.source}`),
     t.hit ? icon("check") : null));
 }
 function posCard(p) {
@@ -980,7 +980,7 @@ async function renderPerformance() {
     { SETUPS: "neutral", ACCEPTED: "ok", TRADED: "ok" });
   bars("bt-outcomes", [...Object.entries(st.ladder || {}).map(([k, n]) => [k, n, k]), ...Object.entries(st.states).filter(([k]) => ["EXPIRED", "MISSED", "PENDING", "OPEN"].includes(k)).map(([k, n]) => [k, n, STATE[k] ? STATE[k][1] : k])],
     Object.fromEntries(Object.keys(st.ladder || {}).map((k) => [k, k === "SL" ? "bad" : k.endsWith("TIME_STOP") || k.endsWith("TIMEOUT") || k.endsWith("BE") ? "neutral" : "ok"])));
-  const tpx = (t) => (t ? `${pxs(t.price, bsym)}${t.fallback ? "*" : ""}` : "—");
+  const tpx = (t) => (t ? pxs(t.price, bsym) : "—");
   table("bt-trades", ["Created", "Side", "Entry", "SL", "TP1", "TP2", "TP3", "Path", "Result"], [...b.trades].reverse().slice(0, 60), (t) => el("tr", {},
     el("td", {}, when(t.created_at)), el("td", {}, sideTag(t.side)), el("td", { class: "num" }, pxs(t.entry, bsym)),
     el("td", { class: "num" }, pxs(t.sl, bsym)), el("td", { class: "num" }, tpx(t.tp1)), el("td", { class: "num" }, tpx(t.tp2)), el("td", { class: "num" }, tpx(t.tp3)),
@@ -1003,7 +1003,7 @@ async function renderStrategy() {
     step("warn", "Entry", `${v.zone_tf} → M1`, v.confirm_exec
       ? `When price first trades into the FVG, wait for a ${v.exec_tf} BOS / CHoCH with the bias and enter at its close.`
       : `Limit order (maker) at the order-block edge touching the FVG, resting from the setup; armed when price first trades into the FVG, cancelled ${v.pending_expiry_min / 60} h later. Only the first touch.`),
-    step("ok", "Exit", `${v.exec_tf} · M1`, `Stop beyond the sweep wick / OB + ${v.sl_buffer_atr} ATR. TP1 (nearest ${v.exec_tf} swing) ${pct(v.tp1_frac, 0)} + stop to break-even, TP2 (next opposing ${v.zone_tf} OB / FVG) ${pct(v.tp2_frac, 0)}, TP3 (previous day / week, equal highs / lows) for the rest with a trailing stop behind ${v.exec_tf} swings. Needs ≥ ${v.min_net_rr_tp2}R net to TP2 after fees and slippage${+v.max_cost_frac > 0 ? `, costs ≤ ${pct(v.max_cost_frac, 0)} of the stop` : ""}. Time stop ${v.time_stop_min / 60} h, limit ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
+    step("ok", "Exit", `${v.exec_tf} · M1`, `Stop one tick beyond the order block's wick. Targets come from the market, never from the stop: TP1 = nearest internal liquidity / previous swing (${v.exec_tf} or ${v.zone_tf}), ${pct(v.tp1_frac, 0)} out and the stop to break-even; TP2 = next unfilled ${v.zone_tf} FVG, ${pct(v.tp2_frac, 0)} out; TP3 = external liquidity (previous day / week, equal highs / lows) for the runner with a trailing stop behind ${v.exec_tf} swings. No TP1 level: no trade. Time stop ${v.time_stop_min / 60} h, limit ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
   $("param-grid").replaceChildren(...p.groups.map((g) => el("section", { class: "card" }, el("h2", {}, g.name),
     el("dl", { class: "kv" }, g.items.flatMap((i) => [el("dt", {}, el("code", {}, i.key)), el("dd", { class: "num" }, Array.isArray(i.value) ? i.value.join(", ") || "—" : show(i.value))])))),
   el("section", { class: "card" }, el("h2", {}, "Costs (from config)"), el("dl", { class: "kv" },

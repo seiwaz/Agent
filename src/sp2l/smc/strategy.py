@@ -11,13 +11,13 @@
             so it can fill in the arming minute; it is cancelled `pending_expiry_min`
             after arming. Only a fresh OB is entered (first touch); one order per setup.
             `confirm_exec`: instead wait for an execution-TF BOS / CHoCH, enter at market.
-4. STOP     beyond the farther of the sweep wick and the OB far edge + sl_buffer_atr x ATR.
-5. TARGETS  TP1 = nearest internal liquidity (execution-TF swing), TP2 = next opposing zone-TF
-            OB / FVG, TP3 = external liquidity (previous day / week, equal highs / lows).
-            Missing or inside 1R: fixed net 1R / 2R, recorded as a fallback.
-6. FILTERS  net R:R to TP2 >= min_net_rr_tp2 (fees and slippage counted), stop <=
-            max_risk_pct, advisory size within max_leverage; optional: round-trip cost <=
-            max_cost_frac of the stop (0 = off, the default).
+4. STOP     one tick beyond the order block's wick.
+5. TARGETS  from the market alone, never from the stop distance: TP1 = nearest internal
+            liquidity / previous swing (execution or zone TF), TP2 = next unfilled zone-TF FVG
+            beyond TP1 (none: its share stays in the runner), TP3 = external liquidity
+            (previous day / week, equal highs / lows) for the runner with a trailing stop.
+            No TP1 level: no trade.
+6. SIZE     risk_pct of the wallet over the stop distance + costs, within max_leverage.
 
 Every input is causal: closed bars only, swings once confirmed, zone state as of the order.
 """
@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
-from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import Any
 
 from sp2l.core.types import Candle, Side
@@ -208,60 +208,43 @@ def net_r(
     return ((px - entry) * sgn - entry * fee_in - px * costs.taker_fee) / ru
 
 
-def price_for_r(
-    side: Side,
-    entry: Decimal,
-    r: Decimal,
-    ru: Decimal,
-    costs: Costs,
-    market: bool,
-    tick: Decimal,
-) -> Decimal:
-    """The target price that pays exactly `r` net (rounded away from the entry)."""
-    fee_in = costs.taker_fee if market else costs.maker_fee
-    need = r * ru + entry * fee_in
-    if side is Side.LONG:
-        return _round((entry + need) / (1 - costs.taker_fee), tick, ROUND_CEILING)
-    return _round((entry - need) / (1 + costs.taker_fee), tick, ROUND_FLOOR)
-
-
 def _beyond(side: Side, px: Decimal, ref: Decimal) -> bool:
     return px > ref if side is Side.LONG else px < ref
 
 
 def internal_liquidity(
-    ax: Analysis, m1: Analysis, p: SmcParams, t: datetime, side: Side, entry: Decimal
+    ctx: Mapping[str, Analysis], p: SmcParams, t: datetime, side: Side, entry: Decimal
 ) -> tuple[Decimal, str] | None:
-    """TP1: the nearest unswept confirmed execution-TF swing high (LONG) / low beyond entry."""
-    k = last_closed(ax, t)
-    if k < 0:
-        return None
+    """TP1: the nearest internal liquidity / previous swing beyond the entry: an unswept
+    confirmed swing high (LONG) / low of the execution or the zone timeframe."""
+    m1 = ctx["1m"]
     long = side is Side.LONG
-    rng = m1_range(m1, ax.bars[k].open_time + length(ax.tf), last_closed(m1, t))
-    floor = k - p.lookback(ax.tf)
-    best: Decimal | None = None
-    for sw in reversed(ax.swings):
-        if sw.idx < floor:
-            break
-        if (
-            sw.confirmed_idx > k
-            or (sw.kind == "HIGH") != long
-            or not _beyond(side, sw.price, entry)
-        ):
+    best: tuple[Decimal, str] | None = None
+    for tf in dict.fromkeys((p.exec_tf, p.zone_tf)):
+        a = ctx[tf]
+        k = last_closed(a, t)
+        if k < 0:
             continue
-        if _swept(ax, sw.idx, k, sw.price, long) or (
-            rng is not None and (rng[0] > sw.price if long else rng[1] < sw.price)
-        ):
-            continue
-        if best is None or abs(sw.price - entry) < abs(best - entry):
-            best = sw.price
-    return None if best is None else (best, f"{ax.tf} swing {'high' if long else 'low'}")
+        rng = m1_range(m1, a.bars[k].open_time + length(tf), last_closed(m1, t))
+        floor = k - p.lookback(tf)
+        for sw in reversed(a.swings):
+            if sw.idx < floor:
+                break
+            if sw.confirmed_idx > k or (sw.kind == "HIGH") != long:
+                continue
+            if not _beyond(side, sw.price, entry) or _swept(a, sw.idx, k, sw.price, long):
+                continue
+            if rng is not None and (rng[0] > sw.price if long else rng[1] < sw.price):
+                continue
+            if best is None or abs(sw.price - entry) < abs(best[0] - entry):
+                best = (sw.price, f"{tf} swing {'high' if long else 'low'}")
+    return best
 
 
-def opposing_zone(
+def next_fvg(
     za: Analysis, m1: Analysis, p: SmcParams, t: datetime, side: Side, beyond: Decimal
 ) -> tuple[Decimal, str] | None:
-    """TP2: the near edge of the nearest valid opposing zone-TF OB / FVG beyond `beyond`."""
+    """TP2: the near edge of the nearest unfilled zone-TF fair value gap beyond `beyond`."""
     k = last_closed(za, t)
     if k < 0:
         return None
@@ -269,13 +252,13 @@ def opposing_zone(
     rng = m1_range(m1, za.bars[k].open_time + length(za.tf), last_closed(m1, t))
     best: tuple[Decimal, str] | None = None
     for z in zones_at(za, k, p):
-        if z.direction is side or filled_live(z, rng, p):
+        if z.kind != "FVG" or filled_live(z, rng, p):
             continue
         edge = z.bottom if long else z.top
         if not _beyond(side, edge, beyond):
             continue
         if best is None or abs(edge - beyond) < abs(best[0] - beyond):
-            best = (edge, f"{za.tf} {z.kind}")
+            best = (edge, f"{za.tf} FVG")
     return best
 
 
@@ -382,47 +365,28 @@ def evaluate(
         return result(["NOT_FRESH"])
     tick = p.tick
     entry = market_price if market_price is not None else s.edge
-    atr = za.atr[k] or Decimal(0)
-    buf = max(p.sl_buffer_atr * atr, 2 * tick)
-    far = min(s.sweep.wick, s.ob.bottom) - buf if long else max(s.sweep.wick, s.ob.top) + buf
-    sl = _round(far, tick, ROUND_FLOOR if long else ROUND_CEILING)
+    # the stop sits one tick beyond the order block's wick
+    sl = s.ob.bottom - tick if long else s.ob.top + tick
     if not _beyond(side, entry, sl):
         return result(["BAD_STOP"], entry=entry, sl=sl)
     reasons: list[str] = []
-    dist = abs(entry - sl)
-    if dist / entry > p.max_risk_pct:
-        reasons.append("SL_TOO_WIDE")
-    fee_in = costs.taker_fee if market else costs.maker_fee
-    cost = entry * fee_in + sl * costs.taker_fee + sl * costs.slippage
-    if p.max_cost_frac > 0 and cost > p.max_cost_frac * dist:
-        reasons.append("FEE_TOO_HIGH")
     ru = risk_unit(side, entry, sl, costs, market=market)
 
-    def target(px: Decimal, src: str, fb: bool) -> Target:
-        return Target(px, src, fb, net_r(side, entry, px, ru, costs, market))
+    def target(lv: tuple[Decimal, str] | None) -> Target | None:
+        if lv is None:
+            return None
+        return Target(lv[0], lv[1], net_r(side, entry, lv[0], ru, costs, market))
 
-    def fixed(r: Decimal) -> Target:
-        px = price_for_r(side, entry, r, ru, costs, market, tick)
-        return target(px, f"{r.normalize()}R", True)
-
-    lv = internal_liquidity(ctx[p.exec_tf], m1, p, t, side, entry)
-    tp1 = target(lv[0], lv[1], False) if lv else None
-    if tp1 is None or tp1.net_r < p.tp_inside_r:
-        tp1 = fixed(p.tp1_fallback_r)
-    lv = opposing_zone(za, m1, p, t, side, tp1.price)
-    tp2 = target(lv[0], lv[1], False) if lv else None
-    if tp2 is None or tp2.net_r < p.tp_inside_r:
-        tp2 = fixed(p.tp2_fallback_r)
-    tp3: Target | None = None
-    if not _beyond(side, tp2.price, tp1.price):
-        reasons.append("NO_TARGET")  # the fixed TP2 falls inside a far TP1
+    tp1 = target(internal_liquidity(ctx, p, t, side, entry))
+    tp2 = tp3 = None
+    if tp1 is None:
+        reasons.append("NO_TARGET")  # no internal liquidity / previous swing beyond the entry
     else:
-        ext = [x for x in external_liquidity(ctx, p, t, side) if _beyond(side, x[0], tp2.price)]
+        tp2 = target(next_fvg(za, m1, p, t, side, tp1.price))
+        last = (tp2 or tp1).price
+        ext = [x for x in external_liquidity(ctx, p, t, side) if _beyond(side, x[0], last)]
         if ext:
-            px, src = min(ext, key=lambda x: abs(x[0] - tp2.price))
-            tp3 = target(px, src, False)
-    if tp2.net_r < p.min_net_rr_tp2:
-        reasons.append("LOW_RR")
+            tp3 = target(min(ext, key=lambda x: abs(x[0] - last)))
     bal = equity if equity is not None and equity > 0 else p.account_usdt
     qty = (bal * p.risk_pct / ru).quantize(Decimal("0.00001"), rounding=ROUND_DOWN)
     notional = qty * entry
@@ -459,26 +423,23 @@ def order_for(
 
 
 def trail_stop(ax: Analysis, side: Side, t: datetime, p: SmcParams) -> Decimal | None:
-    """The trailing stop known at `t`: behind the last confirmed execution-TF swing low
-    (LONG) / high, minus trail_buffer_atr x ATR of that timeframe."""
+    """The trailing stop known at `t`: one tick beyond the last confirmed execution-TF swing
+    low (LONG) / high."""
     k = last_closed(ax, t)
     if k < 0:
         return None
     long = side is Side.LONG
-    atr = ax.atr[k] or Decimal(0)
     for sw in reversed(ax.swings):
         if sw.confirmed_idx > k or (sw.kind == "LOW") != long:
             continue
-        buf = p.trail_buffer_atr * atr
-        px = sw.price - buf if long else sw.price + buf
-        return _round(px, p.tick, ROUND_FLOOR if long else ROUND_CEILING)
+        return sw.price - p.tick if long else sw.price + p.tick
     return None
 
 
 def tracked(s: Setup, p: SmcParams, costs: Costs) -> Tracked:
     """The lifecycle object of an accepted setup (ladder shares as configured; the runner
     replaces them with the shares its quantity steps allow)."""
-    assert s.entry is not None and s.sl is not None and s.tp1 and s.tp2
+    assert s.entry is not None and s.sl is not None and s.tp1 is not None
     return Tracked(
         key=s.key,
         side=s.direction,
@@ -489,13 +450,15 @@ def tracked(s: Setup, p: SmcParams, costs: Costs) -> Tracked:
         risk=risk_unit(s.direction, s.entry, s.sl, costs, market=s.market),
         market=s.market,
         tp1=s.tp1.price,
-        tp2=s.tp2.price,
+        tp2=None if s.tp2 is None else s.tp2.price,
         frac1=p.tp1_frac,
-        frac2=p.tp2_frac,
+        frac2=p.tp2_frac if s.tp2 is not None else Decimal(0),
         time_stop_min=p.time_stop_min,
     )
 
 
 def bar_trail(t: Tracked, ax: Analysis, bar: Candle, p: SmcParams) -> Decimal | None:
-    """The trailing stop for one M1 bar of a signal (only once TP2 is in)."""
-    return trail_stop(ax, t.side, bar.open_time, p) if t.state is State.TP2 else None
+    """The trailing stop for one M1 bar of a signal: once the runner is all that is left
+    (after TP2, or after TP1 when there is no TP2)."""
+    runner = t.state is State.TP2 or (t.state is State.TP1 and t.tp2 is None)
+    return trail_stop(ax, t.side, bar.open_time, p) if runner else None

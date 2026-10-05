@@ -41,30 +41,29 @@ kept at the end of this file.
    touch is never an entry (NOT_FRESH). `confirm_exec: true` instead waits, after arming, for
    an `exec_tf` (15m) BOS / CHoCH with the setup inside that window and enters at market
    (taker) at its close.
-4. **Stop** — beyond the farther of the sweep wick and the OB far edge, plus
-   `sl_buffer_atr` (0.2) × ATR(1h). At most `max_risk_pct` (1 %) of price (SL_TOO_WIDE).
-5. **Targets (ladder)**
-   - TP1 = nearest internal liquidity: the nearest unswept confirmed **15m** swing high (low)
-     beyond the entry. `tp1_frac` (50 %) closes; the stop moves to break-even net of fees.
-   - TP2 = the near edge of the next valid opposing **1h** OB / FVG beyond TP1.
-     `tp2_frac` (30 %) closes; the stop then trails behind the last confirmed 15m swing −
-     `trail_buffer_atr` (0.1) × ATR(15m), only ever tightened.
-   - TP3 = external liquidity beyond TP2: previous UTC day / ISO week high (low) not yet
-     taken, or 1h equal highs (lows). None: the rest runs on the trailing stop.
-   - A level that is missing or closer than `tp_inside_r` (1R net) falls back to exactly
-     `tp1_fallback_r` (1R) / `tp2_fallback_r` (2R) net of fees; the fallback is recorded.
-     A fixed TP2 that would sit inside TP1 rejects the trade (NO_TARGET).
-6. **Filters** — net R:R to TP2 ≥ `min_net_rr_tp2` (2) after fees and slippage (LOW_RR);
-   `max_cost_frac` (round-trip cost as a share of the stop distance, FEE_TOO_HIGH) is **off**
-   (0, owner 2026-10-05): fees count only through the net R:R to TP2, which already pays the
-   entry fee, the exit fee and slippage; advisory size ≤ `max_leverage` (LEVERAGE).
+4. **Stop** — one tick beyond the order block's wick (below its low for a long, above its
+   high for a short). Nothing else: no ATR buffer, no cap on the distance.
+5. **Targets (ladder)** — from the market alone, **never derived from the stop** (owner rule
+   2026-10-05; no R-based fallback, no R:R or cost filter):
+   - TP1 = nearest internal liquidity / previous swing: the nearest unswept confirmed swing
+     high (low) of the **15m or 1h** timeframe beyond the entry. `tp1_frac` (50 %) closes; the
+     stop moves to break-even net of fees. No such level: no trade (NO_TARGET).
+   - TP2 = the near edge of the next **unfilled 1h FVG** beyond TP1. `tp2_frac` (30 %) closes.
+     None: its share stays in the runner.
+   - TP3 (runner) = external liquidity beyond TP2 (or TP1): previous UTC day / ISO week high
+     (low) not yet taken, or 1h equal highs (lows). The runner trails one tick beyond the last
+     confirmed 15m swing (only ever tightened) from TP2 on, or from TP1 on when there is no
+     TP2. No TP3: the runner ends on the trailing stop or `max_hold_min`.
+   - The net R of each target after fees is computed and shown, for information only.
+6. **Size** — risk `risk_pct` of the wallet over the stop distance plus costs; advisory size
+   ≤ `max_leverage` (LEVERAGE).
 7. **Capacity** — `max_active` (1) per market, `max_positions` (2) across markets; orders are
    never created retroactively (only within 3 minutes of the arming minute / confirmation).
 
 ## Lifecycle (`lifecycle.py`, walked on M1 bars)
 PENDING → OPEN → **TP1** (50 % out, stop at break-even) → **TP2** (30 % out, trailing) →
 **TP** (TP3, rest out). Exits of the rest: **SL** (before TP1, exactly −1R), **BE** (after TP1),
-**TRAIL** (after TP2), **TIME_STOP** (neither TP1 nor SL within `time_stop_min` = 180 min =
+**TRAIL** (the trailing stop of the runner), **TIME_STOP** (neither TP1 nor SL within `time_stop_min` = 180 min =
 12 × 15m of the fill, market exit), **TIMEOUT** (`max_hold_min` 1440). Without a fill:
 EXPIRED, MISSED (TP1 traded before the fill).
 Conservative reading: a stop beats any target in the same minute; no target in the fill
@@ -87,7 +86,7 @@ taker fee on the slipped stop fill, so a full stop-out is exactly −1R.
   setups with the 4h bias within `chart_near_atr` (3) × ATR(1h) of price, or tied to a
   pending / open position; positions' setups first, then the nearest, `chart_top_n` (3). Each
   with its FVG, the sweep (dashed line at the swept level, dot at the wick), its BOS / CHoCH,
-  the planned SL and TP1–TP3 (dotted, net R, fallbacks marked). Label: timeframe · age · state;
+  the planned SL and TP1–TP3 (dotted, with their net R). Label: timeframe · age · state;
   colour by state (waiting = direction colour, armed, pending, open). Positions show entry, SL
   (break-even / trailing), TP1–TP3 with net R and the time stop / order expiry.
 - **All zones (debug)**: every zone, every gap behind an order block, every BOS / CHoCH and
@@ -95,7 +94,7 @@ taker fee on the slipped stop fill, so a full stop-out is exactly −1R.
 
 ## Database
 Migration `0020_smc_ladder`: `smc_signals` gains `tp1`, `tp2`, `tp3`, `targets` (source and
-fallback per target), `parts` (the exits), `qty_open`, `realized_r`, `version`; `tp` (= TP3) may
+net R per target), `parts` (the exits), `qty_open`, `realized_r`, `version`; `tp` (= TP3) may
 be NULL; the active index covers TP1 / TP2. `smc_wallet_ledger` gains `part` and `fees`.
 Signals of SMC-1.0 keep their single TP and finish under the old rule.
 
