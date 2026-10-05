@@ -2,6 +2,7 @@
 
 Alignment follows Tabdeal's own chart (measured 2026-10-04): 1m..15m on the UTC grid, 1h and
 4h on Tehran time (UTC+03:30), i.e. 1h bars open at hh:30 UTC and 4h bars at 00:30, 04:30, ...
+Daily bars are UTC days (the day boundary of the TP3 levels).
 Only CLOSED bars are analysed: a bucket counts once its end is at or before the end of the
 last final M1.
 """
@@ -22,6 +23,7 @@ TIMEFRAMES: dict[str, tuple[timedelta, timedelta]] = {
     "15m": (timedelta(minutes=15), timedelta(0)),
     "1h": (timedelta(hours=1), timedelta(minutes=30)),
     "4h": (timedelta(hours=4), timedelta(minutes=30)),
+    "1d": (timedelta(days=1), timedelta(0)),  # UTC days
 }
 ORDER = tuple(TIMEFRAMES)
 

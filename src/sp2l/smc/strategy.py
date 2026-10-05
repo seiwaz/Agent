@@ -265,9 +265,10 @@ def next_fvg(
 def external_liquidity(
     ctx: Mapping[str, Analysis], p: SmcParams, t: datetime, side: Side
 ) -> list[tuple[Decimal, str]]:
-    """TP3 candidates still untaken: previous UTC day / ISO week high (LONG) or low, and
-    zone-TF equal highs / lows (two or more swings within eq_tol_atr x ATR)."""
-    ax, za, m1 = ctx[p.exec_tf], ctx[p.zone_tf], ctx["1m"]
+    """TP3 candidates still untaken: previous UTC day / ISO week high (LONG) or low (read on
+    15m bars, which sit on the UTC grid), and zone-TF equal highs / lows (two or more swings
+    within eq_tol_atr x ATR)."""
+    ax, za, m1 = ctx["15m"], ctx[p.zone_tf], ctx["1m"]
     long = side is Side.LONG
     out: list[tuple[Decimal, str]] = []
     k = last_closed(ax, t)

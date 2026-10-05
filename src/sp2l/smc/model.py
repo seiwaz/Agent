@@ -154,6 +154,7 @@ class SmcParams:
     lookback_15m: int = 1400  # covers the previous ISO week for TP3
     lookback_1h: int = 400
     lookback_4h: int = 180
+    lookback_1d: int = 120
     history_days: int = 35
     # lifecycle
     max_active: int = 1  # simultaneous active signals per symbol
