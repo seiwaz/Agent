@@ -1,0 +1,220 @@
+{
+ "commission_levels": [
+  {
+   "id": 1,
+   "name": "سطح ۱",
+   "maker_commission_percent": "0.0033",
+   "taker_commission_percent": "0.0035",
+   "trade_volume": "1000"
+  },
+  {
+   "id": 2,
+   "name": "سطح ۲",
+   "maker_commission_percent": "0.0031",
+   "taker_commission_percent": "0.0035",
+   "trade_volume": "2000"
+  },
+  {
+   "id": 3,
+   "name": "سطح ۳",
+   "maker_commission_percent": "0.0028",
+   "taker_commission_percent": "0.0033",
+   "trade_volume": "4000"
+  },
+  {
+   "id": 4,
+   "name": "سطح ۴",
+   "maker_commission_percent": "0.0026",
+   "taker_commission_percent": "0.0031",
+   "trade_volume": "8000"
+  },
+  {
+   "id": 5,
+   "name": "VIP 1",
+   "maker_commission_percent": "0.0024",
+   "taker_commission_percent": "0.0028",
+   "trade_volume": "16000"
+  },
+  {
+   "id": 6,
+   "name": "VIP 2",
+   "maker_commission_percent": "0.0022",
+   "taker_commission_percent": "0.0026",
+   "trade_volume": "32000"
+  },
+  {
+   "id": 7,
+   "name": "VIP 3",
+   "maker_commission_percent": "0.002",
+   "taker_commission_percent": "0.0024",
+   "trade_volume": "64000"
+  },
+  {
+   "id": 8,
+   "name": "VIP 4",
+   "maker_commission_percent": "0.0018",
+   "taker_commission_percent": "0.0022",
+   "trade_volume": "100000"
+  },
+  {
+   "id": 9,
+   "name": "VIP 5",
+   "maker_commission_percent": "0.0016",
+   "taker_commission_percent": "0.002",
+   "trade_volume": "250000"
+  },
+  {
+   "id": 10,
+   "name": "VIP 6",
+   "maker_commission_percent": "0.0014",
+   "taker_commission_percent": "0.0018",
+   "trade_volume": "750000"
+  },
+  {
+   "id": 11,
+   "name": "VIP 7",
+   "maker_commission_percent": "0.0012",
+   "taker_commission_percent": "0.0016",
+   "trade_volume": "2000000"
+  },
+  {
+   "id": 12,
+   "name": "VIP 8",
+   "maker_commission_percent": "0.001",
+   "taker_commission_percent": "0.0014",
+   "trade_volume": "4000000"
+  },
+  {
+   "id": 13,
+   "name": "VIP 9",
+   "maker_commission_percent": "0.0009",
+   "taker_commission_percent": "0.0012",
+   "trade_volume": "10000000"
+  },
+  {
+   "id": 14,
+   "name": "VIP 10",
+   "maker_commission_percent": "0.0008",
+   "taker_commission_percent": "0.001",
+   "trade_volume": "50000000"
+  },
+  {
+   "id": 15,
+   "name": "VIP 11",
+   "maker_commission_percent": "0.0008",
+   "taker_commission_percent": "0.0009",
+   "trade_volume": "200000000"
+  },
+  {
+   "id": 16,
+   "name": "VIP 12",
+   "maker_commission_percent": "0.0006",
+   "taker_commission_percent": "0.0008",
+   "trade_volume": "500000000"
+  },
+  {
+   "id": 17,
+   "name": "VIP 13",
+   "maker_commission_percent": "0.0005",
+   "taker_commission_percent": "0.0007",
+   "trade_volume": "1000000000"
+  },
+  {
+   "id": 18,
+   "name": "VIP 14",
+   "maker_commission_percent": "0.0004",
+   "taker_commission_percent": "0.0006",
+   "trade_volume": "2000000000"
+  },
+  {
+   "id": 19,
+   "name": "VIP 15",
+   "maker_commission_percent": "0.0003",
+   "taker_commission_percent": "0.0005",
+   "trade_volume": "4000000000"
+  }
+ ],
+ "special_margin_commission_levels": [
+  {
+   "id": 1,
+   "level": 1,
+   "name": "سطح ۱",
+   "maker_commission_percent": "0.0008",
+   "taker_commission_percent": "0.00095",
+   "from_volume": "0",
+   "to_volume": "1000000.00000000"
+  },
+  {
+   "id": 2,
+   "level": 2,
+   "name": "سطح ۲",
+   "maker_commission_percent": "0.00075",
+   "taker_commission_percent": "0.00095",
+   "from_volume": "1000000.00000000",
+   "to_volume": "5000000.00000000"
+  },
+  {
+   "id": 3,
+   "level": 3,
+   "name": "سطح ۳",
+   "maker_commission_percent": "0.0007",
+   "taker_commission_percent": "0.0009",
+   "from_volume": "5000000.00000000",
+   "to_volume": "15000000.00000000"
+  },
+  {
+   "id": 4,
+   "level": 4,
+   "name": "سطح ۴",
+   "maker_commission_percent": "0.00065",
+   "taker_commission_percent": "0.00085",
+   "from_volume": "15000000.00000000",
+   "to_volume": "100000000.00000000"
+  },
+  {
+   "id": 5,
+   "level": 5,
+   "name": "سطح ۵",
+   "maker_commission_percent": "0.0005",
+   "taker_commission_percent": "0.00075",
+   "from_volume": "100000000.00000000",
+   "to_volume": "300000000.00000000"
+  },
+  {
+   "id": 6,
+   "level": 6,
+   "name": "سطح ۶",
+   "maker_commission_percent": "0.0003",
+   "taker_commission_percent": "0.00065",
+   "from_volume": "300000000.00000000",
+   "to_volume": "1000000000.00000000"
+  },
+  {
+   "id": 7,
+   "level": 7,
+   "name": "سطح ۷",
+   "maker_commission_percent": "0.0002",
+   "taker_commission_percent": "0.0004",
+   "from_volume": "1000000000.00000000",
+   "to_volume": "3000000000.00000000"
+  },
+  {
+   "id": 8,
+   "level": 8,
+   "name": "سطح ۸",
+   "maker_commission_percent": "0",
+   "taker_commission_percent": "0.00025",
+   "from_volume": "3000000000.00000000",
+   "to_volume": "10000000000.00000000"
+  },
+  {
+   "id": 9,
+   "level": 9,
+   "name": "سطح ۹",
+   "maker_commission_percent": "-0.00005",
+   "taker_commission_percent": "0.00015",
+   "from_volume": "10000000000.00000000",
+   "to_volume": "50000000000.00000000"
+  }
+ ]
+}

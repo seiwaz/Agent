@@ -60,6 +60,12 @@ def _r_at(t: Tracked, price: Decimal, costs: Costs) -> Decimal:
     return t.net_per_unit(price, costs) / t.risk
 
 
+def _tp_fill(t: Tracked, costs: Costs) -> Decimal:
+    """A market take-profit fills one slippage allowance worse (as the lifecycle books it)."""
+    slip = t.tp * costs.slippage
+    return t.tp - slip if t.side is Side.LONG else t.tp + slip
+
+
 def _close(t: Tracked, state: State, price: Decimal, at: datetime, costs: Costs) -> None:
     from sp2l.smc.lifecycle import _close as close
 
@@ -102,12 +108,12 @@ def walk(
                 hi_seen, lo_seen = b.high, b.low
                 if tgt:
                     w.tp_in_fill_minute = True
-                    w.alt_fill_r = _r_at(t, t.tp, costs)
+                    w.alt_fill_r = _r_at(t, _tp_fill(t, costs), costs)
                 if stop:
                     slip = t.sl * costs.slippage
                     _close(t, State.SL, t.sl - slip if long else t.sl + slip, end, costs)
                 elif tgt and tp_in_fill:
-                    _close(t, State.TP, t.tp, end, costs)
+                    _close(t, State.TP, _tp_fill(t, costs), end, costs)
                 continue
             if tgt:
                 t.state, t.closed_at = State.MISSED, end
@@ -126,17 +132,17 @@ def walk(
         if stop and tgt:
             w.both_minute = True
             if stop_first:
-                w.alt_both_r = _r_at(t, t.tp, costs)
+                w.alt_both_r = _r_at(t, _tp_fill(t, costs), costs)
                 _close(t, State.SL, stop_px, end, costs)
             else:
                 w.alt_both_r = _r_at(t, stop_px, costs)
-                _close(t, State.TP, t.tp, end, costs)
+                _close(t, State.TP, _tp_fill(t, costs), end, costs)
             continue
         if stop:
             _close(t, State.SL, stop_px, end, costs)
             continue
         if tgt:
-            _close(t, State.TP, t.tp, end, costs)
+            _close(t, State.TP, _tp_fill(t, costs), end, costs)
             continue
         assert t.filled_at is not None
         held = b.open_time - t.filled_at

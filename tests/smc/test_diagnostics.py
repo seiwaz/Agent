@@ -84,8 +84,10 @@ def test_fees_are_charged_once_on_notional_maker_in_taker_out():
     qty = D("0.01")
     part = t.parts[0]
     pnl, fees = part_pnl(t, part, qty, C)
-    assert fees == qty * (D(100) * C.maker_fee + D(104) * C.taker_fee)  # notional, once each
-    assert pnl == qty * D(4) - fees and t.result_r == pnl / (qty * t.risk)
+    fill = D(104) - D(104) * C.slippage  # a market take-profit, one slippage allowance worse
+    assert part.price == fill
+    assert fees == qty * (D(100) * C.maker_fee + fill * C.taker_fee)  # notional, once each
+    assert pnl == qty * (fill - 100) - fees and t.result_r == pnl / (qty * t.risk)
     assert t.risk == risk_unit(Side.LONG, D(100), D(98), C)  # the same fees in the R unit
     assert replace(part, frac=D(1)) == part
     assert isinstance(part, Part)

@@ -20,7 +20,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "types-PyYAML",
-    "numpy>=1.26",
+    "numpy>=2",
     "TA-Lib>=0.6",
     "httpx>=0.28.1",
     "playwright>=1.63.0",
