@@ -168,11 +168,9 @@ function shown() {
   const events = [...own, ...(a.events || []).slice(-3).filter((e) => !ids.has(e.id))];
   return { ...a, zones: [], htf_zones: [], liquidity: [], events, setups };
 }
+/* Positions on the chart: the active ones; a closed one only after "Show on chart" (Signals). */
 function shownPositions() {
-  if (state.mode === "debug") return state.signals;
-  const act = state.signals.filter(isActive);
-  const closed = state.signals.filter((x) => !isActive(x)).slice(0, 3);
-  return [...act, ...closed, ...state.signals.filter((x) => x.id === state.focus && !act.includes(x) && !closed.includes(x))];
+  return state.signals.filter((x) => isActive(x) || x.id === state.focus);
 }
 
 /* ---- chart: SMC drawing layer (series primitive) -------------------------------------------- */
