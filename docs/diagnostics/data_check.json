@@ -1,0 +1,56 @@
+{
+ "BTCUSDT": {
+  "minutes": 391566,
+  "gaps": 32,
+  "missing_minutes": 114,
+  "longest_gap_min": 29,
+  "duplicates": 0,
+  "ohlc_inconsistent": 0,
+  "largest_gaps": [
+   "2026-03-20 19:51 .. 2026-03-20 20:21 UTC (29 min)",
+   "2026-05-27 14:55 .. 2026-05-27 15:19 UTC (23 min)",
+   "2026-04-19 19:29 .. 2026-04-19 19:40 UTC (10 min)"
+  ],
+  "refetch": {
+   "minutes_checked": 960,
+   "missing_in_db": 0,
+   "ohlc_differs": 0,
+   "examples": []
+  }
+ },
+ "XRPUSDT": {
+  "minutes": 388665,
+  "gaps": 44,
+  "missing_minutes": 3015,
+  "longest_gap_min": 2877,
+  "duplicates": 0,
+  "ohlc_inconsistent": 0,
+  "largest_gaps": [
+   "2026-05-03 00:02 .. 2026-05-05 00:00 UTC (2877 min)",
+   "2026-03-20 19:50 .. 2026-03-20 20:21 UTC (30 min)",
+   "2026-05-27 14:54 .. 2026-05-27 15:19 UTC (24 min)"
+  ],
+  "refetch": {
+   "minutes_checked": 960,
+   "missing_in_db": 0,
+   "ohlc_differs": 1,
+   "examples": [
+    {
+     "t": "2026-02-22T00:00:00+00:00",
+     "db": [
+      "1.430090000000000000",
+      "1.430520000000000000",
+      "1.429530000000000000",
+      "1.430430000000000000"
+     ],
+     "tabdeal": [
+      "1.43037",
+      "1.43052",
+      "1.42953",
+      "1.43043"
+     ]
+    }
+   ]
+  }
+ }
+}
