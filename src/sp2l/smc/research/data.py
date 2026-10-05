@@ -62,7 +62,10 @@ def from_bars(symbol: str, bars: list[Candle], tick: Decimal | None = None) -> M
     )
 
 
-def load(db: Engine, symbol: str, days: int, tick: Decimal | None = None) -> Market:
-    upto = series_end(db, symbol)
+def load(
+    db: Engine, symbol: str, days: int, tick: Decimal | None = None, upto: datetime | None = None
+) -> Market:
+    """`upto` fixes the end, so a study is reproducible while the database keeps growing."""
+    upto = upto or series_end(db, symbol)
     assert upto is not None, symbol
     return from_bars(symbol, load_bars(db, symbol, "1m", days * 1440, upto), tick)

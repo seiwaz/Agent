@@ -14,8 +14,10 @@ import argparse
 import csv
 import json
 import pickle
+import zlib
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -54,6 +56,7 @@ COVERAGE = {
     "LTCUSDT": 197,
     "AVAXUSDT": 167,
 }
+END = datetime(2026, 10, 5, 11, 40, tzinfo=UTC)  # the research data ends here (reproducible)
 KINDS = ("OB_last", "OB_extreme", "FVG", "OB_adjFVG", "OB_adjFVG_sweep", "candle_adjFVG")
 TFS = ("5m", "15m", "1h", "4h")
 
@@ -77,7 +80,7 @@ def part_events(mkts: dict[str, Market], p: SmcParams, rep: list[str]) -> None:
             b1 = Trend(analyze(aggregate(m.bars, "1h", end), "1h", p))
             evs = []
             for tf in TFS:
-                evs += study(m, tf, p, b4, b1, seed=hash((sym, tf)) % 10_000)
+                evs += study(m, tf, p, b4, b1, seed=zlib.crc32(f"{sym}{tf}".encode()))
             cache.write_bytes(pickle.dumps(evs))
         print(sym, "events", len(evs), flush=True)
         allev += evs
@@ -219,19 +222,23 @@ def part_events(mkts: dict[str, Market], p: SmcParams, rep: list[str]) -> None:
         # fresh vs already touched
         rep.append("")
         rep.append(
-            "Fresh (first touch) vs already touched (second touch of the same zone), P(+1R) / P(+2R):\n"
+            "Fresh (first touch, all events) vs already touched (the second touch: price first moved 0.5R "
+            "away from the zone, the stop untouched, then came back) and the random levels, P(+1R) / P(+2R):\n"
         )
         rep.append(
-            "| zone type | n second touches | first touch +1R / +2R | second touch +1R / +2R |"
+            "| zone type | first touches | first touch +1R / +2R | second touches | second touch +1R / +2R | random +1R / +2R |"
         )
-        rep.append("|---|---|---|---|")
+        rep.append("|---|---|---|---|---|---|")
         for k in KINDS:
-            evs = [e for e in disc if e.tf == tf and e.kind == k and e.second is not None]
-            if len(evs) < 30:
+            first = [e for e in disc if e.tf == tf and e.kind == k]
+            sec = [e.second for e in first if e.second is not None]
+            ctl = [e.control for e in first if e.control is not None]
+            if len(sec) < 30 or not ctl:
                 continue
             rep.append(
-                f"| {k} | {len(evs)} | {np.mean([e.hit[1] for e in evs]) * 100:.1f} / {np.mean([e.hit[2] for e in evs]) * 100:.1f} | "
-                f"{np.mean([e.second['hit'][1] for e in evs]) * 100:.1f} / {np.mean([e.second['hit'][2] for e in evs]) * 100:.1f} |"  # type: ignore[index]
+                f"| {k} | {len(first)} | {np.mean([e.hit[1] for e in first]) * 100:.1f} / {np.mean([e.hit[2] for e in first]) * 100:.1f} | "
+                f"{len(sec)} | {np.mean([x['hit'][1] for x in sec]) * 100:.1f} / {np.mean([x['hit'][2] for x in sec]) * 100:.1f} | "
+                f"{np.mean([x['hit'][1] for x in ctl]) * 100:.1f} / {np.mean([x['hit'][2] for x in ctl]) * 100:.1f} |"
             )
         rep.append("")
     # per market, the main zone types, +1R difference
@@ -661,7 +668,7 @@ def main() -> None:
     mkts: dict[str, Market] = {}
     for sym in args.markets.split(","):
         tick = cfg.instrument(sym)[0] if sym in cfg.symbols else None
-        mkts[sym] = load(db, sym, COVERAGE[sym] + 5, tick)
+        mkts[sym] = load(db, sym, COVERAGE[sym] + 5, tick, upto=END)
         m = mkts[sym]
         print(
             sym,

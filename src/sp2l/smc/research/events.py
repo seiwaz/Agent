@@ -11,9 +11,9 @@ did price reach +1R / +2R / +3R before -1R (a minute reaching both counts as the
 target in the touch minute), the MFE / MAE in R and the hold time. `second` gives the same for
 the second touch (price first moved 0.5R away, then came back, the stop untouched).
 
-Each event gets a random control level: same market and timeframe, a random time within
-+-7 days, the same distance below (long) / above (short) the price and the same width, both
-in ATR of the timeframe at that time; it is measured the same way. All before costs.
+Each event gets N_CONTROLS random control levels: same market and timeframe, a random time
+within +-7 days, the same distance below (long) / above (short) the price and the same width,
+both in ATR of the timeframe at that time; measured the same way and averaged. All before costs.
 """
 
 from __future__ import annotations
@@ -272,31 +272,62 @@ def study(
                 j2 = _touch(m, ja + 1, min(ja + 1 + window, len(m.t)), z.direction, z.entry)
                 if j2 >= 0:
                     ev.second = outcome(m, j2, z.direction, z.entry, stop, horizon)
-        # the random control level
-        dist = z.direction * (z.close - z.entry) / z.atr if z.atr else -1
-        width = (z.top - z.bottom) / z.atr if z.atr else 0
-        if dist >= 0 and width > 0:
-            lo_ts = max(float(m.t[0]) + 30 * 86400, z.known - CONTROL_DAYS * 86400)
-            hi_ts = min(float(m.t[-1]) - horizon * 60 - window * 60, z.known + CONTROL_DAYS * 86400)
-            if ev.split == "discovery":
-                hi_ts = min(hi_ts, split_ts)
-            else:
-                lo_ts = max(lo_ts, split_ts)
-            if hi_ts > lo_ts:
-                tc = rnd.uniform(lo_ts, hi_ts)
-                ic = m.index_at(tc)
-                k = int(np.searchsorted(atr_close, tc, side="right")) - 1
-                ac = atr[k] if k >= 0 else 0.0
-                if ic > 0 and ac > 0:
-                    pc = float(m.c[ic - 1])
-                    e_c = pc - z.direction * dist * ac
-                    far = e_c - z.direction * width * ac
-                    st_c = far - z.direction * tick
-                    jc = _touch(m, ic, min(ic + window, len(m.t)), z.direction, e_c)
-                    if jc >= 0:
-                        ev.control = outcome(m, jc, z.direction, e_c, st_c, horizon)
+        ev.control = controls(m, z, ev.split, split_ts, horizon, window, tick, atr_close, atr, rnd)
         out.append(ev)
     return out
+
+
+N_CONTROLS = 5  # random levels per event; their hit rates are averaged
+
+
+def controls(
+    m: Market,
+    z: RZone,
+    split: str,
+    split_ts: float,
+    horizon: int,
+    window: int,
+    tick: float,
+    atr_close: np.ndarray,
+    atr: np.ndarray,
+    rnd: random.Random,
+) -> dict[str, Any] | None:
+    """N_CONTROLS random levels for one zone (same market, timeframe and split; a random time
+    within +-CONTROL_DAYS; the zone's distance below / above price and its width in ATR of that
+    time): the mean of their outcomes, or None if none of them was touched."""
+    dist = z.direction * (z.close - z.entry) / z.atr if z.atr else -1
+    width = (z.top - z.bottom) / z.atr if z.atr else 0
+    if dist < 0 or width <= 0:
+        return None
+    lo_ts = max(float(m.t[0]) + 30 * 86400, z.known - CONTROL_DAYS * 86400)
+    hi_ts = min(float(m.t[-1]) - horizon * 60 - window * 60, z.known + CONTROL_DAYS * 86400)
+    if split == "discovery":
+        hi_ts = min(hi_ts, split_ts)
+    else:
+        lo_ts = max(lo_ts, split_ts)
+    if hi_ts <= lo_ts:
+        return None
+    got = []
+    for _ in range(N_CONTROLS):
+        tc = rnd.uniform(lo_ts, hi_ts)
+        ic = m.index_at(tc)
+        k = int(np.searchsorted(atr_close, tc, side="right")) - 1
+        ac = atr[k] if k >= 0 else 0.0
+        if ic <= 0 or ac <= 0:
+            continue
+        e_c = float(m.c[ic - 1]) - z.direction * dist * ac
+        st_c = e_c - z.direction * width * ac - z.direction * tick
+        jc = _touch(m, ic, min(ic + window, len(m.t)), z.direction, e_c)
+        if jc >= 0 and (o := outcome(m, jc, z.direction, e_c, st_c, horizon)) is not None:
+            got.append(o)
+    if not got:
+        return None
+    return {
+        "hit": {k: float(np.mean([o["hit"][k] for o in got])) for k in (1, 2, 3)},
+        "mfe": float(np.mean([o["mfe"] for o in got])),
+        "mae": float(np.mean([o["mae"] for o in got])),
+        "n": len(got),
+    }
 
 
 def bootstrap_diff(
