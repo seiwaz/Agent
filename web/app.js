@@ -334,6 +334,7 @@ function drawSetup(ctx, s, size) {
     ctx.strokeRect(fv[0], f1, fv[1] - fv[0], h); ctx.setLineDash([]);
     if (!spent) zoneLabels.push([`${s.tf} FVG`, Math.max(fv[0], 0) + 3, f1 + (s.direction === "LONG" ? 10 : -10), fc, "left", false]);
   }
+  if (!s.sweep) return;
   const xs = xOf(secs(s.sweep.time)), yl = yOf(s.sweep.level), yw = yOf(s.sweep.wick);
   if (xs !== null && yl !== null && yw !== null && xs > -40 && xs < W + 40) {
     ctx.strokeStyle = rgba("--c-liq", spent ? 0.4 : 0.95); ctx.lineWidth = 1.4; ctx.setLineDash([4, 3]);
@@ -627,7 +628,7 @@ function renderLegend() {
     if (state.layers.ob) items.push(sw("--c-fvg-bull", "its FVG"), ln(rgba("--c-liq", 1), "liquidity sweep (dot = wick)"));
     if (state.layers.liquidity) items.push(ln(rgba("--c-bull", 1), "planned TP1–TP3 (dotted, market levels) · planned SL (OB wick)"));
     if (state.layers.positions) items.push(ln(css("--text-2"), "positions: entry, SL, TP ladder, time stop / expiry"));
-    items.push(el("li", { class: "muted" }, "Setups: sweep → BOS/CHoCH → OB + FVG, fresh, with the bias, near the price or with a position. Label: timeframe · age · state"));
+    items.push(el("li", { class: "muted" }, "Setups: (sweep →) BOS/CHoCH → OB + FVG, fresh, with the bias, near the price or with a position. Label: timeframe · age · state"));
   } else {
     if (state.layers.ob) items.push(sw("--c-bull", "Bullish OB"), sw("--c-bear", "Bearish OB"));
     if (state.layers.fvg) items.push(sw("--c-fvg-bull", "Bullish FVG"), sw("--c-fvg-bear", "Bearish FVG"));
@@ -783,7 +784,7 @@ function renderTicket(w) {
   if (!act.length) {
     const last = state.allSignals.find((s) => s.closed_at);
     body.replaceChildren(mini || "", el("div", { class: "ticket-empty" },
-      el("p", { class: "muted small" }, `One shared ${w && w.ready ? usd(w.initial, 0) : "100"} USDT wallet for ${state.symbols.map(symName).join(" and ")}. A limit order rests at the order block of a 1h setup (liquidity sweep → break of structure → order block with its FVG) with the 4h bias, from the moment price first trades into the FVG; exits follow the TP1 / TP2 / TP3 ladder.`),
+      el("p", { class: "muted small" }, `One shared ${w && w.ready ? usd(w.initial, 0) : "100"} USDT wallet for ${state.symbols.map(symName).join(" and ")}. A limit order rests at the order block of a 1h setup (break of structure → order block with its FVG) with the 4h bias, from the moment price first trades into the FVG; exits follow the TP1 / TP2 / TP3 ladder.`),
       last ? el("p", { class: "small" }, "Last: ", symName(last.symbol), " ", sideTag(last.side), " ", stateTag(last.state), " ", rEl(last.result_r), last.pnl_usdt !== null ? ` · ${usdSigned(last.pnl_usdt)} $` : "") : null));
     return;
   }
@@ -811,7 +812,7 @@ function renderRadar(r) {
   $("trig-list").replaceChildren(...(r.recent.length ? r.recent.map((t) => el("li", { class: `t-${stTone[t.state] || "neutral"}` },
     el("div", { class: "top" }, sideTag(t.direction), el("b", {}, `${t.tf} ${t.event.kind === "CHOCH" ? "CHoCH" : "BOS"}`), when(t.confirmed_at), tag(stTone[t.state] || "neutral", t.state),
       t.aligned ? null : el("span", { class: "muted" }, "against the bias")),
-    el("div", { class: "why" }, `sweep ${pxs(t.sweep.level)} (wick ${pxs(t.sweep.wick)}) · OB ${pxs(t.ob.bottom)} – ${pxs(t.ob.top)} · FVG ${pxs(t.fvg.bottom)} – ${pxs(t.fvg.top)}`))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, "No complete setup in the lookback."))]));
+    el("div", { class: "why" }, `${t.sweep ? `sweep ${pxs(t.sweep.level)} (wick ${pxs(t.sweep.wick)}) · ` : ""}OB ${pxs(t.ob.bottom)} – ${pxs(t.ob.top)} · FVG ${pxs(t.fvg.bottom)} – ${pxs(t.fvg.top)}`))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, "No complete setup in the lookback."))]));
 }
 
 /* ---- alerts ----------------------------------------------------------------------------------- */
@@ -887,7 +888,7 @@ async function renderSignals() {
     (sel.ladder || []).length ? el("div", { class: "ladder-rungs" }, ladderRows(sel)) : null,
     el("dl", { class: "kv small" },
       el("dt", {}, "Setup"), el("dd", { class: "num" }, su ? `${su.tf} OB ${pxs(su.ob.bottom, sel.symbol)} – ${pxs(su.ob.top, sel.symbol)} · FVG ${pxs(su.fvg.bottom, sel.symbol)} – ${pxs(su.fvg.top, sel.symbol)}` : "—"),
-      el("dt", {}, "Sweep"), el("dd", { class: "num" }, su ? `${pxs(su.sweep.level, sel.symbol)} (wick ${pxs(su.sweep.wick, sel.symbol)})` : "—"),
+      el("dt", {}, "Sweep"), el("dd", { class: "num" }, su && su.sweep ? `${pxs(su.sweep.level, sel.symbol)} (wick ${pxs(su.sweep.wick, sel.symbol)})` : "—"),
       el("dt", {}, "Break"), el("dd", {}, su ? `${su.event.kind === "CHOCH" ? "CHoCH" : "BOS"} @ ${pxs(su.event.level, sel.symbol)}` : "—"),
       el("dt", {}, "Size"), el("dd", { class: "num" }, `${grp(String(+sel.qty))} · ${usd(sel.notional)} $ · margin ${usd(sel.margin)} $`),
       el("dt", {}, "Exit"), el("dd", { class: "num" }, pxs(sel.exit_price, sel.symbol)),
@@ -999,7 +1000,7 @@ async function renderStrategy() {
   const step = (tone, h, tfs, text) => el("li", { class: `t-${tone}` }, el("div", { class: "h" }, h), el("div", { class: "tfs" }, tfs), el("p", {}, text));
   $("model-flow").replaceChildren(
     step("info", "Bias", v.bias_tf, "The trend of the bias timeframe's last BOS / CHoCH is the only direction that can be traded."),
-    step("violet", "Setup", v.zone_tf, `In this order: liquidity sweep (wick beyond unswept swing lows / equal lows within ${v.eq_tol_atr} ATR, close back inside) → a close beyond structure within ${v.sweep_max_bars} bars → order block = last opposite candle (≥ ${v.ob_min_atr} ATR) with the FVG right after it.`),
+    step("violet", "Setup", v.zone_tf, `In this order: ${v.require_sweep ? `liquidity sweep (wick beyond unswept swing lows / equal lows within ${v.eq_tol_atr} ATR, close back inside) → a close beyond structure within ${v.sweep_max_bars} bars` : "a close beyond structure (BOS / CHoCH; no liquidity sweep required)"} → order block = last opposite candle (≥ ${v.ob_min_atr} ATR) with the FVG right after it.`),
     step("warn", "Entry", `${v.zone_tf} → M1`, v.confirm_exec
       ? `When price first trades into the FVG, wait for a ${v.exec_tf} BOS / CHoCH with the bias and enter at its close.`
       : `Limit order (maker) at the order-block edge touching the FVG, resting from the setup; armed when price first trades into the FVG, cancelled ${v.pending_expiry_min / 60} h later. Only the first touch.`),

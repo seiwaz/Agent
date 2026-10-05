@@ -135,6 +135,7 @@ class SmcParams:
     fvg_adjacent: bool = True  # ... and that FVG must start at the OB candle (bars j..j+2)
     fvg_fill: str = "wick"  # an FVG is gone once fully filled (wick) / only on a close (close)
     eq_tol_atr: Decimal = Decimal("0.1")  # swings this close (x ATR) form one equal-highs/lows pool
+    require_sweep: bool = False  # a setup needs a liquidity sweep before the break (owner: off)
     sweep_max_bars: int = 12  # zone-TF bars from the sweep to the break at most
     # top-down model: bias -> zone (sweep, displacement, OB + FVG) -> execution
     bias_tf: str = "4h"
@@ -209,7 +210,7 @@ class SmcParams:
 
 @dataclass(frozen=True, slots=True)
 class ZoneSetup:
-    """A complete zone-timeframe sequence: sweep -> displacement (BOS/CHoCH by close) -> order
+    """A complete zone-timeframe sequence: [sweep ->] displacement (BOS/CHoCH by close) -> order
     block (last opposite candle) with the FVG right after it. Known at `confirmed_at`."""
 
     key: str  # the order block's id
@@ -217,7 +218,7 @@ class ZoneSetup:
     direction: Side
     ob: Zone
     gap: tuple[Decimal, Decimal]  # (bottom, top) of the FVG
-    sweep: Sweep
+    sweep: Sweep | None  # None: no sweep before the break (require_sweep off)
     event: StructureEvent
     confirmed_at: datetime  # close of the zone bar on which the OB and its FVG were known
 

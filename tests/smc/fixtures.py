@@ -56,6 +56,7 @@ P = SmcParams(
     fvg_min_atr=D(0),
     bias_tf="1h",
     lookback_15m=1400,
+    require_sweep=True,
 )
 
 

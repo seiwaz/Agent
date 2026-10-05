@@ -64,6 +64,7 @@ def server(engine) -> Iterator[str]:  # noqa: F811
                 "atr_len": 3,
                 "fvg_min_atr": 0,
                 "bias_tf": "1h",
+                "require_sweep": True,
                 "history_days": 2,
             },
         }

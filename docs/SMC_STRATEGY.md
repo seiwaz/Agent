@@ -29,7 +29,8 @@ kept at the end of this file.
 ## Entry model (`strategy.py`)
 1. **Bias** — the trend of `bias_tf` (4h) must point the trade's way when the order is placed.
 2. **Setup on `zone_tf` (1h), in this order** (`zone_setups`, one source for engine,
-   backtest and chart): a) liquidity sweep; b) displacement: a close beyond structure
+   backtest and chart): a) liquidity sweep — **only with `require_sweep`, off since
+   2026-10-05 (owner)**; without it the sequence starts at the break; b) displacement: a close beyond structure
    (BOS or CHoCH) at most `sweep_max_bars` (12) bars after the sweep; c) order block = last
    opposite candle, **at or after the sweep bar**; d) the FVG right after it. Out of order
    (block before the sweep, no sweep, sweep without a close back inside, break too late):

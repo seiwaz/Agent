@@ -1,8 +1,9 @@
 """Top-down Smart Money entry model, SMC-2.0 (bias -> zone setup -> limit at the order block).
 
 1. BIAS     the bias timeframe's trend (BOS / CHoCH on 4h) must point the trade's way.
-2. SETUP    on the zone timeframe (1h), in this order: a liquidity sweep (wick beyond
-            unswept swing lows / equal lows, close back inside), a displacement that breaks
+2. SETUP    on the zone timeframe (1h), in this order: (with `require_sweep`) a liquidity
+            sweep (wick beyond unswept swing lows / equal lows, close back inside), a
+            displacement that breaks
             structure by close, the order block = last opposite candle (at or after the sweep)
             with the FVG right after it. One function, `zone_setups`, finds these for
             the engine, the backtest and the chart.
@@ -105,8 +106,9 @@ def _swept(a: Analysis, idx: int, k: int, price: Decimal, high: bool) -> bool:
 # ---- zone setups ------------------------------------------------------------------------
 def zone_setups(a: Analysis, p: SmcParams) -> list[ZoneSetup]:
     """Every complete sequence on the zone timeframe, in the order it became known:
-    sweep -> displacement (BOS / CHoCH by close) -> order block (last opposite candle, at or
-    after the sweep) with the FVG right after it. Anything out of that order is ignored."""
+    [sweep ->] displacement (BOS / CHoCH by close) -> order block (last opposite candle, at or
+    after the sweep) with the FVG right after it. Anything out of that order is ignored. The
+    sweep is required only with `require_sweep`; otherwise it is recorded when there is one."""
     out: list[ZoneSetup] = []
     dur = length(a.tf)
     for ev in a.events:
@@ -121,7 +123,7 @@ def zone_setups(a: Analysis, p: SmcParams) -> list[ZoneSetup]:
             if sw.idx >= ev.break_idx - p.sweep_max_bars:
                 sweep = sw
             break
-        if sweep is None:
+        if sweep is None and p.require_sweep:
             continue
         out.append(
             ZoneSetup(

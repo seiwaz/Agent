@@ -46,8 +46,8 @@ REASON_TEXT = {
     "LEVERAGE": "Position size would need more than the allowed leverage",
 }
 RULE_TEXT = {
-    "sweep": "Liquidity sweep: a zone-TF wick beyond unswept swing lows / equal lows (highs)"
-    " that closes back inside",
+    "sweep": "Liquidity sweep (only with require_sweep): a zone-TF wick beyond unswept swing"
+    " lows / equal lows (highs) that closes back inside",
     "displacement": "Displacement: a zone-TF bar closes beyond the last swing (BOS / CHoCH)"
     " within sweep_max_bars of the sweep",
     "order_block": "Order block: the last opposite-colour candle before the break, at or after"
@@ -427,7 +427,7 @@ class SmcView:
         if upto is None:
             return {"ready": False}
         price = self._price()
-        roles = {p.bias_tf: "Bias", p.zone_tf: "Zone (sweep, OB + FVG)", p.exec_tf: "Execution"}
+        roles = {p.bias_tf: "Bias", p.zone_tf: "Zone (break, OB + FVG)", p.exec_tf: "Execution"}
         roles.setdefault("1m", "Fills and exits")
         tfs = []
         for tf in ORDER:
@@ -571,6 +571,7 @@ class SmcView:
                 "fvg_min_atr",
                 "fvg_fill",
                 "eq_tol_atr",
+                "require_sweep",
                 "sweep_max_bars",
             ],
             "Top-down model": ["bias_tf", "zone_tf", "exec_tf", "confirm_exec"],

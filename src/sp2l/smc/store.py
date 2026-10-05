@@ -44,7 +44,9 @@ def setup_json(s: ZoneSetup) -> dict[str, Any]:
                 s.ob.time + length(s.tf) * ((s.ob.gap_idx or s.ob.idx + 1) - s.ob.idx)
             ).isoformat(),
         },
-        "sweep": {
+        "sweep": None
+        if s.sweep is None
+        else {
             "level": str(s.sweep.level),
             "wick": str(s.sweep.wick),
             "time": s.sweep.time.isoformat(),

@@ -169,3 +169,12 @@ def test_backtest_walks_tp1_then_the_trailing_runner():
     assert [x.frac for x in t.parts] == [D("0.5"), D("0.5")]
     assert t.result_r == sum(x.r for x in t.parts) and t.result_r > 0
     assert res["stats"]["ladder"] == {"TP1 > TRAIL": 1}
+
+
+def test_without_require_sweep_a_break_with_ob_and_fvg_is_enough():
+    rows = with_rows(b12=(97, 97.5, 95.2, 96.5))  # no sweep
+    assert setups(rows)[1] == []
+    _, (s,) = setups(rows, replace(P, require_sweep=False))
+    assert s.sweep is None and s.ob.idx == 12 and s.gap == (D("97.5"), 99)
+    _, (t,) = setups(SETUP, replace(P, require_sweep=False))
+    assert t.sweep is not None  # recorded when there is one

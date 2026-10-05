@@ -64,6 +64,7 @@ DENSE = SmcParams(
     swing_len=2,
     ob_min_atr=D(0),
     sweep_max_bars=40,
+    require_sweep=True,
     zone_tf="5m",
     exec_tf="1m",
     bias_tf="15m",
