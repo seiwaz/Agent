@@ -173,7 +173,7 @@ function merged(zones) {
     for (const z of list) {
       if (cur && +z.bottom <= +cur.top) {  // overlapping: one box for both
         cur = { ...cur, top: String(Math.max(+cur.top, +z.top)), from: cur.from < z.from ? cur.from : z.from,
-          tested: cur.tested && z.tested, n: (cur.n || 1) + 1 };
+          tested: cur.tested && z.tested, n: (cur.n || 1) + 1, gaps: [...(cur.gaps || []), ...(z.gaps || [])] };
       } else { if (cur) out.push(cur); cur = { ...z }; }
     }
     if (cur) out.push(cur);
@@ -240,7 +240,8 @@ function span(from, to, width) {
 /* Labels of one frame: each new one avoids the boxes already placed and keeps a margin from the
  * pane edges (some browsers clip the outermost pixels of the chart canvas). */
 const EDGE = 14;
-let placed = [], placedBelow = [];  // the top layer is also redrawn alone (crosshair moves)
+let placed = [];
+let zoneLabels = [];  // zone boxes are drawn under the candles, their labels over everything
 function place(bx, by, w, h, size) {
   const hits = (y) => placed.some((r) => bx < r.x + r.w && r.x < bx + w && y < r.y + r.h && r.y < y + h);
   let y = Math.min(Math.max(by, EDGE), size.height - h - EDGE);
@@ -291,34 +292,48 @@ function hatch(ctx, color) {
   hatchCache = { key, pattern: ctx.createPattern(c, "repeat") };
   return hatchCache.pattern;
 }
-const invalid = (z) => z.status === "MITIGATED" || z.status === "EXPIRED";
+const invalid = (z) => z.status === "MITIGATED" || z.status === "EXPIRED" || z.status === "FILLED";
+/* Fresh = price has not come back to the zone since it formed: solid, bright border and a
+ * "Fresh" label. A touched zone stays valid but is drawn quieter. */
 function drawZone(ctx, z, size, htf) {
   if (invalid(z)) return;  // invalid zones are never drawn
   const s = span(z.from, z.to, size.width);
   const y1 = yOf(z.top), y2 = yOf(z.bottom);
   if (!s || y1 === null || y2 === null) return;
-  const c = zoneColor(z);
-  const h = Math.max(1, y2 - y1);
-  const light = state.mode === "focus" && z.kind === "FVG";  // imbalance: outline only
-  ctx.fillStyle = rgba(c, htf ? 0.08 : z.kind === "OB" ? 0.22 : light ? 0.05 : 0.17);
+  const c = zoneColor(z), fresh = !z.tested;
+  const h = Math.max(2, y2 - y1);
+  const light = state.mode === "focus" && z.kind === "FVG";  // imbalance: lighter fill
+  ctx.fillStyle = rgba(c, htf ? 0.08 : z.kind === "OB" ? (fresh ? 0.24 : 0.14) : light ? (fresh ? 0.1 : 0.05) : (fresh ? 0.2 : 0.12));
   ctx.fillRect(s[0], y1, s[1] - s[0], h);
   if (htf) { ctx.fillStyle = hatch(ctx, c); ctx.fillRect(s[0], y1, s[1] - s[0], h); hatchCache = null; }
-  ctx.strokeStyle = rgba(c, htf ? 0.95 : 0.8);
-  ctx.lineWidth = htf ? 1.6 : 1;
+  ctx.strokeStyle = rgba(c, fresh ? 1 : htf ? 0.8 : 0.55);
+  ctx.lineWidth = fresh ? 2 : htf ? 1.4 : 1;
   ctx.setLineDash(htf ? [6, 3] : z.kind === "FVG" ? [3, 2] : []);
   ctx.strokeRect(s[0], y1, s[1] - s[0], h);
   ctx.setLineDash([]);
-  const text = `${z.tested ? "" : "● "}${htf ? `${z.tf} ` : ""}${z.kind}${z.n > 1 ? ` ×${z.n}` : ""}`;
+  const text = `${fresh ? "Fresh " : ""}${htf ? `${z.tf} ` : ""}${z.kind}${z.n > 1 ? ` ×${z.n}` : ""}`;
   // higher-timeframe labels sit at the right edge, own-timeframe labels at the zone's visible start
-  if (htf) pill(ctx, text, s[1] - 4, y1 + 10, c, size, "right");
-  else if (s[1] - s[0] > 30) pill(ctx, text, Math.max(s[0], 0) + 3, y1 + 10, c, size, "left");
+  if (htf) zoneLabels.push([text, s[1] - 4, y1 + 10, c, "right", fresh]);
+  else if (s[1] - s[0] > 30) zoneLabels.push([text, Math.max(s[0], 0) + 3, y1 + 10, c, "left", fresh]);
+}
+/** The gaps the move from an order block to its break left (any size). Open ones are fair
+ * value gaps like any other; a filled one is a faint box over its three candles only. */
+function drawGaps(ctx, z, size, htf, drawn) {
+  for (const g of z.gaps || []) {
+    if (g.status !== "FILLED") { if (!drawn.has(g.id)) { drawn.add(g.id); drawZone(ctx, g, size, htf); } continue; }
+    const s = span(g.from, g.to, size.width), y1 = yOf(g.top), y2 = yOf(g.bottom);
+    if (!s || y1 === null || y2 === null) continue;
+    const c = zoneColor(g);
+    ctx.fillStyle = rgba(c, 0.1); ctx.fillRect(s[0], y1, s[1] - s[0], Math.max(2, y2 - y1));
+    ctx.strokeStyle = rgba(c, 0.5); ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+    ctx.strokeRect(s[0], y1, s[1] - s[0], Math.max(2, y2 - y1)); ctx.setLineDash([]);
+  }
 }
 function drawBelow(ctx, size) {
-  placed = [];
-  drawBelowLabels(ctx, size);
-  placedBelow = placed.slice();  // what the top layer starts from, every time it is drawn
+  zoneLabels = [];
+  drawBelowZones(ctx, size);
 }
-function drawBelowLabels(ctx, size) {
+function drawBelowZones(ctx, size) {
   const a = shown();
   if (!a || !a.ready || !state.series) return;
   const W = size.width, L = state.layers;
@@ -334,14 +349,17 @@ function drawBelowLabels(ctx, size) {
       plainLabel(ctx, "Discount", W - 6, yl - 10, "--c-pd-lo", size, "right");
     }
   }
-  if (L.htf) for (const z of a.htf_zones || []) if ((z.kind === "OB" && L.ob) || (z.kind === "FVG" && L.fvg)) drawZone(ctx, z, size, true);
-  for (const z of a.zones || []) {
-    if ((z.kind === "OB" && !L.ob) || (z.kind === "FVG" && !L.fvg)) continue;
-    drawZone(ctx, z, size, false);
+  const drawn = new Set();
+  if (L.htf) {
+    for (const z of a.htf_zones || []) if ((z.kind === "OB" && L.ob) || (z.kind === "FVG" && L.fvg)) { drawn.add(z.id); drawZone(ctx, z, size, true); }
+    if (L.ob && L.fvg) for (const z of a.htf_zones || []) drawGaps(ctx, z, size, true, drawn);
   }
+  const own = (a.zones || []).filter((z) => (z.kind === "OB" && L.ob) || (z.kind === "FVG" && L.fvg));
+  for (const z of own) { drawn.add(z.id); drawZone(ctx, z, size, false); }
+  if (L.ob && L.fvg) for (const z of own) drawGaps(ctx, z, size, false, drawn);
 }
 function drawAbove(ctx, size) {
-  placed = placedBelow.slice();  // same start on every redraw: labels never drift
+  placed = [];  // same start on every redraw: labels never drift
   const a = shown();
   if (!state.series) return;
   const W = size.width, L = state.layers;
@@ -365,6 +383,8 @@ function drawAbove(ctx, size) {
     }
   }
   if (L.positions) for (const p of shownPositions()) drawPosition(ctx, p, size);
+  // zone labels last: over candles and lines; fresh zones first so theirs keep their place
+  for (const [text, x, y, c, align] of [...zoneLabels].sort((u, v) => v[5] - u[5])) pill(ctx, text, x, y, c, size, align);
 }
 /** TradingView-style long/short position object: risk box, reward box, entry line, result. */
 function drawPosition(ctx, p, size) {
@@ -485,7 +505,8 @@ function touchCheck(h, l) {
     const long = z.direction === "LONG", top = +z.top, bot = +z.bottom;
     return (!z.tested && (long ? l <= top : h >= bot)) || (z.kind === "FVG" && (long ? l <= bot : h >= top));
   };
-  const hit = [...(a.zones || []), ...(a.htf_zones || [])].some(reaches)
+  const zs = [...(a.zones || []), ...(a.htf_zones || [])];
+  const hit = [...zs, ...zs.flatMap((z) => (z.gaps || []).filter((g) => g.status !== "FILLED"))].some(reaches)
     || (a.liquidity || []).some((lq) => (lq.kind === "BSL" ? h > +lq.price : l < +lq.price));
   if (!hit) return;
   const wait = Math.max(300, 1500 - (Date.now() - lastTouchFetch));
@@ -540,8 +561,10 @@ function renderLegend() {
   if (state.layers.structure) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${css("--text-2")}` }), "BOS / CHoCH"));
   if (state.layers.liquidity) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${rgba("--c-liq", 1)}` }), "BSL / SSL liquidity"));
   items.push(el("li", { class: "muted" }, state.mode === "focus"
-    ? "Focus: nearest zones only, overlaps merged (×n), last 3 breaks, nearest liquidity · ● = untouched"
-    : "All valid zones · ● = untouched · invalid zones (OB closed through, FVG filled) are removed"));
+    ? "Focus: nearest zones only, overlaps merged (×n), last 3 breaks, nearest liquidity"
+    : "All valid zones · invalid zones (OB closed through, FVG filled) are removed"));
+  if (state.layers.ob || state.layers.fvg) items.push(el("li", { class: "muted" }, "Fresh = price has not returned to the zone yet (bold border)"));
+  if (state.layers.ob && state.layers.fvg) items.push(el("li", { class: "muted" }, "Every gap the move out of an order block left is drawn, any size · faint dotted box = that gap is already filled"));
   $("chart-legend").replaceChildren(...items);
 }
 function renderControls() {

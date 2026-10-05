@@ -20,8 +20,9 @@ from sp2l.core.types import Side
 from sp2l.smc.backtest import run as run_backtest
 from sp2l.smc.context import ContextBuilder, needed_tfs
 from sp2l.smc.history import coverage, extremes_since, load_bars, series_end
-from sp2l.smc.model import VERSION, Analysis, Costs, SmcParams, Zone
+from sp2l.smc.model import VERSION, Analysis, Costs, SmcParams, Zone, ZoneStatus
 from sp2l.smc.strategy import evaluate, trend_at
+from sp2l.smc.structure import leg_gaps, update_zone
 from sp2l.smc.timeframes import ORDER, length
 
 TREND_LABEL = {1: "BULLISH", -1: "BEARISH", 0: "UNDEFINED"}
@@ -93,6 +94,46 @@ def live_zone(zd: dict[str, Any], rng: Range, p: SmcParams) -> dict[str, Any] | 
     if touched and not zd["tested"]:
         return {**zd, "tested": True, "status": "TESTED", "live": True}
     return zd
+
+
+def _with_zone(dicts: list[dict[str, Any]], zones: list[Zone]) -> list[tuple[dict[str, Any], Zone]]:
+    by = {z.id: z for z in zones}
+    return [(d, by[d["id"]]) for d in dicts if d["id"] in by]
+
+
+def ob_gaps(z: Zone, a: Analysis, k: int, rng: Range, p: SmcParams) -> list[dict[str, Any]]:
+    """Every gap (any size) the move from an order block to its break left, as of NOW. An open
+    gap is drawn like any fair value gap (`fresh` until price returns to it); a filled one only
+    over its three candles, to show the block did leave a gap."""
+    out: list[dict[str, Any]] = []
+    fill_wick = p.fvg_fill == "wick"
+    for m, bottom, top in leg_gaps(a.bars, z.idx, z.created_idx, z.direction):
+        g = Zone(
+            id=f"{a.tf}:FVG:{z.direction.value}:{int(a.bars[m].open_time.timestamp())}",
+            kind="FVG",
+            direction=z.direction,
+            top=top,
+            bottom=bottom,
+            idx=m,
+            time=a.bars[m].open_time,
+            created_idx=m + 1,
+        )
+        for t in range(m + 2, k + 1):
+            update_zone(g, t, a.bars[t], fill_wick)
+            if g.status is ZoneStatus.MITIGATED:
+                break
+        d = None if g.status is ZoneStatus.MITIGATED else live_zone(zone_out(g, a, k), rng, p)
+        if d is None:  # filled (by a closed bar or by the forming one)
+            d = {
+                **zone_out(g, a, k),
+                "from": _t(a.bars[m - 1].open_time),
+                "to": _t(a.bars[m + 1].open_time + length(a.tf)),
+                "tested": True,
+            }
+            d["status"] = "FILLED"
+        d["ob"] = z.id
+        out.append(d)
+    return out
 
 
 def liquidity(
@@ -221,6 +262,9 @@ class SmcView:
             for z in a.zones
             if z.valid_at(k) and (zd := live_zone(zone_out(z, a, k), rng, p)) is not None
         ]
+        for zd, z in _with_zone(zones, a.zones):
+            if z.kind == "OB":
+                zd["gaps"] = ob_gaps(z, a, k, rng, p)
         htf_zones = []
         for h in htfs:
             ha = ctx[h]
@@ -231,6 +275,9 @@ class SmcView:
                 for z in ha.zones
                 if z.valid_at(hk) and (zd := live_zone(zone_out(z, ha, hk), hr, p)) is not None
             ]
+            for zd, z in _with_zone(htf_zones, ha.zones):
+                if z.kind == "OB":
+                    zd["gaps"] = ob_gaps(z, ha, hk, hr, p)
         events = [
             {
                 "id": e.id,

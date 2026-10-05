@@ -73,7 +73,7 @@ def _pivot_low(bars: Sequence[Candle], p: int, n: int) -> bool:
     )
 
 
-def _update_zone(z: Zone, i: int, b: Candle, fvg_wick: bool) -> None:
+def update_zone(z: Zone, i: int, b: Candle, fvg_wick: bool) -> None:
     if z.status is ZoneStatus.MITIGATED or i <= z.created_idx:
         return
     wick = fvg_wick and z.kind == "FVG"  # a gap traded through end to end is filled
@@ -102,7 +102,7 @@ def analyze(bars: Sequence[Candle], tf: str, p: SmcParams) -> Analysis:
     seen = 0
     for i, b in enumerate(bars):
         for z in live:
-            _update_zone(z, i, b, p.fvg_fill == "wick")
+            update_zone(z, i, b, p.fvg_fill == "wick")
         live = [z for z in live if z.status is not ZoneStatus.MITIGATED and i < z.expires_idx]
         piv = i - sl_
         if piv >= sl_:
@@ -160,14 +160,19 @@ def _detect_fvg(a: Analysis, i: int, p: SmcParams) -> None:
     )
 
 
-def _imbalance(bars: Sequence[Candle], j: int, i: int, side: Side) -> bool:
-    """The move from the block candle j to the break i left a gap (any size): a three-bar
-    imbalance whose middle bar lies in (j, i)."""
+def leg_gaps(
+    bars: Sequence[Candle], j: int, i: int, side: Side
+) -> list[tuple[int, Decimal, Decimal]]:
+    """Every gap (three-bar imbalance, any size) the move from the block candle j to the break
+    i left, as (middle bar, bottom, top); the middle bar lies in (j, i)."""
+    out: list[tuple[int, Decimal, Decimal]] = []
     for m in range(j + 1, i):
         before, after = bars[m - 1], bars[m + 1]
-        if (after.low > before.high) if side is Side.LONG else (after.high < before.low):
-            return True
-    return False
+        if side is Side.LONG and after.low > before.high:
+            out.append((m, before.high, after.low))
+        elif side is Side.SHORT and after.high < before.low:
+            out.append((m, after.high, before.low))
+    return out
 
 
 def _break(a: Analysis, i: int, level: Swing, side: Side, kind: str, p: SmcParams) -> None:
@@ -200,11 +205,7 @@ def _break(a: Analysis, i: int, level: Swing, side: Side, kind: str, p: SmcParam
         and c.high - c.low < p.ob_min_atr * atr
     ):
         return  # the break stands, the block is too small to matter
-    if (
-        p.ob_require_fvg
-        and a.tf != p.trigger_tf
-        and not _imbalance(a.bars, j, i, side)
-    ):
+    if p.ob_require_fvg and a.tf != p.trigger_tf and not leg_gaps(a.bars, j, i, side):
         return  # no displacement (imbalance) left the block: not an order block
     z = Zone(
         id=f"{a.tf}:OB:{side.value}:{_epoch(c.open_time)}",

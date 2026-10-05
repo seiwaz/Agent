@@ -208,6 +208,7 @@ def test_api_serves_every_smc_view(clean, tmp_path):
         assert r.status_code == 200, (path, r.text[:300])
     a = c.get("/api/smc/analysis?tf=5m&bars=200").json()
     assert a["ready"] and {"zones", "htf_zones", "events", "liquidity", "range"} <= set(a)
+    assert all("gaps" in z for z in a["zones"] + a["htf_zones"] if z["kind"] == "OB")
     assert c.post("/api/smc/signals").status_code == 405  # read-only
     assert c.get("/api/smc/analysis?tf=2m").status_code == 422
 
