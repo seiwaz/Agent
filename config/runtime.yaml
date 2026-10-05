@@ -97,6 +97,12 @@ smc:
   # SL one tick beyond the OB's wick; one TP at the edge of the previous HH candle (long: its high)
   # / LL candle (short: its low). No HH / LL beyond the entry: no trade.
   tp_ref: leg             # leg: the HH / LL after the OB candle, before the first return to the OB; swing: last confirmed 1h swing
+  tp_front_run_atr: 0.05  # the TP sits 0.05 ATR(1h) before that HH / LL (0 = the exact level)
+  # filters (SMC-2.1): they may reject a trade, they never move the stop or the target
+  require_discount: true  # long entry at or below 50 % of sweep wick -> HH (short: at or above, sweep wick -> LL)
+  min_net_rr: 2           # net R at the TP after entry fee, exit fee and slippage
+  max_cost_frac: 0        # off (owner): costs count only through min_net_rr
+  exit_on_choch: false    # true: close at market at a 1h CHoCH against the open trade
   # time
   pending_expiry_min: 120 # unfilled limit cancelled 8 x 15m after arming
   time_stop_min: 0        # off (SMC-2.1); open signals keep the rule they were created with

@@ -14,9 +14,12 @@
             `confirm_exec`: instead wait for an execution-TF BOS / CHoCH, enter at market.
 4. STOP     one tick beyond the order block's wick.
 5. TARGET   one, from the market alone (never from the stop distance): the edge of the
-            previous HH candle (long: its high) / LL candle (short: its low). None beyond the
-            entry: no trade.
-6. SIZE     risk_pct of the wallet over the stop distance + costs, within max_leverage.
+            previous HH candle (long: its high) / LL candle (short: its low), placed
+            `tp_front_run_atr` x ATR before it. None beyond the entry: no trade.
+6. FILTERS  (reject, never move the stop or the target) entry in the discount (long) /
+            premium (short) half of sweep wick -> HH / LL (`require_discount`), net R at the
+            TP >= `min_net_rr`, costs <= `max_cost_frac` of the stop (0 = off).
+7. SIZE     risk_pct of the wallet over the stop distance + costs, within max_leverage.
 
 Every input is causal: closed bars only, swings once confirmed, zone state as of the order.
 """
@@ -25,7 +28,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
-from decimal import ROUND_DOWN, Decimal
+from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, Decimal
 from typing import Any
 
 from sp2l.core.types import Candle, Side
@@ -290,11 +293,35 @@ def evaluate(
         return result(["BAD_STOP"], entry=entry, sl=sl)
     reasons: list[str] = []
     ru = risk_unit(side, entry, sl, costs, market=market)
+    dist = abs(entry - sl)
+    fee_in = costs.taker_fee if market else costs.maker_fee
+    cost_frac = (entry * fee_in + sl * costs.taker_fee + sl * costs.slippage) / dist
+    if p.max_cost_frac > 0 and cost_frac > p.max_cost_frac:
+        reasons.append("COST_HEAVY")
 
     lv = previous_extreme(s, ctx, p, t, entry)
-    tp = None if lv is None else Target(lv[0], lv[1], net_r(side, entry, lv[0], ru, costs, market))
+    tp: Target | None = None
+    mid: Decimal | None = None
+    if lv is not None:
+        level, src = lv
+        # the target sits a little before the pool (rounded towards the entry)
+        front = p.tp_front_run_atr * (za.atr[k] or Decimal(0))
+        px = (
+            _round(level - front, tick, ROUND_FLOOR)
+            if long
+            else _round(level + front, tick, ROUND_CEILING)
+        )
+        if _beyond(side, px, entry):
+            tp = Target(px, src, net_r(side, entry, px, ru, costs, market), level)
+        # dealing range: the sweep wick (else the OB wick) -> the HH / LL
+        start = s.sweep.wick if s.sweep is not None else (s.ob.bottom if long else s.ob.top)
+        mid = (start + level) / 2
+        if p.require_discount and (entry > mid if long else entry < mid):
+            reasons.append("NOT_DISCOUNT" if long else "NOT_PREMIUM")
     if tp is None:
         reasons.append("NO_TARGET")  # no previous HH / LL beyond the entry
+    elif p.min_net_rr > 0 and tp.net_r < p.min_net_rr:
+        reasons.append("LOW_NET_RR")
     bal = equity if equity is not None and equity > 0 else p.account_usdt
     qty = (bal * p.risk_pct / ru).quantize(Decimal("0.00001"), rounding=ROUND_DOWN)
     notional = qty * entry
@@ -306,6 +333,8 @@ def evaluate(
         entry=entry,
         sl=sl,
         tp=tp,
+        range_mid=mid,
+        cost_frac=cost_frac,
         qty=qty,
         notional=notional,
         leverage=leverage,

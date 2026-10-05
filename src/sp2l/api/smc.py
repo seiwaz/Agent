@@ -43,6 +43,10 @@ REASON_TEXT = {
     "BAD_STOP": "Stop would sit on the wrong side of the entry",
     "NO_TARGET": "No previous HH (long) / LL (short) beyond the entry for the target",
     "LEVERAGE": "Position size would need more than the allowed leverage",
+    "NOT_DISCOUNT": "Long entry above 50 % of the dealing range (sweep wick -> HH)",
+    "NOT_PREMIUM": "Short entry below 50 % of the dealing range (sweep wick -> LL)",
+    "LOW_NET_RR": "Net R at the target below min_net_rr after fees and slippage",
+    "COST_HEAVY": "Entry + exit fees + slippage above max_cost_frac of the stop distance",
 }
 RULE_TEXT = {
     "sweep": "Liquidity sweep (only with require_sweep): a zone-TF wick beyond unswept swing"
@@ -569,7 +573,8 @@ class SmcView:
                 "sweep_max_bars",
             ],
             "Top-down model": ["bias_tf", "zone_tf", "exec_tf", "confirm_exec"],
-            "Stop and target": ["tick", "tp_ref"],
+            "Stop and target": ["tick", "tp_ref", "tp_front_run_atr"],
+            "Filters": ["require_discount", "min_net_rr", "max_cost_frac", "exit_on_choch"],
             "Lifecycle": [
                 "pending_expiry_min",
                 "time_stop_min",

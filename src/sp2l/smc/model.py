@@ -147,6 +147,12 @@ class SmcParams:
     tick: Decimal = Decimal("0.01")
     tp_ref: str = "leg"  # leg: the HH / LL after the OB candle, before price came back /
     # swing: the last confirmed zone-TF swing high / low beyond the entry
+    tp_front_run_atr: Decimal = Decimal("0.05")  # TP this x ATR(zone TF) before the HH / LL
+    # filters: they may reject a trade, they never move the stop or the target
+    require_discount: bool = True  # long entry in the lower half of sweep -> HH (short mirrored)
+    min_net_rr: Decimal = Decimal(2)  # net R at the TP after fees and slippage; 0 = off
+    max_cost_frac: Decimal = Decimal(0)  # entry + exit fees + slippage vs the stop; 0 = off
+    exit_on_choch: bool = False  # close at a zone-TF CHoCH against the open trade
     # data: closed bars analysed per timeframe, and the exchange history kept for them
     lookback_1m: int = 720
     lookback_5m: int = 600
@@ -230,7 +236,8 @@ class ZoneSetup:
 class Target:
     price: Decimal
     source: str  # what the level is (e.g. "1h HH")
-    net_r: Decimal  # information: R after fees if the whole position closed there
+    net_r: Decimal  # R after fees if the whole position closed there
+    level: Decimal | None = None  # the HH / LL the target refers to (price = front-run of it)
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +255,8 @@ class Setup:
     entry: Decimal | None = None
     sl: Decimal | None = None
     tp: Target | None = None
+    range_mid: Decimal | None = None  # 50 % of the dealing range (sweep wick -> HH / LL)
+    cost_frac: Decimal | None = None  # entry + exit fees + slippage per unit / stop distance
     qty: Decimal | None = None
     notional: Decimal | None = None
     leverage: Decimal | None = None

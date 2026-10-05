@@ -65,6 +65,7 @@ DENSE = SmcParams(
     ob_min_atr=D(0),
     sweep_max_bars=40,
     require_sweep=True,
+    min_net_rr=D(0),
     zone_tf="5m",
     exec_tf="1m",
     bias_tf="15m",
@@ -86,6 +87,11 @@ def test_every_accepted_setup_is_consistent():
         assert s.sl == (z.ob.bottom - DENSE.tick if long else z.ob.top + DENSE.tick)
         assert s.tp is not None
         assert (s.sl < s.entry < s.tp.price) if long else (s.tp.price < s.entry < s.sl)
+        assert s.tp.level is not None and (
+            s.tp.price <= s.tp.level if long else s.tp.price >= s.tp.level
+        )
+        if s.range_mid is not None and not s.reasons:
+            assert (s.entry <= s.range_mid) if long else (s.entry >= s.range_mid)
         assert s.bias == (1 if long else -1)
         ru = risk_unit(s.direction, s.entry, s.sl, costs)
         assert ru > abs(s.entry - s.sl)

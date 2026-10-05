@@ -69,6 +69,7 @@ def target_json(x: Target | None) -> dict[str, Any] | None:
         "price": str(x.price),
         "source": x.source,
         "net_r": str(round(x.net_r, 4)),
+        "level": None if x.level is None else str(x.level),
     }
 
 
