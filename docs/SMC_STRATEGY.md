@@ -1,10 +1,12 @@
-# SMC engine — strategy specification (SMC-2.0)
+# SMC engine — strategy specification (SMC-2.1)
 
 Markets: **BTC/USDT and XRP/USDT**, traded together on **one shared simulated wallet**
 (100 USDT). Each market has its own price tick / quantity step (`instruments`). No orders are
 sent: signals and their simulated lifecycle are recorded for review. SMC-2.0 replaces the
 SMC-1.0 M1-trigger model (2026-10-05, owner's intraday entry model); the SMC-1.0 evidence is
-kept at the end of this file.
+kept at the end of this file. **SMC-2.1** (2026-10-05) adds the discount / premium and minimum
+net-R filters, the front-run target, an optional fee filter and CHoCH exit, and turns the
+3 h time stop off.
 
 ## Data (no live warmup)
 - Every bar comes from one merged 1-minute series: canonical live candles (`candles_1m`,
@@ -48,18 +50,30 @@ kept at the end of this file.
    2026-10-05): the edge of the previous **HH** candle (long: its high) / **LL** candle (short:
    its low) **made after the OB candle and before price first came back to the OB**
    (`tp_ref: leg`, default; closed 1h bars after the OB + the minutes of the forming one, up
-   to the order); `swing`: the last confirmed 1h swing high / low beyond the entry. None beyond the entry: no trade (NO_TARGET). Its net
-   R after fees is shown for information only.
-6. **Size** — risk `risk_pct` of the wallet over the stop distance plus costs; advisory size
+   to the order); `swing`: the last confirmed 1h swing high / low beyond the entry. The TP
+   sits `tp_front_run_atr` (0.05) × ATR(1h) **before** that level, rounded to the tick towards
+   the entry (0 = the exact level); the level itself is recorded and drawn. None beyond the
+   entry: no trade (NO_TARGET).
+6. **Filters** — they may reject a trade; they never move the stop or the target:
+   - `require_discount` (true): dealing range = sweep wick → the HH (long) / LL (short) of
+     the target (the OB wick when a setup has no sweep). A long's entry must be at or below
+     50 % of it, a short's at or above (NOT_DISCOUNT / NOT_PREMIUM).
+   - `min_net_rr` (2): the net R at the TP, computed as the lifecycle computes R (entry fee,
+     exit fee, slippage), must reach it (LOW_NET_RR).
+   - `max_cost_frac` (**0 = off**, owner): entry fee + stop exit fee + slippage per unit above
+     this share of the stop distance rejects the trade (COST_HEAVY).
+7. **Size** — risk `risk_pct` of the wallet over the stop distance plus costs; advisory size
    ≤ `max_leverage` (LEVERAGE).
-7. **Capacity** — `max_active` (1) per market, `max_positions` (2) across markets; orders are
+8. **Capacity** — `max_active` (1) per market, `max_positions` (2) across markets; orders are
    never created retroactively (only within 3 minutes of the arming minute / confirmation).
 
 ## Lifecycle (`lifecycle.py`, walked on M1 bars)
-PENDING → OPEN → **TP** / **SL**, or **TIME_STOP** (neither TP nor SL within `time_stop_min`
-= 180 min = 12 × 15m of the fill, market exit), **TIMEOUT** (`max_hold_min` 1440). Without a
-fill: EXPIRED, MISSED (the target traded before the fill). Conservative reading: a stop beats
-the target in the same minute; no target in the fill minute. R = net PnL per unit / risk
+PENDING → OPEN → **TP** / **SL**, or **INVALIDATED** (`exit_on_choch`, default off: market
+exit at the close of a 1h CHoCH against the open trade, after the fill), **TIME_STOP**
+(`time_stop_min`, **0 = off** since SMC-2.1; signals created with a time stop keep it),
+**TIMEOUT** (`max_hold_min` 1440). Without a fill: EXPIRED, MISSED (the target traded before
+the fill). Conservative reading: a stop beats the target in the same minute, the target and
+the stop come before an invalidation in the same minute; no target in the fill minute. R = net PnL per unit / risk
 unit, risk unit = stop distance + entry fee + slippage + taker fee on the slipped stop fill,
 so a stop-out is exactly −1R.
 
@@ -75,21 +89,39 @@ so a stop-out is exactly −1R.
   setups with the 4h bias within `chart_near_atr` (3) × ATR(1h) of price, or tied to a
   pending / open position; positions' setups first, then the nearest, `chart_top_n` (3). Each
   with its FVG, the sweep (dashed line at the swept level, dot at the wick), its BOS / CHoCH,
-  the planned SL and TP (dotted, with its net R). Label: timeframe · age · state; colour by
-  state (waiting = direction colour, armed, pending, open). Positions show entry, SL, TP and
-  the time stop / order expiry.
+  the planned SL, the TP at its front-run price and the HH / LL it refers to, the 50 % line of
+  the dealing range (dotted). Label: timeframe · age · state · net R · cost share; colour by
+  state (waiting = direction colour, armed, pending, open). Setups rejected by a filter are
+  not shown here. Positions show entry, SL, TP and the order expiry (and the time stop when
+  one is set).
 - **All zones (debug)**: every zone, every gap behind an order block, every BOS / CHoCH and
-  liquidity level and every setup in any state (used, invalid, expired).
+  liquidity level and every setup in any state (used, invalid, expired, rejected) with its
+  reasons.
 
 ## Database
-Migration `0020_smc_ladder`: `smc_signals` gains `targets` (source and net R), `parts` (the
-exit), `qty_open`, `realized_r`, `version` (and `tp1` / `tp2` / `tp3`, unused since the
-single-target rule); `smc_wallet_ledger` gains `part` and `fees`.
+Migration `0020_smc_ladder`: `smc_signals` gains `targets` (source, net R, level), `parts`
+(the exit), `qty_open`, `realized_r`, `version`; `smc_wallet_ledger` gains `part` and `fees`.
+Migration `0021`: the unused `tp1` / `tp2` / `tp3` columns are dropped.
 Signals of SMC-1.0 keep their single TP and finish under the old rule.
 
 ## Parameters
 All in `config/*.yaml` → `smc` (defaults: `src/sp2l/smc/model.py`), listed on the dashboard's
 Strategy page with their hash. Every signal stores the hash of the parameters that made it.
+SMC-2.1 keys: `tp_front_run_atr` 0.05, `require_discount` true, `min_net_rr` 2,
+`max_cost_frac` 0 (off), `exit_on_choch` false, `time_stop_min` 0 (off).
+
+## Reason codes (a setup evaluated when its order would exist)
+| Code | Meaning |
+|---|---|
+| NO_BIAS / BIAS_MISMATCH | the 4h bias is undefined / against the trade |
+| ZONE_INVALID | the OB was closed through or expired before the order |
+| NOT_FRESH | the OB was already touched (first touch only) |
+| BAD_STOP | the stop would sit on the wrong side of the entry |
+| NO_TARGET | no previous HH / LL beyond the entry |
+| NOT_DISCOUNT / NOT_PREMIUM | entry not in the discount / premium half of sweep wick → HH / LL |
+| LOW_NET_RR | net R at the TP below `min_net_rr` |
+| COST_HEAVY | fees + slippage above `max_cost_frac` of the stop (when on) |
+| LEVERAGE | the size would need more than `max_leverage` |
 
 ## SMC-1.0 (retired 2026-10-05) — evidence
 SMC-1.0 traded M1 BOS / CHoCH triggers reacting inside 4h / 1h order blocks with a single

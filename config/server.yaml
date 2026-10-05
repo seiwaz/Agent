@@ -79,7 +79,7 @@ validation:
   server_time_max_offset_ms: 500    # B42 Live target: worst |server - local midpoint| offset
   server_time_samples: 20           # B42: at least 20 samples
 
-# Smart Money Concepts engine, SMC-2.0 (docs/SMC_STRATEGY.md). Top-down: 4h bias -> 1h setup in strict
+# Smart Money Concepts engine, SMC-2.1 (docs/SMC_STRATEGY.md). Top-down: 4h bias -> 1h setup in strict
 # order (liquidity sweep -> displacement BOS/CHoCH by close -> order block = last opposite candle,
 # with the FVG right after it) -> limit (maker) at the OB edge touching the FVG, armed when price
 # first trades into the FVG -> SL one tick beyond the OB wick, one TP at the previous HH / LL.
