@@ -246,3 +246,24 @@ def test_low_net_rr_and_cost_heavy_reject_without_moving_the_target():
         and cost.tp.price == free.tp.price == base.tp.price
     )
     assert low.sl == cost.sl == base.sl
+
+
+# after the fill (bar 20): a swing low at 97 (bar 20, confirmed at 22), then bar 23 closes
+# below it: a bearish 1h CHoCH while the long is open, above the stop and below the target
+CHOCH_ROWS = SETUP + [(98, 100, 97.6, 99.5), (99.5, 100.5, 98.8, 99), (99, 99.2, 95.5, 96)]
+
+
+def test_exit_on_choch_closes_the_long_at_the_close_of_the_bearish_choch():
+    off = run(expand(CHOCH_ROWS), P, Costs())
+    on = run(expand(CHOCH_ROWS), replace(P, exit_on_choch=True), Costs())
+    assert [(e.kind, e.direction, e.break_idx) for e in on["context"]["1h"].events][-1] == (
+        "CHOCH",
+        Side.SHORT,
+        23,
+    )
+    (_, t_off), (_, t_on) = off["trades"][0], on["trades"][0]
+    assert t_off.state.value == "OPEN"  # off: the CHoCH changes nothing
+    assert t_on.state.value == "INVALIDATED" and t_on.exit_price == 96
+    assert t_on.closed_at == T0 + 24 * H  # the close of bar 23
+    assert t_on.result_r is not None and -1 < t_on.result_r < 0
+    assert off["trades"][0][0].tp == on["trades"][0][0].tp  # the target is the same

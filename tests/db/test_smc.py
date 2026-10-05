@@ -277,22 +277,28 @@ def test_an_open_market_position_survives_a_restart_and_stays_open(clean):
     assert st == "OPEN" and last is not None
 
 
-def test_the_live_runner_replays_exactly_what_the_backtest_finds(clean):
+@pytest.mark.parametrize("exit_on_choch", [False, True])
+def test_the_live_runner_replays_exactly_what_the_backtest_finds(clean, exit_on_choch):
     """Minute by minute over the same data, the runner opens and closes exactly the trades of
-    the backtest: same setup, entry, stop, targets, exits and R."""
+    the backtest: same setup, entry, stop, target, exit and R."""
     sym = "SOLUSDT"
-    rows = SETUP + [
-        (98, 102, 97.8, 101.8),
-        (101.8, 105, 101.5, 104.8),
-        (104.8, 108.5, 104.5, 108),
-        (108, 110, 107.5, 109.5),
-        (109.5, 109.8, 104, 104.5),
-        (104.5, 105, 101, 101.5),
-    ]
+    if exit_on_choch:  # the long is closed by the bearish 1h CHoCH of bar 23
+        rows = SETUP + [(98, 100, 97.6, 99.5), (99.5, 100.5, 98.8, 99), (99, 99.2, 95.5, 96)]
+    else:
+        rows = SETUP + [
+            (98, 102, 97.8, 101.8),
+            (101.8, 105, 101.5, 104.8),
+            (104.8, 108.5, 104.5, 108),
+            (108, 110, 107.5, 109.5),
+            (109.5, 109.8, 104, 104.5),
+            (104.5, 105, 101, 101.5),
+        ]
     m1 = expand(rows)
-    p = replace(FIXTURE_P, history_days=2)
+    p = replace(FIXTURE_P, history_days=2, exit_on_choch=exit_on_choch)
     want = backtest(m1, p, Costs())["trades"]
     assert want  # the fixture trades
+    if exit_on_choch:
+        assert want[0][1].state.value == "INVALIDATED"
 
     def fetch(a: datetime, b: datetime) -> list[dict]:
         return [

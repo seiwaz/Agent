@@ -35,8 +35,10 @@ from sp2l.smc.lifecycle import advance
 from sp2l.smc.model import Analysis, Costs, SmcParams
 from sp2l.smc.strategy import (
     ARMED_BEFORE,
+    choch_closes,
     evaluate,
     find_arming,
+    invalidates,
     order_for,
     tracked,
     trend_at,
@@ -138,13 +140,15 @@ class SmcRunner:
         since = min(t.last_m1 or (t.created_at - MINUTE) for _, t, _ in act)
         minutes = max(1, int((upto - since) / MINUTE))
         bars = load_bars(self.db, self.symbol, "1m", min(minutes, 60 * 24 * 30), upto)
+        closes = choch_closes(ctx[p.zone_tf]) if p.exit_on_choch else {}
         with self.db.begin() as c:
             for sid, t, qty in act:
                 for b in bars:
                     if b.open_time < t.created_at:
                         continue
                     booked = len(t.parts)
-                    for ev in advance(t, b, p, self.costs):
+                    inv = invalidates(t, b, closes, p)
+                    for ev in advance(t, b, p, self.costs, invalidate=inv):
                         price = t.entry if ev == "FILLED" else t.exit_price
                         detail: dict[str, Any] = {}
                         if t.result_r is not None:

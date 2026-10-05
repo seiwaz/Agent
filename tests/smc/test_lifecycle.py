@@ -98,3 +98,13 @@ def test_without_a_time_stop_the_position_runs_to_tp_sl_or_timeout():
     for i in range(1, 180):
         advance(t3, bar(i, 101, 99, 100.5), p, FREE)
     assert advance(t3, bar(180, 101, 99, 100.5), p, FREE) == ["TIME_STOP"]
+
+
+def test_invalidation_exits_at_the_bar_close_after_stop_and_target():
+    t = long_signal(state=State.OPEN, filled_at=T0)
+    assert advance(t, bar(5, 101, 99.5, 99.8), P, FREE, invalidate=True) == ["INVALIDATED"]
+    assert (t.state, t.exit_price, t.result_r) == (State.INVALIDATED, D("99.8"), D("-0.1"))
+    t2 = long_signal(state=State.OPEN, filled_at=T0)  # the stop in the same minute comes first
+    assert advance(t2, bar(5, 101, 97.5, 99.8), P, FREE, invalidate=True) == ["SL"]
+    t3 = long_signal()  # never before the fill
+    assert advance(t3, bar(0, 101, 99.9), P, FREE, invalidate=True) == ["FILLED"]

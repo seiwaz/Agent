@@ -32,7 +32,7 @@ from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, Decimal
 from typing import Any
 
 from sp2l.core.types import Candle, Side
-from sp2l.smc.lifecycle import Tracked, risk_unit
+from sp2l.smc.lifecycle import State, Tracked, risk_unit
 from sp2l.smc.model import Analysis, Costs, Setup, SmcParams, Target, Zone, ZoneSetup
 from sp2l.smc.timeframes import MINUTE, length
 
@@ -371,3 +371,22 @@ def tracked(s: Setup, p: SmcParams, costs: Costs) -> Tracked:
         market=s.market,
         time_stop_min=p.time_stop_min,
     )
+
+
+def choch_closes(za: Analysis) -> dict[datetime, set[Side]]:
+    """Close time of every zone-TF CHoCH bar -> the CHoCH direction(s)."""
+    out: dict[datetime, set[Side]] = {}
+    dur = length(za.tf)
+    for ev in za.events:
+        if ev.kind == "CHOCH":
+            out.setdefault(ev.break_time + dur, set()).add(ev.direction)
+    return out
+
+
+def invalidates(t: Tracked, bar: Candle, closes: dict[datetime, set[Side]], p: SmcParams) -> bool:
+    """`exit_on_choch`: this M1 bar is the last minute of a zone-TF bar that closed a CHoCH
+    against the open trade, after the fill."""
+    if not p.exit_on_choch or t.state is not State.OPEN or t.filled_at is None:
+        return False
+    against = Side.SHORT if t.side is Side.LONG else Side.LONG
+    return bar.open_time > t.filled_at and against in closes.get(bar.open_time + MINUTE, set())

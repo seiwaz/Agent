@@ -21,8 +21,10 @@ from sp2l.smc.lifecycle import Tracked, advance
 from sp2l.smc.model import Analysis, Costs, Setup, SmcParams
 from sp2l.smc.strategy import (
     ARMED_BEFORE,
+    choch_closes,
     evaluate,
     find_arming,
+    invalidates,
     order_for,
     tracked,
     zone_setups,
@@ -65,6 +67,7 @@ def run(
     setups = orders(ctx, p, costs)
     bars = ctx["1m"].bars
     index = {c.open_time: i for i, c in enumerate(bars)}
+    closes = choch_closes(ctx[p.zone_tf]) if p.exit_on_choch else {}
     trades: list[tuple[Setup, Tracked]] = []
     busy_until: list[datetime] = []
     for s in sorted((s for s in setups if s.accepted), key=lambda s: s.created_at):
@@ -74,7 +77,7 @@ def run(
         t = tracked(s, p, costs)
         i = index.get(s.created_at)
         while i is not None and i < len(bars) and t.active:
-            advance(t, bars[i], p, costs)
+            advance(t, bars[i], p, costs, invalidate=invalidates(t, bars[i], closes, p))
             i += 1
         busy_until.append(t.closed_at or bars[-1].open_time + MINUTE)
         trades.append((s, t))

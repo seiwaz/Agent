@@ -1,8 +1,9 @@
 """Signal lifecycle on M1 bars: one stop, one target.
 
-PENDING (limit resting) -> OPEN -> TP / SL, or TIME_STOP (neither TP nor SL within
-`time_stop_min` of the fill, market exit), TIMEOUT (`max_hold_min`). Without a fill: EXPIRED
-(`pending_expiry_min` after creation), MISSED (the target traded before the fill).
+PENDING (limit resting) -> OPEN -> TP / SL, or INVALIDATED (`exit_on_choch`: a zone-TF CHoCH
+against the trade closed; market exit at that close), TIME_STOP (neither TP nor SL within
+`time_stop_min` of the fill, market exit; 0 = off), TIMEOUT (`max_hold_min`). Without a fill:
+EXPIRED (`pending_expiry_min` after creation), MISSED (the target traded before the fill).
 
 All path decisions use final M1 candles. Where one minute could have touched both sides the
 conservative reading applies: a stop beats the target in the same minute, and no target is
@@ -27,6 +28,7 @@ class State(StrEnum):
     OPEN = "OPEN"
     TP = "TP"
     SL = "SL"
+    INVALIDATED = "INVALIDATED"  # a zone-TF CHoCH against the trade (exit_on_choch)
     TIME_STOP = "TIME_STOP"  # neither TP nor SL within time_stop_min
     EXPIRED = "EXPIRED"  # never filled within the allowed wait
     MISSED = "MISSED"  # target traded before the entry filled
@@ -57,7 +59,7 @@ def risk_unit(
 class Part:
     """The exit: `frac` of the position closed at `price` (taker fee)."""
 
-    kind: str  # TP / SL / TIME_STOP / TIMEOUT
+    kind: str  # TP / SL / INVALIDATED / TIME_STOP / TIMEOUT
     price: Decimal
     frac: Decimal
     at: datetime
@@ -142,8 +144,11 @@ def _stop(t: Tracked, at: datetime, costs: Costs) -> str:
     return _close(t, State.SL, price, at, costs)
 
 
-def advance(t: Tracked, bar: Candle, p: SmcParams, costs: Costs) -> list[str]:
-    """Apply one final M1 bar. Returns the events in the order they happened."""
+def advance(
+    t: Tracked, bar: Candle, p: SmcParams, costs: Costs, *, invalidate: bool = False
+) -> list[str]:
+    """Apply one final M1 bar. `invalidate`: this minute closes a zone-TF CHoCH against the
+    open trade (checked after the stop and the target). Returns the events in order."""
     if not t.active or (t.last_m1 is not None and bar.open_time <= t.last_m1):
         return []
     t.last_m1 = bar.open_time
@@ -164,6 +169,8 @@ def advance(t: Tracked, bar: Candle, p: SmcParams, costs: Costs) -> list[str]:
         return [_stop(t, end, costs)]
     if _hit(t, bar, t.tp):
         return [_close(t, State.TP, t.tp, end, costs)]
+    if invalidate:
+        return [_close(t, State.INVALIDATED, bar.close, end, costs)]
     assert t.filled_at is not None
     held = bar.open_time - t.filled_at
     if t.time_stop_min > 0 and held >= timedelta(minutes=t.time_stop_min):
