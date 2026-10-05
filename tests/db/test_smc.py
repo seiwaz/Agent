@@ -104,7 +104,52 @@ def test_history_fills_head_and_tail_and_never_caches_the_forming_minute(clean):
     assert last == NOW.replace(second=0) - MIN  # 12:00 is still forming at 12:00:20
     assert len(calls) == 2  # head, then tail with overlap
     ensure_history(clean, SYM, fetch, days=1, now=NOW + timedelta(minutes=3))
-    assert len(calls) == 3 and calls[-1][0] == last - timedelta(minutes=15)
+    # the tail overlaps 15 minutes, and every request starts LEAD (5 min) earlier
+    assert len(calls) == 3 and calls[-1][0] == last - timedelta(minutes=15) - timedelta(minutes=5)
+
+
+def test_the_first_bar_of_a_request_is_never_stored(clean):
+    """Tabdeal reports another open for the first bar of a request: requests start earlier
+    and those lead bars are dropped, so a chunk boundary stores the true bar."""
+
+    def fetch(a, b):
+        bars = chart(a, min(b, NOW))
+        bars[0] = {**bars[0], "open": 1.0, "low": 1.0}  # the artifact
+        return bars
+
+    ensure_history(clean, SYM, fetch, days=3, now=NOW)  # two-day chunks: a boundary inside
+    with clean.connect() as c:
+        lows = c.execute(
+            text("SELECT MIN(low) FROM exchange_m1 WHERE symbol = :s"), {"s": SYM}
+        ).scalar_one()
+    assert lows > 100  # no artifact bar was stored
+
+
+def test_a_hole_inside_the_history_is_fetched_again_once(clean):
+    from sp2l.smc import history
+
+    history._tried.clear()
+    t0 = NOW.replace(second=0)
+    hole = (t0 - timedelta(hours=10), t0 - timedelta(hours=8))
+    flaky = {"on": True}
+    calls = []
+
+    def fetch(a, b):
+        calls.append((a, b))
+        bars = chart(a, min(b, NOW))
+        if flaky["on"]:  # the first load loses two hours
+            bars = [x for x in bars if not hole[0].timestamp() <= x["time"] < hole[1].timestamp()]
+        return bars
+
+    ensure_history(clean, SYM, fetch, days=1, now=NOW)  # head, tail, then the repair try
+    assert history.gaps(clean, SYM, NOW - timedelta(days=1), NOW) == [hole]  # still flaky
+    flaky["on"] = False
+    history._tried.clear()  # a new process
+    ensure_history(clean, SYM, fetch, days=1, now=NOW)
+    assert history.gaps(clean, SYM, NOW - timedelta(days=1), NOW) == []
+    n = len(calls)
+    ensure_history(clean, SYM, fetch, days=1, now=NOW)
+    assert len(calls) == n + 1  # only the tail top-up: no hole left to ask for
 
 
 def test_live_canonical_minutes_take_precedence_and_timeframes_aggregate(clean):

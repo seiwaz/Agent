@@ -8,7 +8,10 @@ Higher timeframes are aggregated from that series in SQL at request time (`load_
 timeframe is available at any moment, complete back to the configured history depth.
 
 A chart bar is stored only once it is final (its minute ended at least `SETTLE` before the
-request), so the still-forming minute is never cached.
+request), so the still-forming minute is never cached. Every request starts `LEAD` earlier and
+the lead bars are dropped: Tabdeal's chart reports another open / high for the first bar of a
+request (measured 2026-10-05). Holes inside the cached range (a failed chunk) are re-fetched
+once per process (`repair_gaps`).
 """
 
 from __future__ import annotations
@@ -28,6 +31,9 @@ from sp2l.smc.timeframes import EPOCH, MINUTE, bucket_start, length, offset
 log = logging.getLogger("sp2l.smc.history")
 SETTLE = timedelta(seconds=5)
 CHUNK = timedelta(days=2)  # one chart request (~6 s from the server)
+LEAD = timedelta(minutes=5)  # requested before each chunk, never stored
+GAP_MIN = timedelta(minutes=5)  # holes at least this long are re-fetched (shorter: no trades)
+_tried: set[tuple[str, datetime, datetime]] = set()
 Fetch = Callable[[datetime, datetime], list[dict[str, Any]]]
 
 
@@ -47,11 +53,22 @@ def coverage(db: Engine, symbol: str) -> tuple[datetime | None, datetime | None]
     )
 
 
-def store_bars(db: Engine, symbol: str, raw: list[dict[str, Any]], requested: datetime) -> int:
+def store_bars(
+    db: Engine,
+    symbol: str,
+    raw: list[dict[str, Any]],
+    requested: datetime,
+    since: datetime | None = None,
+) -> int:
+    """Store the final bars of a chart response (those from `since` on: the lead is dropped)."""
     bars = parse_bars(raw)
     if bars is None:
         raise ValueError("Tabdeal chart history returned a malformed bar")
-    final = [c for t, c in sorted(bars.items()) if t + MINUTE + SETTLE <= requested]
+    final = [
+        c
+        for t, c in sorted(bars.items())
+        if t + MINUTE + SETTLE <= requested and (since is None or t >= since)
+    ]
     if not final:
         return 0
     with db.begin() as c:
@@ -86,7 +103,7 @@ def fetch_range(
     n, t = 0, start
     while t < end:
         e = min(t + CHUNK, end)
-        n += store_bars(db, symbol, fetch(t, e + MINUTE), now)
+        n += store_bars(db, symbol, fetch(t - LEAD, e + MINUTE), now, since=t)
         if e - t > timedelta(hours=1):  # bulk loads only; the per-minute top-up stays quiet
             log.info("history %s: cached up to %s", symbol, e.isoformat())
         t = e
@@ -108,10 +125,44 @@ def ensure_history(
         first, last = coverage(db, symbol)
     tail_from = (last - timedelta(minutes=15)) if last is not None else want
     out["fetched"] += fetch_range(db, symbol, fetch, tail_from, now, now)
+    out["repaired"] = repair_gaps(db, symbol, fetch, want, now)
     first, last = coverage(db, symbol)
     out["first"] = None if first is None else first.isoformat()
     out["last"] = None if last is None else last.isoformat()
     return out
+
+
+def gaps(
+    db: Engine, symbol: str, start: datetime, end: datetime
+) -> list[tuple[datetime, datetime]]:
+    """Holes of at least GAP_MIN inside the cached range: (first missing, next present)."""
+    with db.connect() as c:
+        rows = c.execute(
+            text(
+                "SELECT prev + interval '1 minute', open_time FROM (SELECT open_time,"
+                " LAG(open_time) OVER (ORDER BY open_time) AS prev FROM exchange_m1"
+                " WHERE symbol = :s AND open_time >= :a AND open_time < :b) x"
+                " WHERE prev IS NOT NULL AND open_time - prev > :g"
+            ),
+            {"s": symbol, "a": start, "b": end, "g": GAP_MIN},
+        ).all()
+    return [(r[0].astimezone(UTC), r[1].astimezone(UTC)) for r in rows]
+
+
+def repair_gaps(db: Engine, symbol: str, fetch: Fetch, start: datetime, now: datetime) -> int:
+    """Re-fetch every hole of the cached range once per process (Tabdeal may simply have had
+    no trades then; a hole that stays is not asked for again)."""
+    n = 0
+    for a, b in gaps(db, symbol, start, now):
+        key = (symbol, a, b)
+        if key in _tried:
+            continue
+        _tried.add(key)
+        got = fetch_range(db, symbol, fetch, a, b, now)
+        if got:
+            log.info("history %s: repaired %d minutes in %s .. %s", symbol, got, a, b)
+        n += got
+    return n
 
 
 MERGED_M1 = """

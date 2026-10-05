@@ -138,10 +138,14 @@ def _stopped(t: Tracked, bar: Candle) -> bool:
     return bar.low <= t.sl if t.side is Side.LONG else bar.high >= t.sl
 
 
+def _slipped(t: Tracked, price: Decimal, costs: Costs) -> Decimal:
+    """A market exit of the position at `price` fills one slippage allowance worse."""
+    slip = price * costs.slippage
+    return price - slip if t.side is Side.LONG else price + slip
+
+
 def _stop(t: Tracked, at: datetime, costs: Costs) -> str:
-    slip = t.sl * costs.slippage
-    price = t.sl - slip if t.side is Side.LONG else t.sl + slip
-    return _close(t, State.SL, price, at, costs)
+    return _close(t, State.SL, _slipped(t, t.sl, costs), at, costs)
 
 
 def advance(
@@ -167,8 +171,8 @@ def advance(
         return []
     if _stopped(t, bar):
         return [_stop(t, end, costs)]
-    if _hit(t, bar, t.tp):
-        return [_close(t, State.TP, t.tp, end, costs)]
+    if _hit(t, bar, t.tp):  # a market take-profit: taker fee + the slippage allowance
+        return [_close(t, State.TP, _slipped(t, t.tp, costs), end, costs)]
     if invalidate:
         return [_close(t, State.INVALIDATED, bar.close, end, costs)]
     assert t.filled_at is not None

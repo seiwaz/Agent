@@ -108,3 +108,12 @@ def test_invalidation_exits_at_the_bar_close_after_stop_and_target():
     assert advance(t2, bar(5, 101, 97.5, 99.8), P, FREE, invalidate=True) == ["SL"]
     t3 = long_signal()  # never before the fill
     assert advance(t3, bar(0, 101, 99.9), P, FREE, invalidate=True) == ["FILLED"]
+
+
+def test_a_market_take_profit_pays_taker_and_slippage():
+    c = Costs(maker_fee=D("0.001"), taker_fee=D("0.001"), slippage=D("0.001"))
+    t = long_signal(risk=risk_unit(Side.LONG, D(100), D(98), c), state=State.OPEN, filled_at=T0)
+    assert advance(t, bar(1, 104.5, 100.5), P, c) == ["TP"]
+    assert t.exit_price == D(104) - D("0.104")  # one slippage allowance below the target
+    net = (t.exit_price - 100) - D("0.1") - t.exit_price * D("0.001")
+    assert t.result_r == net / t.risk

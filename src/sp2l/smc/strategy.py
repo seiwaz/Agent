@@ -205,10 +205,12 @@ def confirmation(
 def net_r(
     side: Side, entry: Decimal, px: Decimal, ru: Decimal, costs: Costs, market: bool
 ) -> Decimal:
-    """R after fees if the whole position closed at `px` (taker exit)."""
+    """R after fees if the whole position closed at `px` (a market exit: taker fee and the
+    slippage allowance, exactly as the lifecycle books it)."""
     sgn = 1 if side is Side.LONG else -1
     fee_in = costs.taker_fee if market else costs.maker_fee
-    return ((px - entry) * sgn - entry * fee_in - px * costs.taker_fee) / ru
+    fill = px - px * costs.slippage * sgn
+    return ((fill - entry) * sgn - entry * fee_in - fill * costs.taker_fee) / ru
 
 
 def _beyond(side: Side, px: Decimal, ref: Decimal) -> bool:
