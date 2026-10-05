@@ -99,7 +99,7 @@ smc:
   tp_ref: leg             # leg: the HH / LL after the OB candle, before the first return to the OB; swing: last confirmed 1h swing
   # time
   pending_expiry_min: 120 # unfilled limit cancelled 8 x 15m after arming
-  time_stop_min: 180      # market exit if neither TP nor SL within 12 x 15m of the fill
+  time_stop_min: 0        # off (SMC-2.1); open signals keep the rule they were created with
   max_hold_min: 1440
   # data
   history_days: 35        # Tabdeal chart history kept for warmup (4h needs ~30 days)

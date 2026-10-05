@@ -82,3 +82,19 @@ def test_a_full_stop_is_exactly_minus_one_r_after_fees_and_slippage():
     t = long_signal(risk=ru, state=State.OPEN, filled_at=T0)
     advance(t, bar(1, 101, 97.9), P, c)
     assert t.exit_price == fill and t.result_r == D(-1)
+
+
+def test_without_a_time_stop_the_position_runs_to_tp_sl_or_timeout():
+    p = SmcParams(pending_expiry_min=5, max_hold_min=600)
+    t = long_signal(state=State.OPEN, filled_at=T0)  # time_stop_min 0 = off (default)
+    for i in range(1, 400):
+        assert advance(t, bar(i, 101, 99, 100.5), p, FREE) == []  # long past 3 h: still open
+    assert advance(t, bar(400, 104.5, 100), p, FREE) == ["TP"]
+    t2 = long_signal(state=State.OPEN, filled_at=T0)
+    for i in range(1, 600):
+        advance(t2, bar(i, 101, 99, 100.5), p, FREE)
+    assert advance(t2, bar(600, 101, 99, 100.2), p, FREE) == ["TIMEOUT"]
+    t3 = long_signal(state=State.OPEN, filled_at=T0, time_stop_min=180)  # an older signal's rule
+    for i in range(1, 180):
+        advance(t3, bar(i, 101, 99, 100.5), p, FREE)
+    assert advance(t3, bar(180, 101, 99, 100.5), p, FREE) == ["TIME_STOP"]

@@ -980,7 +980,7 @@ async function renderStrategy() {
     step("warn", "Entry", `${v.zone_tf} → M1`, v.confirm_exec
       ? `When price first trades into the FVG, wait for a ${v.exec_tf} BOS / CHoCH with the bias and enter at its close.`
       : `Limit order (maker) at the order-block edge touching the FVG, resting from the setup; armed when price first trades into the FVG, cancelled ${v.pending_expiry_min / 60} h later. Only the first touch.`),
-    step("ok", "Exit", `${v.exec_tf} · M1`, `Stop one tick beyond the order block's wick. One target, from the market, never from the stop: the ${v.tp_ref === "swing" ? "last confirmed" : "previous"} ${v.zone_tf} HH (long: its high) / LL (short: its low). None beyond the entry: no trade. Time stop ${v.time_stop_min / 60} h, limit ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
+    step("ok", "Exit", `${v.exec_tf} · M1`, `Stop one tick beyond the order block's wick. One target, from the market, never from the stop: the ${v.tp_ref === "swing" ? "last confirmed" : "previous"} ${v.zone_tf} HH (long: its high) / LL (short: its low). None beyond the entry: no trade.${+v.time_stop_min > 0 ? ` Time stop ${v.time_stop_min / 60} h,` : ""} Closed at market after ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
   $("param-grid").replaceChildren(...p.groups.map((g) => el("section", { class: "card" }, el("h2", {}, g.name),
     el("dl", { class: "kv" }, g.items.flatMap((i) => [el("dt", {}, el("code", {}, i.key)), el("dd", { class: "num" }, Array.isArray(i.value) ? i.value.join(", ") || "—" : show(i.value))])))),
   el("section", { class: "card" }, el("h2", {}, "Costs (from config)"), el("dl", { class: "kv" },

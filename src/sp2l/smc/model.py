@@ -159,7 +159,7 @@ class SmcParams:
     max_active: int = 1  # simultaneous active signals per symbol
     max_positions: int = 2  # simultaneous active signals across all symbols
     pending_expiry_min: int = 120  # an unfilled limit is cancelled 8 x 15m after arming
-    time_stop_min: int = 180  # market exit when neither TP1 nor SL within 12 x 15m of the fill
+    time_stop_min: int = 0  # market exit when neither TP nor SL within this; 0 = off
     max_hold_min: int = 1440
     # chart (display only)
     chart_near_atr: Decimal = Decimal(3)  # setups within this x ATR(zone TF) of price
