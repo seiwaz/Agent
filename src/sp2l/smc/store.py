@@ -107,10 +107,10 @@ def insert_signal(
         text(
             "INSERT INTO smc_signals (symbol, key, side, state, created_at, entry, sl, tp, risk,"
             " rr, net_rr, score, tp_source, trigger_kind, poi_tf, detail, qty, notional,"
-            " leverage, params_hash, wallet_id, margin, filled_at, tp1, tp2, tp3, targets,"
+            " leverage, params_hash, wallet_id, margin, filled_at, targets,"
             " qty_open, realized_r, version) VALUES (:sym, :key, :side, :state, :ca, :e, :sl,"
             " :tp, :risk, :rr, :nrr, 0, :src, :tk, :ptf, CAST(:d AS jsonb), :q, :n, :lev, :ph,"
-            " :w, :m, :fa, :tp1, :tp2, :tp3, CAST(:tg AS jsonb), :q, 0, :ver)"
+            " :w, :m, :fa, CAST(:tg AS jsonb), :q, 0, :ver)"
             " ON CONFLICT (symbol, key) DO NOTHING RETURNING id"
         ),
         {
@@ -143,9 +143,6 @@ def insert_signal(
             "w": wallet_id,
             "m": size.margin if size else None,
             "fa": t.filled_at,  # a market entry is filled at creation
-            "tp1": None,
-            "tp2": None,
-            "tp3": None,
             "tg": json.dumps(targets),
             "ver": VERSION,
         },
