@@ -1,39 +1,39 @@
-"""Top-down Smart Money entry model (bias -> point of interest -> M1 trigger).
+"""Top-down Smart Money entry model, SMC-2.0 (bias -> zone setup -> limit at the order block).
 
-For every structure event on the trigger timeframe (M1) the model asks, as of the close of the
-bar that confirmed it:
+1. BIAS     the bias timeframe's trend (BOS / CHoCH on 4h) must point the trade's way.
+2. SETUP    on the zone timeframe (1h), in this order: a liquidity sweep (wick beyond
+            unswept swing lows / equal lows, close back inside), a displacement that breaks
+            structure by close, the order block = last opposite candle (at or after the sweep)
+            with the FVG right after it. One function, `zone_setups`, finds these for
+            the engine, the backtest and the chart.
+3. ARMING   the first minute after the setup is known that trades into the FVG. The order is
+            a limit (maker) at the OB edge touching the FVG; it rests from the confirmation,
+            so it can fill in the arming minute; it is cancelled `pending_expiry_min`
+            after arming. Only a fresh OB is entered (first touch); one order per setup.
+            `confirm_exec`: instead wait for an execution-TF BOS / CHoCH, enter at market.
+4. STOP     beyond the farther of the sweep wick and the OB far edge + sl_buffer_atr x ATR.
+5. TARGETS  TP1 = nearest internal liquidity (execution-TF swing), TP2 = next opposing zone-TF
+            OB / FVG, TP3 = external liquidity (previous day / week, equal highs / lows).
+            Missing or inside 1R: fixed net 1R / 2R, recorded as a fallback.
+6. FILTERS  net R:R to TP2 >= min_net_rr_tp2, stop <= max_risk_pct, round-trip cost <=
+            max_cost_frac of the stop, advisory size within max_leverage.
 
-1. BIAS     the bias timeframe's trend (BOS/CHoCH on 4h by default) must point the same way.
-2. POI      an unmitigated order block / fair value gap of that direction on a POI timeframe
-            (1h, then 15m by default) must overlap the M1 order block that the trigger
-            created: price reacted inside a higher-timeframe zone.
-3. ENTRY    on M1: at the trigger close (`entry_mode: market`) or a limit on the M1 order
-            block / the POI; stop beyond the POI and the M1 block plus an ATR buffer
-            (`sl_mode: poi`) or beyond the M1 block only; target = the nearest liquidity
-            (unswept swing high/low on any analysed timeframe or the M1 leg extreme) that
-            pays at least `min_net_rr` AFTER fees and slippage (`tp_mode: liquidity`).
-4. QUALITY  confluence score (fresh POI, CHoCH reversal, liquidity sweep, M1 displacement
-            FVG, POI confluence, confirmation-timeframe agreement) >= `min_score`, `require`d
-            factors present; stop <= `max_risk_pct`; advisory size within `max_leverage`.
-
-Every input is causal (higher-timeframe bars only once closed, zone status as of the trigger).
-Rejected triggers are returned with reason codes so the dashboard can say why nothing fired.
+Every input is causal: closed bars only, swings once confirmed, zone state as of the order.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from datetime import datetime
-from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, ROUND_HALF_UP, Decimal
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime, timedelta
+from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, Decimal
+from typing import Any
 
-from sp2l.core.types import Side
-from sp2l.smc.lifecycle import risk_unit
-from sp2l.smc.model import Analysis, Costs, Setup, SmcParams, StructureEvent, Zone
+from sp2l.core.types import Candle, Side
+from sp2l.smc.lifecycle import State, Tracked, risk_unit
+from sp2l.smc.model import Analysis, Costs, Setup, SmcParams, Target, Zone, ZoneSetup
 from sp2l.smc.timeframes import MINUTE, length
 
 TREND = {Side.LONG: 1, Side.SHORT: -1}
-# factors that add to the score; htf_sweep is only a `require`-able filter
-SCORED = ("fresh", "choch", "sweep", "m1_fvg", "poi_confluence", "bias_confirm")
 
 
 def last_closed(a: Analysis, t: datetime) -> int:
@@ -101,334 +101,400 @@ def _swept(a: Analysis, idx: int, k: int, price: Decimal, high: bool) -> bool:
     return any(b.high > price for b in seg) if high else any(b.low < price for b in seg)
 
 
-def targets(
-    ctx: Mapping[str, Analysis],
-    p: SmcParams,
-    m1: Analysis,
-    ob: Zone,
-    i: int,
-    t: datetime,
-    side: Side,
-    entry: Decimal,
-) -> list[tuple[Decimal, str]]:
-    """Liquidity above (LONG) / below (SHORT) the entry, nearest first."""
-    out: list[tuple[Decimal, str]] = []
-    long = side is Side.LONG
-    for tf, a in ctx.items():
-        if p.target_tfs and tf not in p.target_tfs:
-            continue  # only the configured (external) liquidity counts as a target
-        k = last_closed(a, t)
-        if k < 0:
+# ---- zone setups ------------------------------------------------------------------------
+def zone_setups(a: Analysis, p: SmcParams) -> list[ZoneSetup]:
+    """Every complete sequence on the zone timeframe, in the order it became known:
+    sweep -> displacement (BOS / CHoCH by close) -> order block (last opposite candle, at or
+    after the sweep) with the FVG right after it. Anything out of that order is ignored."""
+    out: list[ZoneSetup] = []
+    dur = length(a.tf)
+    for ev in a.events:
+        z = a.event_ob.get(ev.id)
+        if z is None or z.gap is None:
             continue
-        floor = k - p.lookback(tf)
-        # liquidity taken inside the timeframe's forming bar is gone as well
-        rng = m1_range(m1, a.bars[k].open_time + length(tf), i)
-        for s in reversed(a.swings):
-            if s.idx < floor:
-                break
-            if s.confirmed_idx > k or (s.kind == "HIGH") != long:
+        side = ev.direction
+        sweep = None
+        for sw in reversed(a.sweeps):  # the latest sweep of that side at or before the OB
+            if sw.idx > z.idx or sw.direction is not side:
                 continue
-            if rng is not None and ((rng[0] > s.price) if long else (rng[1] < s.price)):
-                continue
-            if ((s.price > entry) if long else (s.price < entry)) and not _swept(
-                a, s.idx, k, s.price, long
-            ):
-                out.append((s.price, f"{tf} swing {'high' if long else 'low'}"))
-    if not p.target_tfs or m1.tf in p.target_tfs:  # the M1 leg extreme = internal liquidity
-        leg = m1.bars[ob.idx : i + 1]
-        ext = max(b.high for b in leg) if long else min(b.low for b in leg)
-        if (ext > entry) if long else (ext < entry):
-            out.append((ext, f"1m leg {'high' if long else 'low'}"))
-    seen: set[Decimal] = set()
-    uniq = []
-    for pr, src in sorted(out, key=lambda x: abs(x[0] - entry)):
-        if pr not in seen:
-            seen.add(pr)
-            uniq.append((pr, src))
-    return uniq
+            if sw.idx >= ev.break_idx - p.sweep_max_bars:
+                sweep = sw
+            break
+        if sweep is None:
+            continue
+        out.append(
+            ZoneSetup(
+                key=z.id,
+                tf=a.tf,
+                direction=side,
+                ob=z,
+                gap=z.gap,
+                sweep=sweep,
+                event=ev,
+                confirmed_at=a.bars[z.created_idx].open_time + dur,
+            )
+        )
+    out.sort(key=lambda s: s.confirmed_at)
+    return out
 
 
-def find_poi(
-    ctx: Mapping[str, Analysis], p: SmcParams, ob: Zone, t: datetime, side: Side
-) -> tuple[Zone, str] | None:
-    m1 = ctx[p.trigger_tf]
-    i = last_closed(m1, t)
-    for tf in p.poi_tfs:
-        a = ctx.get(tf)
-        if a is None:
-            continue
-        k = last_closed(a, t)
-        rng = m1_range(m1, a.bars[k].open_time + length(tf), i) if k >= 0 else None
-        found = [
-            z
-            for z in zones_at(a, k, p)
-            if z.kind in p.poi_kinds
-            and z.direction is side
-            and z.overlaps(ob)
-            and not filled_live(z, rng, p)
-        ]
-        if found:
-            found.sort(key=lambda z: (z.kind != "OB", -z.idx))
-            return found[0], tf
+def touches(s: ZoneSetup, b: Candle) -> bool:
+    """The bar traded into the setup's FVG (arming)."""
+    return b.low <= s.gap[1] if s.direction is Side.LONG else b.high >= s.gap[0]
+
+
+ARMED_BEFORE = -1  # armed inside minutes that are no longer available (never fresh)
+
+
+def find_arming(s: ZoneSetup, za: Analysis, k: int, m1: Sequence[Candle]) -> int | None:
+    """Index in `m1` of the first minute after the setup was confirmed that traded into its
+    FVG, looking at zone bars closed up to k and at the minutes after them; None if price has
+    not come back yet, ARMED_BEFORE if it did in minutes `m1` no longer holds."""
+    dur = length(za.tf)
+    last = min(k, s.ob.expires_idx)
+    hit = next((j for j in range(s.ob.created_idx + 1, last + 1) if touches(s, za.bars[j])), None)
+    if hit is not None:
+        lo_t, hi_t = za.bars[hit].open_time, za.bars[hit].open_time + dur
+    elif k > s.ob.expires_idx:
+        return None  # expired untouched
+    else:
+        lo_t, hi_t = (za.bars[k].open_time + dur if k >= 0 else s.confirmed_at), None
+    if not m1 or m1[0].open_time > lo_t:
+        return ARMED_BEFORE if hit is not None else None
+    i = _bisect(m1, lo_t)
+    while i < len(m1) and (hi_t is None or m1[i].open_time < hi_t):
+        if touches(s, m1[i]):
+            return i
+        i += 1
     return None
 
 
+def _bisect(m1: Sequence[Candle], t: datetime) -> int:
+    lo, hi = 0, len(m1)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if m1[mid].open_time < t:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+
+def confirmation(
+    s: ZoneSetup, ax: Analysis, armed_at: datetime, p: SmcParams
+) -> tuple[datetime, Decimal] | None:
+    """`confirm_exec`: the first execution-TF BOS / CHoCH with the setup that closed after the
+    arming minute and within the pending window: (close time, close price)."""
+    dur = length(ax.tf)
+    end = armed_at - MINUTE + timedelta(minutes=p.pending_expiry_min)
+    for ev in ax.events:
+        t = ev.break_time + dur
+        if ev.direction is not s.direction or t < armed_at:
+            continue
+        if t > end:
+            return None
+        return t, ax.bars[ev.break_idx].close
+    return None
+
+
+# ---- evaluation at the moment the order exists --------------------------------------------
+def net_r(
+    side: Side, entry: Decimal, px: Decimal, ru: Decimal, costs: Costs, market: bool
+) -> Decimal:
+    """R after fees if the whole position closed at `px` (taker exit)."""
+    sgn = 1 if side is Side.LONG else -1
+    fee_in = costs.taker_fee if market else costs.maker_fee
+    return ((px - entry) * sgn - entry * fee_in - px * costs.taker_fee) / ru
+
+
+def price_for_r(
+    side: Side,
+    entry: Decimal,
+    r: Decimal,
+    ru: Decimal,
+    costs: Costs,
+    market: bool,
+    tick: Decimal,
+) -> Decimal:
+    """The target price that pays exactly `r` net (rounded away from the entry)."""
+    fee_in = costs.taker_fee if market else costs.maker_fee
+    need = r * ru + entry * fee_in
+    if side is Side.LONG:
+        return _round((entry + need) / (1 - costs.taker_fee), tick, ROUND_CEILING)
+    return _round((entry - need) / (1 + costs.taker_fee), tick, ROUND_FLOOR)
+
+
+def _beyond(side: Side, px: Decimal, ref: Decimal) -> bool:
+    return px > ref if side is Side.LONG else px < ref
+
+
+def internal_liquidity(
+    ax: Analysis, m1: Analysis, p: SmcParams, t: datetime, side: Side, entry: Decimal
+) -> tuple[Decimal, str] | None:
+    """TP1: the nearest unswept confirmed execution-TF swing high (LONG) / low beyond entry."""
+    k = last_closed(ax, t)
+    if k < 0:
+        return None
+    long = side is Side.LONG
+    rng = m1_range(m1, ax.bars[k].open_time + length(ax.tf), last_closed(m1, t))
+    floor = k - p.lookback(ax.tf)
+    best: Decimal | None = None
+    for sw in reversed(ax.swings):
+        if sw.idx < floor:
+            break
+        if (
+            sw.confirmed_idx > k
+            or (sw.kind == "HIGH") != long
+            or not _beyond(side, sw.price, entry)
+        ):
+            continue
+        if _swept(ax, sw.idx, k, sw.price, long) or (
+            rng is not None and (rng[0] > sw.price if long else rng[1] < sw.price)
+        ):
+            continue
+        if best is None or abs(sw.price - entry) < abs(best - entry):
+            best = sw.price
+    return None if best is None else (best, f"{ax.tf} swing {'high' if long else 'low'}")
+
+
+def opposing_zone(
+    za: Analysis, m1: Analysis, p: SmcParams, t: datetime, side: Side, beyond: Decimal
+) -> tuple[Decimal, str] | None:
+    """TP2: the near edge of the nearest valid opposing zone-TF OB / FVG beyond `beyond`."""
+    k = last_closed(za, t)
+    if k < 0:
+        return None
+    long = side is Side.LONG
+    rng = m1_range(m1, za.bars[k].open_time + length(za.tf), last_closed(m1, t))
+    best: tuple[Decimal, str] | None = None
+    for z in zones_at(za, k, p):
+        if z.direction is side or filled_live(z, rng, p):
+            continue
+        edge = z.bottom if long else z.top
+        if not _beyond(side, edge, beyond):
+            continue
+        if best is None or abs(edge - beyond) < abs(best[0] - beyond):
+            best = (edge, f"{za.tf} {z.kind}")
+    return best
+
+
+def external_liquidity(
+    ctx: Mapping[str, Analysis], p: SmcParams, t: datetime, side: Side
+) -> list[tuple[Decimal, str]]:
+    """TP3 candidates still untaken: previous UTC day / ISO week high (LONG) or low, and
+    zone-TF equal highs / lows (two or more swings within eq_tol_atr x ATR)."""
+    ax, za, m1 = ctx[p.exec_tf], ctx[p.zone_tf], ctx["1m"]
+    long = side is Side.LONG
+    out: list[tuple[Decimal, str]] = []
+    k = last_closed(ax, t)
+    if k >= 0:
+        dur = length(ax.tf)
+        rng = m1_range(m1, ax.bars[k].open_time + dur, last_closed(m1, t))
+        day0 = t.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        week0 = day0 - timedelta(days=day0.weekday())
+        periods = (
+            (day0 - timedelta(days=1), day0, "PDH" if long else "PDL"),
+            (week0 - timedelta(days=7), week0, "PWH" if long else "PWL"),
+        )
+        bars = ax.bars[max(0, k + 1 - p.lookback(ax.tf)) : k + 1]
+        for start, end, name in periods:
+            seg = [b for b in bars if start <= b.open_time < end]
+            if not seg or seg[0].open_time != start or seg[-1].open_time + dur != end:
+                continue  # the period is not complete in the analysed bars
+            level = max(b.high for b in seg) if long else min(b.low for b in seg)
+            after = [b for b in bars if b.open_time >= end]
+            taken = any((b.high > level) if long else (b.low < level) for b in after) or (
+                rng is not None and (rng[0] > level if long else rng[1] < level)
+            )
+            if not taken:
+                out.append((level, name))
+    kz = last_closed(za, t)
+    atr = za.atr[kz] if kz >= 0 else None
+    if kz >= 0 and atr is not None:
+        tol = p.eq_tol_atr * atr
+        rng = m1_range(m1, za.bars[kz].open_time + length(za.tf), last_closed(m1, t))
+        floor = kz - p.lookback(za.tf)
+        pts = sorted(
+            sw.price
+            for sw in za.swings
+            if sw.idx >= floor
+            and sw.confirmed_idx <= kz
+            and (sw.kind == "HIGH") == long
+            and not _swept(za, sw.idx, kz, sw.price, long)
+            and not (rng is not None and (rng[0] > sw.price if long else rng[1] < sw.price))
+        )
+        cluster: list[Decimal] = []
+        for px in [*pts, None]:
+            if px is not None and cluster and px - cluster[-1] <= tol:
+                cluster.append(px)
+                continue
+            if len(cluster) >= 2:
+                out.append(
+                    (
+                        max(cluster) if long else min(cluster),
+                        f"{za.tf} equal {'highs' if long else 'lows'}",
+                    )
+                )
+            cluster = [] if px is None else [px]
+    return out
+
+
 def evaluate(
-    ev: StructureEvent,
+    s: ZoneSetup,
     ctx: Mapping[str, Analysis],
     p: SmcParams,
     costs: Costs,
+    t: datetime,
+    *,
+    market_price: Decimal | None = None,
     equity: Decimal | None = None,
 ) -> Setup:
-    """`equity` = the wallet balance the advisory size is based on (default account_usdt)."""
-    m1 = ctx[p.trigger_tf]
-    i = ev.break_idx
-    side = ev.direction
-    t = m1.bars[i].open_time + MINUTE
+    """The setup as an order created at `t` (limit: the open of the arming minute; with
+    `confirm_exec` a market order at the close of the confirming bar, `market_price`)."""
+    side = s.direction
+    long = side is Side.LONG
+    za, m1 = ctx[p.zone_tf], ctx["1m"]
     bias = trend_at(ctx.get(p.bias_tf), t)
+    market = market_price is not None
 
-    def reject(*reasons: str, **kw: object) -> Setup:
+    def result(reasons: list[str], **kw: Any) -> Setup:
         return Setup(
-            key=f"{kw.pop('key', ev.id)}",
+            key=s.key,
             direction=side,
-            accepted=False,
-            reasons=reasons,
+            accepted=not reasons,
+            reasons=tuple(reasons),
             created_at=t,
-            trigger_kind=ev.kind,
-            trigger_event_id=ev.id,
+            zone=s,
             bias=bias,
-            **kw,  # type: ignore[arg-type]
+            market=market,
+            **kw,
         )
 
     if bias == 0:
-        return reject("NO_BIAS")
+        return result(["NO_BIAS"])
     if bias != TREND[side]:
-        return reject("BIAS_MISMATCH")
-    ob = m1.event_ob.get(ev.id)
-    atr1 = m1.atr[i]
-    if ob is None:
-        return reject("NO_ORDER_BLOCK")
-    if atr1 is None:
-        return reject("WARMUP")
-    poi = find_poi(ctx, p, ob, t, side)
-    if poi is None:
-        return reject("NO_POI", entry_zone=ob)
-    zone, poi_tf = poi
-    key = f"{zone.id}|{ev.id}"
-    long = side is Side.LONG
-    edges = {
-        "proximal": ob.top if long else ob.bottom,
-        "mid": ob.mid,
-        "distal": ob.bottom if long else ob.top,
-    }
+        return result(["BIAS_MISMATCH"])
+    k = last_closed(za, t)
+    if k < 0 or not s.ob.valid_at(k):
+        return result(["ZONE_INVALID"])
+    if s.ob.tested_idx is not None and s.ob.tested_idx <= k and not market:
+        return result(["NOT_FRESH"])
     tick = p.tick
-    ez = zone if p.entry_on == "poi" else ob
-    edges = {
-        "proximal": ez.top if long else ez.bottom,
-        "mid": ez.mid,
-        "distal": ez.bottom if long else ez.top,
-    }
-    market = p.entry_mode == "market"
-    entry = (
-        m1.bars[i].close if market else _round(edges.get(p.entry_mode, ez.mid), tick, ROUND_HALF_UP)
-    )
-    if not market and (
-        (long and entry >= m1.bars[i].close) or (not long and entry <= m1.bars[i].close)
-    ):
-        entry = _round(ob.mid, tick, ROUND_HALF_UP)  # zone already left: refine on M1
-    poi_a = ctx[poi_tf]
-    atr_poi = poi_a.atr[last_closed(poi_a, t)] or atr1
-    if p.sl_mode == "poi":
-        # the idea is wrong only once price leaves the higher-timeframe zone
-        buf = max(p.sl_buffer_atr * atr_poi, 2 * tick)
-        far = min(ob.bottom, zone.bottom) - buf if long else max(ob.top, zone.top) + buf
-    else:
-        buf = max(p.sl_buffer_atr * atr1, 2 * tick)
-        far = ob.bottom - buf if long else ob.top + buf
-    min_d = p.min_sl_atr * atr_poi
-    if min_d > 0:
-        far = min(far, entry - min_d) if long else max(far, entry + min_d)
+    entry = market_price if market_price is not None else s.edge
+    atr = za.atr[k] or Decimal(0)
+    buf = max(p.sl_buffer_atr * atr, 2 * tick)
+    far = min(s.sweep.wick, s.ob.bottom) - buf if long else max(s.sweep.wick, s.ob.top) + buf
     sl = _round(far, tick, ROUND_FLOOR if long else ROUND_CEILING)
+    if not _beyond(side, entry, sl):
+        return result(["BAD_STOP"], entry=entry, sl=sl)
     reasons: list[str] = []
-    common = {"poi": zone, "poi_tf": poi_tf, "entry_zone": ob, "key": key}
-    if (long and not sl < entry) or (not long and not sl > entry):
-        return reject("BAD_STOP", entry=entry, sl=sl, **common)
-    if abs(entry - sl) / entry > p.max_risk_pct:
+    dist = abs(entry - sl)
+    if dist / entry > p.max_risk_pct:
         reasons.append("SL_TOO_WIDE")
-
-    tp: Decimal | None = None
-    tp_src: str | None = None
-    best_net: Decimal | None = None
-    gross: Decimal | None = None
+    fee_in = costs.taker_fee if market else costs.maker_fee
+    cost = entry * fee_in + sl * costs.taker_fee + sl * costs.slippage
+    if cost > p.max_cost_frac * dist:
+        reasons.append("FEE_TOO_HIGH")
     ru = risk_unit(side, entry, sl, costs, market=market)
-    cands = targets(ctx, p, m1, ob, i, t, side, entry)
-    if p.tp_mode == "fixed":
-        # classic price R:R: the target is tp_rr stop distances away, wherever liquidity is
-        dist = abs(entry - sl) * p.tp_rr
-        px = _round(entry + dist if long else entry - dist, tick, ROUND_HALF_UP)
-        cands = [(px, f"1:{p.tp_rr.normalize()} R:R")]
-    elif p.tp_mode == "rr" and cands:
-        # exact net target, provided some liquidity lies at or beyond it
-        fee_in = entry * (costs.taker_fee if market else costs.maker_fee)
-        need = p.min_net_rr * ru + fee_in
-        # net = (|px - entry| - entry*maker - px*taker) / ru  solved for px
-        px = (
-            (entry + need) / (1 - costs.taker_fee)
-            if long
-            else (entry - need) / (1 + costs.taker_fee)
-        )
-        far_liq = max(c[0] for c in cands) if long else min(c[0] for c in cands)
-        px = _round(px, tick, ROUND_CEILING if long else ROUND_FLOOR)  # never below the R
-        if (far_liq >= px) if long else (far_liq <= px):
-            cands = [(px, f"{p.min_net_rr}R (liquidity beyond)")]
-        else:
-            cands = []
-    for price, src in cands:
-        px = (
-            price
-            if p.tp_mode in ("rr", "fixed")
-            else _round(price, tick, ROUND_FLOOR if long else ROUND_CEILING)
-        )
-        # keep the target on the entry side of the liquidity it sits at
-        reward = (px - entry) if long else (entry - px)
-        if reward <= 0:
-            continue
-        net = (
-            reward - entry * (costs.taker_fee if market else costs.maker_fee) - px * costs.taker_fee
-        ) / ru
-        best_net, gross = net, reward / abs(entry - sl)
-        if net >= p.min_net_rr and gross >= p.min_rr:
-            tp, tp_src = px, src
-            break
-    if tp is None:
-        reasons.append("NO_TARGET")
 
-    sw = _sweep(m1, ob, long)
-    m1_fvg = any(
-        z.kind == "FVG" and z.direction is side and ob.idx <= z.idx for z in zones_at(m1, i, p)
-    )
-    factors = {
-        "fresh": _fresh(poi_a, zone, ob.time),
-        "htf_sweep": _htf_sweep(ctx, p, m1, ob, ev, long),
-        "choch": ev.kind == "CHOCH",
-        "sweep": sw,
-        "m1_fvg": m1_fvg,
-        "poi_confluence": _poi_confluence(ctx, p, zone, t, side),
-        "bias_confirm": trend_at(ctx.get(p.confirm_bias_tf), t) == TREND[side],
-    }
-    score = sum(v for f, v in factors.items() if f in SCORED)
-    if score < p.min_score:
-        reasons.append("LOW_SCORE")
-    missing = [f for f in p.require if not factors.get(f, False)]
-    if missing:
-        reasons.append("MISSING_" + "_".join(m.upper() for m in missing))
+    def target(px: Decimal, src: str, fb: bool) -> Target:
+        return Target(px, src, fb, net_r(side, entry, px, ru, costs, market))
 
+    def fixed(r: Decimal) -> Target:
+        px = price_for_r(side, entry, r, ru, costs, market, tick)
+        return target(px, f"{r.normalize()}R", True)
+
+    lv = internal_liquidity(ctx[p.exec_tf], m1, p, t, side, entry)
+    tp1 = target(lv[0], lv[1], False) if lv else None
+    if tp1 is None or tp1.net_r < p.tp_inside_r:
+        tp1 = fixed(p.tp1_fallback_r)
+    lv = opposing_zone(za, m1, p, t, side, tp1.price)
+    tp2 = target(lv[0], lv[1], False) if lv else None
+    if tp2 is None or tp2.net_r < p.tp_inside_r:
+        tp2 = fixed(p.tp2_fallback_r)
+    tp3: Target | None = None
+    if not _beyond(side, tp2.price, tp1.price):
+        reasons.append("NO_TARGET")  # the fixed TP2 falls inside a far TP1
+    else:
+        ext = [x for x in external_liquidity(ctx, p, t, side) if _beyond(side, x[0], tp2.price)]
+        if ext:
+            px, src = min(ext, key=lambda x: abs(x[0] - tp2.price))
+            tp3 = target(px, src, False)
+    if tp2.net_r < p.min_net_rr_tp2:
+        reasons.append("LOW_RR")
     bal = equity if equity is not None and equity > 0 else p.account_usdt
     qty = (bal * p.risk_pct / ru).quantize(Decimal("0.00001"), rounding=ROUND_DOWN)
     notional = qty * entry
     leverage = notional / bal
     if leverage > p.max_leverage:
         reasons.append("LEVERAGE")
-    return Setup(
-        key=key,
-        direction=side,
-        accepted=not reasons,
-        reasons=tuple(reasons),
-        created_at=t,
-        trigger_kind=ev.kind,
-        trigger_event_id=ev.id,
-        bias=bias,
-        poi=zone,
-        poi_tf=poi_tf,
-        entry_zone=ob,
+    return result(
+        reasons,
         entry=entry,
         sl=sl,
-        tp=tp,
-        tp_source=tp_src,
-        rr=gross,
-        net_rr=best_net,
-        score=score,
-        factors=factors,
+        tp1=tp1,
+        tp2=tp2,
+        tp3=tp3,
         qty=qty,
         notional=notional,
         leverage=leverage,
     )
 
 
-def _htf_sweep(
+def order_for(
+    s: ZoneSetup,
     ctx: Mapping[str, Analysis],
     p: SmcParams,
-    m1: Analysis,
-    ob: Zone,
-    ev: StructureEvent,
-    long: bool,
-) -> bool:
-    """The move into the POI took out higher-timeframe liquidity: the M1 block's extreme runs
-    beyond a confirmed 15m/1h swing low (long) / high (short) that was still intact when the
-    M1 leg began (the swing broken by the trigger)."""
-    start = m1.bars[ev.level_idx].open_time
-    for tf in p.poi_tfs:
-        a = ctx.get(tf)
-        if a is None:
+    armed: int,
+    m1: Sequence[Candle],
+) -> tuple[datetime, Decimal | None] | None:
+    """When (and at which market price, None = resting limit) the order of an armed setup
+    exists: the arming minute's open, or the close of the confirming execution-TF bar."""
+    t = m1[armed].open_time
+    if not p.confirm_exec:
+        return t, None
+    c = confirmation(s, ctx[p.exec_tf], t + MINUTE, p)
+    return c
+
+
+def trail_stop(ax: Analysis, side: Side, t: datetime, p: SmcParams) -> Decimal | None:
+    """The trailing stop known at `t`: behind the last confirmed execution-TF swing low
+    (LONG) / high, minus trail_buffer_atr x ATR of that timeframe."""
+    k = last_closed(ax, t)
+    if k < 0:
+        return None
+    long = side is Side.LONG
+    atr = ax.atr[k] or Decimal(0)
+    for sw in reversed(ax.swings):
+        if sw.confirmed_idx > k or (sw.kind == "LOW") != long:
             continue
-        k = last_closed(a, start)
-        if k < 0:
-            continue
-        rng = m1_range(m1, a.bars[k].open_time + length(tf), ev.level_idx - 1)
-        seen = 0
-        for s in reversed(a.swings):
-            if s.confirmed_idx > k or (s.kind == "LOW") != long:
-                continue
-            seen += 1
-            if seen > 6:
-                break
-            took = ob.bottom < s.price if long else ob.top > s.price
-            if not took:
-                continue
-            intact = not _swept(a, s.idx, k, s.price, high=not long) and (
-                rng is None or (rng[1] >= s.price if long else rng[0] <= s.price)
-            )
-            if intact:
-                return True
-    return False
+        buf = p.trail_buffer_atr * atr
+        px = sw.price - buf if long else sw.price + buf
+        return _round(px, p.tick, ROUND_FLOOR if long else ROUND_CEILING)
+    return None
 
 
-def _fresh(a: Analysis, zone: Zone, tap: datetime) -> bool:
-    """First touch: the zone had not been traded into before the bar of the M1 reaction."""
-    if zone.tested_idx is None:
-        return True
-    return a.bars[zone.tested_idx].open_time + length(a.tf) > tap
+def tracked(s: Setup, p: SmcParams, costs: Costs) -> Tracked:
+    """The lifecycle object of an accepted setup (ladder shares as configured; the runner
+    replaces them with the shares its quantity steps allow)."""
+    assert s.entry is not None and s.sl is not None and s.tp1 and s.tp2
+    return Tracked(
+        key=s.key,
+        side=s.direction,
+        entry=s.entry,
+        sl=s.sl,
+        tp=None if s.tp3 is None else s.tp3.price,
+        created_at=s.created_at,
+        risk=risk_unit(s.direction, s.entry, s.sl, costs, market=s.market),
+        market=s.market,
+        tp1=s.tp1.price,
+        tp2=s.tp2.price,
+        frac1=p.tp1_frac,
+        frac2=p.tp2_frac,
+        time_stop_min=p.time_stop_min,
+    )
 
 
-def _sweep(m1: Analysis, ob: Zone, long: bool) -> bool:
-    """The M1 order block took out the last M1 swing on its side (liquidity grab)."""
-    for s in reversed(m1.swings):
-        if s.idx >= ob.idx or s.confirmed_idx > ob.idx:
-            continue
-        if (s.kind == "LOW") == long:
-            return ob.bottom < s.price if long else False
-        continue
-    return False
-
-
-def _poi_confluence(
-    ctx: Mapping[str, Analysis], p: SmcParams, zone: Zone, t: datetime, side: Side
-) -> bool:
-    other = "OB" if zone.kind == "FVG" else "FVG"
-    for tf in p.poi_tfs:
-        a = ctx.get(tf)
-        if a is None:
-            continue
-        k = last_closed(a, t)
-        if any(
-            z.kind == other and z.direction is side and z.overlaps(zone) for z in zones_at(a, k, p)
-        ):
-            return True
-    return False
-
-
-def find_setups(
-    ctx: Mapping[str, Analysis], p: SmcParams, costs: Costs, *, since_idx: int = 0
-) -> list[Setup]:
-    m1 = ctx[p.trigger_tf]
-    return [evaluate(e, ctx, p, costs) for e in m1.events if e.break_idx >= since_idx]
+def bar_trail(t: Tracked, ax: Analysis, bar: Candle, p: SmcParams) -> Decimal | None:
+    """The trailing stop for one M1 bar of a signal (only once TP2 is in)."""
+    return trail_stop(ax, t.side, bar.open_time, p) if t.state is State.TP2 else None

@@ -17,39 +17,64 @@ from sqlalchemy import Engine
 
 from sp2l.api.queries import _dec, jsonable, last_trade, one, rows
 from sp2l.core.types import Side
+from sp2l.smc.backtest import ladder_outcome
 from sp2l.smc.backtest import run as run_backtest
 from sp2l.smc.context import ContextBuilder, needed_tfs
 from sp2l.smc.history import coverage, extremes_since, load_bars, series_end
+from sp2l.smc.lifecycle import ACTIVE_SQL
 from sp2l.smc.model import VERSION, Analysis, Costs, SmcParams, Zone, ZoneStatus
-from sp2l.smc.strategy import evaluate, trend_at
+from sp2l.smc.store import setup_json, target_json
+from sp2l.smc.strategy import (
+    ARMED_BEFORE,
+    TREND,
+    evaluate,
+    find_arming,
+    trend_at,
+    zone_setups,
+)
 from sp2l.smc.structure import leg_gaps, update_zone
 from sp2l.smc.timeframes import ORDER, length
 
 TREND_LABEL = {1: "BULLISH", -1: "BEARISH", 0: "UNDEFINED"}
 REASON_TEXT = {
-    "NO_BIAS": "Higher-timeframe bias not yet defined",
-    "BIAS_MISMATCH": "Against the higher-timeframe bias",
-    "NO_ORDER_BLOCK": "No M1 order block behind the break",
-    "WARMUP": "Not enough M1 history",
-    "NO_POI": "Not inside an unmitigated higher-timeframe zone",
+    "NO_BIAS": "Bias timeframe has no trend yet",
+    "BIAS_MISMATCH": "Against the bias timeframe's trend",
+    "ZONE_INVALID": "Order block closed through or expired before the order",
+    "NOT_FRESH": "Order block already touched (only the first touch is an entry)",
     "BAD_STOP": "Stop would sit on the wrong side of the entry",
-    "SL_TOO_WIDE": "Stop farther than the allowed risk",
-    "NO_TARGET": "No liquidity target pays the minimum net R:R after fees",
-    "LOW_SCORE": "Confluence score below the minimum",
+    "SL_TOO_WIDE": "Stop farther than max_risk_pct of the price",
+    "FEE_TOO_HIGH": "Round-trip cost above max_cost_frac of the stop distance",
+    "NO_TARGET": "The fixed TP2 would sit inside TP1",
+    "LOW_RR": "TP2 pays less than min_net_rr_tp2 after fees and slippage",
     "LEVERAGE": "Position size would need more than the allowed leverage",
-    "MISSING_SWEEP": "Required liquidity sweep missing",
-    "MISSING_HTF_SWEEP": "Required higher-timeframe liquidity sweep missing",
-    "MISSING_FRESH": "Required fresh POI missing",
 }
-FACTOR_TEXT = {
-    "fresh": "Fresh POI (first touch)",
-    "htf_sweep": "Higher-timeframe liquidity swept (filter only)",
-    "choch": "M1 CHoCH (reversal)",
-    "sweep": "Liquidity sweep before the break",
-    "m1_fvg": "Displacement FVG on M1",
-    "poi_confluence": "OB and FVG overlap at the POI",
-    "bias_confirm": "Confirmation timeframe agrees",
+RULE_TEXT = {
+    "sweep": "Liquidity sweep: a zone-TF wick beyond unswept swing lows / equal lows (highs)"
+    " that closes back inside",
+    "displacement": "Displacement: a zone-TF bar closes beyond the last swing (BOS / CHoCH)"
+    " within sweep_max_bars of the sweep",
+    "order_block": "Order block: the last opposite-colour candle before the break, at or after"
+    " the sweep, at least ob_min_atr x ATR",
+    "fvg": "FVG right after the order block (any size): the setup is known when it closes",
+    "fresh": "Only the first touch: the order is armed when price first trades into the FVG",
+    "bias": "Bias timeframe trend in the trade's direction when the order is placed",
 }
+SETUP_STATE = {"PENDING": "pending", "OPEN": "open", "TP1": "open", "TP2": "open"}
+FRESH_ARMING = timedelta(minutes=3)  # the runner's window for a new arming
+
+
+def plan_json(s: Any) -> dict[str, Any]:
+    """An evaluated setup (strategy.Setup) as the chart shows it."""
+    return {
+        "accepted": s.accepted,
+        "reasons": [{"code": r, "text": REASON_TEXT.get(r, r)} for r in s.reasons],
+        "entry": None if s.entry is None else _dec(s.entry),
+        "sl": None if s.sl is None else _dec(s.sl),
+        "tp1": target_json(s.tp1),
+        "tp2": target_json(s.tp2),
+        "tp3": target_json(s.tp3),
+        "market": s.market,
+    }
 
 
 def _t(d: datetime) -> str:
@@ -242,10 +267,92 @@ class SmcView:
             )
         return {"tf": tf, "upto": _t(upto), "items": items}
 
+    def setups(
+        self,
+        ctx: dict[str, Analysis],
+        upto: datetime,
+        price: Decimal | None,
+        forming: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """(shown, every setup): the zone setups by state. Shown by default: fresh, valid,
+        with the bias and within chart_near_atr x ATR of price, or tied to an active
+        signal; those first, then the nearest, at most chart_top_n (more if positions)."""
+        p = self.params
+        za, m1 = ctx[p.zone_tf], ctx["1m"].bars
+        k = len(za.bars) - 1
+        if k < 0:
+            return [], []
+        bias = trend_at(ctx.get(p.bias_tf), upto)
+        rng = self._live_range(za, upto, forming)
+        atr = za.atr[k]
+        act = {
+            r["key"]: r
+            for r in rows(
+                self.db,
+                "SELECT id, key, state FROM smc_signals WHERE symbol = :s AND state IN "
+                + ACTIVE_SQL,
+                s=self.symbol,
+            )
+        }
+        out = []
+        for zs in zone_setups(za, p):
+            long = zs.direction is Side.LONG
+            sig = act.get(zs.key)
+            armed = find_arming(zs, za, k, m1)
+            live_in = rng is not None and (rng[1] <= zs.gap[1] if long else rng[0] >= zs.gap[0])
+            if sig is not None:
+                st = SETUP_STATE.get(sig["state"], "open")
+            elif not zs.ob.valid_at(k):
+                st = "expired" if k > zs.ob.expires_idx else "invalid"
+            elif armed is not None:  # traded into the FVG: armed now, used once that minute passed
+                recent = armed != ARMED_BEFORE and m1[armed].open_time >= upto - FRESH_ARMING
+                st = "armed" if recent else "used"
+            elif live_in:
+                st = "armed"
+            else:
+                st = "waiting"
+            edge = zs.edge
+            dist = None
+            if price is not None and atr:
+                dist = max(Decimal(0), (price - edge) if long else (edge - price)) / atr
+            out.append(
+                {
+                    **setup_json(zs),
+                    "state": st,
+                    "aligned": bias == TREND[zs.direction],
+                    "age_min": int((upto - zs.confirmed_at).total_seconds() // 60),
+                    "distance_atr": None if dist is None else _dec(round(dist, 2)),
+                    "signal_id": None if sig is None else sig["id"],
+                    "_zs": zs,
+                }
+            )
+        tied = [x for x in out if x["signal_id"] is not None]
+        near = sorted(
+            (
+                x
+                for x in out
+                if x["signal_id"] is None
+                and x["state"] in ("waiting", "armed")
+                and x["aligned"]
+                and x["distance_atr"] is not None
+                and Decimal(x["distance_atr"]) <= p.chart_near_atr
+            ),
+            key=lambda x: Decimal(x["distance_atr"]),
+        )
+        shown = tied + near[: max(0, p.chart_top_n - len(tied))]
+        for x in shown:
+            if x["signal_id"] is None:
+                x["plan"] = plan_json(evaluate(x["_zs"], ctx, p, self.costs, upto))
+        for x in out:
+            x.pop("_zs")
+        return shown, out
+
     def analysis(self, tf: str, bars: int) -> dict[str, Any]:
         p = self.params
-        htfs = [x for x in ORDER if ORDER.index(x) > ORDER.index(tf) and x in p.poi_tfs]
-        upto, ctx = self._context(sorted({tf, *htfs}, key=ORDER.index))
+        htfs = [
+            x for x in ORDER if ORDER.index(x) > ORDER.index(tf) and x in (p.zone_tf, p.bias_tf)
+        ]
+        upto, ctx = self._context(sorted({tf, *htfs, *needed_tfs(p)}, key=ORDER.index))
         if upto is None:
             return {"tf": tf, "ready": False}
         a = ctx[tf]
@@ -278,6 +385,8 @@ class SmcView:
             for zd, z in _with_zone(htf_zones, ha.zones):
                 if z.kind == "OB":
                     zd["gaps"] = ob_gaps(z, ha, hk, hr, p)
+        shown, every = self.setups(ctx, upto, price, forming)
+        floor = len(a.bars) - 1 - p.lookback(tf)
         events = [
             {
                 "id": e.id,
@@ -288,7 +397,7 @@ class SmcView:
                 "to": _t(e.break_time),
             }
             for e in a.events
-            if e.break_time >= first
+            if e.break_time >= first and e.break_idx >= floor
         ]
         return {
             "tf": tf,
@@ -303,6 +412,9 @@ class SmcView:
             "htf_zones": htf_zones,
             "events": events,
             "liquidity": liquidity(a, price, rng=rng),
+            "setups": shown,
+            "setups_all": every,
+            "zone_tf": p.zone_tf,
             "range": dealing_range(a),
             "swings": [
                 {"kind": s.kind, "price": _dec(s.price), "time": _t(s.time)}
@@ -314,13 +426,12 @@ class SmcView:
     # ---- top-down radar -----------------------------------------------------------------
     def radar(self) -> dict[str, Any]:
         p = self.params
-        upto, ctx = self._context(needed_tfs(p) if p.trigger_tf in ORDER else list(ORDER))
+        upto, ctx = self._context(list(ORDER))
         if upto is None:
             return {"ready": False}
         price = self._price()
-        roles = {p.bias_tf: "Bias", p.confirm_bias_tf: "Confirmation", p.trigger_tf: "Trigger"}
-        for tf in p.poi_tfs:
-            roles[tf] = "POI" if tf not in roles else roles[tf] + " + POI"
+        roles = {p.bias_tf: "Bias", p.zone_tf: "Zone (sweep, OB + FVG)", p.exec_tf: "Execution"}
+        roles.setdefault("1m", "Fills and exits")
         tfs = []
         for tf in ORDER:
             a = ctx.get(tf)
@@ -344,60 +455,16 @@ class SmcView:
                 }
             )
         bias = trend_at(ctx.get(p.bias_tf), upto)
-        side = Side.LONG if bias == 1 else Side.SHORT if bias == -1 else None
-        pois = []
-        forming = self._forming()
-        for tf in p.poi_tfs:
-            a = ctx.get(tf)
-            if a is None or side is None:
-                continue
-            k = len(a.bars) - 1
-            rng = self._live_range(a, upto, forming)
-            for z in a.zones:
-                if z.direction is not side or z.kind not in p.poi_kinds or not z.valid_at(k):
-                    continue
-                zd = live_zone(zone_out(z, a, k), rng, p)
-                if zd is None:
-                    continue
-                dist = None
-                if price is not None:
-                    edge = z.top if side is Side.LONG else z.bottom
-                    dist = (price - edge) / price if side is Side.LONG else (edge - price) / price
-                pois.append({**zd, "distance": None if dist is None else _dec(round(dist, 6))})
-        pois.sort(
-            key=lambda z: abs(Decimal(z["distance"])) if z["distance"] is not None else Decimal(9)
-        )
-        trig = ctx.get(p.trigger_tf)
-        recent = []
-        if trig is not None:
-            for e in trig.events[-12:]:
-                s = evaluate(e, ctx, p, self.costs)
-                recent.append(
-                    {
-                        "time": _t(s.created_at),
-                        "kind": s.trigger_kind,
-                        "direction": s.direction.value,
-                        "accepted": s.accepted,
-                        "reasons": [
-                            {"code": r, "text": REASON_TEXT.get(r, r.replace("_", " ").title())}
-                            for r in s.reasons
-                        ],
-                        "score": s.score,
-                        "factors": s.factors,
-                        "poi_tf": s.poi_tf,
-                        "net_rr": None if s.net_rr is None else _dec(round(s.net_rr, 2)),
-                    }
-                )
-        recent.reverse()
+        shown, every = self.setups(ctx, upto, price, self._forming())
         return {
             "ready": True,
             "upto": _t(upto),
             "price": None if price is None else _dec(price),
             "bias": TREND_LABEL[bias],
             "timeframes": tfs,
-            "pois": pois[:8],
-            "triggers": recent,
-            "factor_text": FACTOR_TEXT,
+            "setups": shown,
+            "recent": list(reversed(every[-12:])),
+            "rule_text": RULE_TEXT,
         }
 
     # ---- per-market performance ----------------------------------------------------------
@@ -442,14 +509,15 @@ class SmcView:
                         "created_at": _t(s.created_at),
                         "side": s.direction.value,
                         "entry": _dec(t.entry),
-                        "sl": _dec(t.sl),
-                        "tp": _dec(t.tp),
+                        "sl": _dec(s.sl) if s.sl is not None else None,
+                        "tp1": target_json(s.tp1),
+                        "tp2": target_json(s.tp2),
+                        "tp3": target_json(s.tp3),
                         "state": t.state.value,
+                        "ladder": ladder_outcome(t),
                         "result_r": None if t.result_r is None else _dec(round(t.result_r, 2)),
                         "filled_at": None if t.filled_at is None else _t(t.filled_at),
                         "closed_at": None if t.closed_at is None else _t(t.closed_at),
-                        "score": s.score,
-                        "poi_tf": s.poi_tf,
                     }
                     for s, t in trades[-200:]
                 ],
@@ -499,34 +567,35 @@ class SmcView:
                 "swing_len",
                 "atr_len",
                 "ob_lookback",
-                "fvg_min_atr",
+                "ob_rule",
                 "ob_min_atr",
                 "ob_require_fvg",
+                "fvg_adjacent",
+                "fvg_min_atr",
                 "fvg_fill",
+                "eq_tol_atr",
+                "sweep_max_bars",
             ],
-            "Top-down model": ["bias_tf", "confirm_bias_tf", "poi_tfs", "poi_kinds", "trigger_tf"],
-            "Entry / stop / target": [
-                "entry_mode",
-                "entry_on",
-                "sl_mode",
-                "sl_buffer_atr",
-                "min_sl_atr",
-                "max_risk_pct",
-                "tp_mode",
-                "tp_rr",
-                "min_rr",
-                "target_tfs",
-                "min_net_rr",
-                "tick",
+            "Top-down model": ["bias_tf", "zone_tf", "exec_tf", "confirm_exec"],
+            "Entry / stop / filters": ["sl_buffer_atr", "max_risk_pct", "max_cost_frac", "tick"],
+            "Take-profit ladder": [
+                "tp1_frac",
+                "tp2_frac",
+                "tp_inside_r",
+                "tp1_fallback_r",
+                "tp2_fallback_r",
+                "min_net_rr_tp2",
+                "trail_buffer_atr",
+                "day_boundary",
             ],
-            "Quality": ["min_score", "require"],
             "Lifecycle": [
                 "pending_expiry_min",
+                "time_stop_min",
                 "max_hold_min",
-                "be_at_r",
                 "max_active",
                 "max_positions",
             ],
+            "Chart": ["chart_near_atr", "chart_top_n"],
             "Data": [f"lookback_{tf}" for tf in ORDER] + ["history_days"],
             "Shared wallet": ["account_usdt", "risk_pct", "max_leverage"],
         }
@@ -554,7 +623,7 @@ class SmcView:
                     "slippage": self.costs.slippage,
                 }
             ),
-            "factors": FACTOR_TEXT,
+            "rules": RULE_TEXT,
             "reasons": REASON_TEXT,
         }
 
@@ -580,21 +649,52 @@ def last_prices(db: Engine, symbols: list[str]) -> dict[str, Decimal]:
     return out
 
 
+FILLED_STATES = ("OPEN", "TP1", "TP2")
+
+
 def open_pnl(
     r: dict[str, Any], price: Decimal | None, costs: Costs
 ) -> tuple[str | None, str | None]:
-    """(open R, open PnL in USDT after the entry fee and the exit fee at `price`)."""
-    if r["state"] != "OPEN" or price is None:
+    """(R of the position so far: realized parts + the open rest marked at `price` after its
+    exit fee; unrealized PnL in USDT of the open rest)."""
+    if r["state"] not in FILLED_STATES or price is None:
         return None, None
     sgn = 1 if r["side"] == "LONG" else -1
     entry = Decimal(r["entry"])
     fee_in = costs.taker_fee if (r.get("detail") or {}).get("market") else costs.maker_fee
     net = (price - entry) * sgn - entry * fee_in - price * costs.taker_fee  # per unit, as R is
     risk = Decimal(r["risk"]) if r.get("risk") else abs(entry - Decimal(r["sl"]))
-    open_r = _dec(round(net / risk, 2)) if risk else None
+    parts = r.get("parts") or []
+    rest = 1 - sum((Decimal(x["frac"]) for x in parts), Decimal(0))
+    done = sum((Decimal(x["r"]) for x in parts), Decimal(0))
+    open_r = _dec(round(done + rest * net / risk, 2)) if risk else None
     qty = Decimal(r["qty"]) if r.get("qty") else Decimal(0)
-    pnl = qty * net
-    return open_r, _dec(round(pnl, 4))
+    return open_r, _dec(round(qty * rest * net, 4))
+
+
+def ladder_view(r: dict[str, Any]) -> list[dict[str, Any]]:
+    """TP1-TP3 of a signal with their net R, share and whether they were hit."""
+    tg = r.get("targets") or {}
+    d = r.get("detail") or {}
+    hit = {x["kind"] for x in (r.get("parts") or [])}
+    fr = {"tp1": d.get("frac1"), "tp2": d.get("frac2")}
+    out = []
+    for name in ("tp1", "tp2", "tp3"):
+        x = tg.get(name)
+        if not x:
+            continue
+        out.append(
+            {
+                "name": name.upper(),
+                "price": x["price"],
+                "net_r": x["net_r"],
+                "source": x["source"],
+                "fallback": x["fallback"],
+                "frac": fr.get(name),
+                "hit": (name.upper() in hit) or (name == "tp3" and "TP" in hit),
+            }
+        )
+    return out
 
 
 def signals(
@@ -611,37 +711,41 @@ def signals(
     expires at `deadline`, an OPEN one is closed at market at `deadline`."""
     where = ["symbol = ANY(:syms)"]
     if active is True:
-        where.append("state IN ('PENDING', 'OPEN')")
+        where.append("state IN " + ACTIVE_SQL)
     elif active is False:
-        where.append("state NOT IN ('PENDING', 'OPEN')")
+        where.append("state NOT IN " + ACTIVE_SQL)
     if since is not None:
         where.append("(closed_at IS NULL OR closed_at >= :since)")
     out = rows(
         db,
         "SELECT id, symbol, key, side, state, created_at, entry, sl, tp, risk, rr, net_rr, score,"
         " tp_source, trigger_kind, poi_tf, detail, qty, notional, leverage, margin, filled_at,"
-        " closed_at, exit_price, result_r, pnl_usdt, fees_usdt, updated_at FROM smc_signals WHERE "
+        " closed_at, exit_price, result_r, pnl_usdt, fees_usdt, updated_at, tp1, tp2, tp3, targets,"
+        " parts, qty_open, realized_r, version FROM smc_signals WHERE "
         + " AND ".join(where)
         + " ORDER BY created_at DESC LIMIT :n",
         syms=symbols,
         n=limit,
         since=since,
     )
-    prices = last_prices(db, sorted({r["symbol"] for r in out if r["state"] == "OPEN"}))
+    prices = last_prices(db, sorted({r["symbol"] for r in out if r["state"] in FILLED_STATES}))
     for r in out:
         for k, dp in (("result_r", 2), ("net_rr", 2), ("rr", 2), ("pnl_usdt", 4), ("fees_usdt", 4)):
             r[k] = None if r[k] is None else _dec(round(Decimal(r[k]), dp))
         r["open_r"], r["open_pnl"] = open_pnl(r, prices.get(r["symbol"]), costs or Costs())
         sp = (params or {}).get(r["symbol"])
-        r["deadline"] = None
+        r["deadline"] = r["time_stop_at"] = None
+        r["ladder"] = ladder_view(r)
+        ts_min = int((r.get("detail") or {}).get("time_stop_min") or 0)
         if sp is not None and r["state"] == "PENDING":
             r["deadline"] = _t(
                 datetime.fromisoformat(r["created_at"]) + timedelta(minutes=sp.pending_expiry_min)
             )
-        elif sp is not None and r["state"] == "OPEN" and r["filled_at"]:
-            r["deadline"] = _t(
-                datetime.fromisoformat(r["filled_at"]) + timedelta(minutes=sp.max_hold_min)
-            )
+        elif sp is not None and r["state"] in FILLED_STATES and r["filled_at"]:
+            filled = datetime.fromisoformat(r["filled_at"])
+            r["deadline"] = _t(filled + timedelta(minutes=sp.max_hold_min))
+            if r["state"] == "OPEN" and ts_min > 0:
+                r["time_stop_at"] = _t(filled + timedelta(minutes=ts_min))
         sl0 = (r.get("detail") or {}).get("sl_initial")
         r["sl_initial"] = sl0
         r["at_breakeven"] = sl0 is not None and Decimal(sl0) != Decimal(r["sl"])
@@ -703,7 +807,8 @@ def wallet(
         return {"ready": False}
     ledger = rows(
         db,
-        "SELECT l.ts, l.symbol, l.kind, l.amount, l.balance_after, l.signal_id, s.side, s.state"
+        "SELECT l.ts, l.symbol, l.kind, l.amount, l.balance_after, l.signal_id, l.part, l.fees,"
+        " s.side, s.state"
         " FROM smc_wallet_ledger l LEFT JOIN smc_signals s ON s.id = l.signal_id"
         " WHERE l.wallet_id = :w ORDER BY l.id",
         w=w["id"],

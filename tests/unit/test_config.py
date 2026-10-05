@@ -39,8 +39,10 @@ def test_valid_values_map_to_costs():
 
 
 def test_smc_section_overrides_defaults_and_rejects_unknown_keys():
-    p = cfg({}, {"swing_len": 3, "poi_tfs": ["15m", "5m"], "min_net_rr": "2"}).smc_params()
-    assert (p.swing_len, p.poi_tfs, p.min_net_rr) == (3, ("15m", "5m"), D(2))
+    p = cfg({}, {"swing_len": 3, "zone_tf": "15m", "min_net_rr_tp2": "2.5"}).smc_params()
+    assert (p.swing_len, p.zone_tf, p.min_net_rr_tp2) == (3, "15m", D("2.5"))
+    with pytest.raises(ConfigError, match="unknown"):
+        cfg({}, {"poi_tfs": ["1h"]}).smc_params()  # SMC-1.0 keys are gone
     with pytest.raises(ConfigError, match="unknown"):
         cfg({}, {"swing_length": 3}).smc_params()
 
@@ -77,5 +79,5 @@ def test_repo_configs_load_and_costs_match_recorded_evidence():
 
 
 def test_boolean_parameters_stay_booleans():
-    p = cfg({}, {"ob_require_fvg": True, "tp1_be": "false"}).smc_params()
-    assert p.ob_require_fvg is True and p.tp1_be is False
+    p = cfg({}, {"ob_require_fvg": True, "confirm_exec": "false"}).smc_params()
+    assert p.ob_require_fvg is True and p.confirm_exec is False

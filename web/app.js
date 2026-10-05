@@ -110,8 +110,12 @@ function sideTag(side) {
 }
 const symName = (s) => (state.markets[s] ? state.markets[s].display : s);
 const TREND = { BULLISH: ["ok", "up", "Bullish"], BEARISH: ["bad", "down", "Bearish"], UNDEFINED: ["neutral", "flat", "Undefined"] };
-const STATE = { PENDING: ["info", "Pending entry"], OPEN: ["warn", "Open"], TP: ["ok", "Target hit"], SL: ["bad", "Stopped out"],
-  EXPIRED: ["neutral", "Expired"], MISSED: ["neutral", "Missed"], TIMEOUT: ["neutral", "Timed out"], CANCELLED: ["neutral", "Cancelled"] };
+const STATE = { PENDING: ["info", "Pending entry"], OPEN: ["warn", "Open"], TP1: ["ok", "TP1 · stop at break-even"], TP2: ["ok", "TP2 · trailing"],
+  TP: ["ok", "TP3 hit"], SL: ["bad", "Stopped out"], BE: ["neutral", "Break-even exit"], TRAIL: ["ok", "Trailing stop exit"],
+  TIME_STOP: ["neutral", "Time stop"], EXPIRED: ["neutral", "Expired"], MISSED: ["neutral", "Missed"], TIMEOUT: ["neutral", "Timed out"],
+  CANCELLED: ["neutral", "Cancelled"] };
+const ACTIVE = ["PENDING", "OPEN", "TP1", "TP2"], FILLED = ["OPEN", "TP1", "TP2"];
+const isActive = (x) => ACTIVE.includes(x.state), isFilled = (x) => FILLED.includes(x.state);
 const stateTag = (s) => { const [t, l] = STATE[s] || ["neutral", s]; return tag(t, l); };
 function table(target, headers, data, rowFn, emptyText) {
   const t = typeof target === "string" ? $(target) : target;
@@ -139,7 +143,7 @@ const LAYERS = [
   ["positions", "Positions", "--c-bull"],
 ];
 const prefs = loadPrefs();
-const state = { view: "chart", symbol: prefs.symbol || null, tf: prefs.tf || "15m", mode: prefs.mode || "focus",
+const state = { view: "chart", symbol: prefs.symbol || null, tf: prefs.tf || "15m", mode: prefs.mode === "debug" ? "debug" : "setups",
   layers: Object.assign({ ob: true, fvg: true, structure: true, liquidity: true, pd: false, htf: true, positions: true }, prefs.layers || {}),
   markets: {}, symbols: [], chart: null, series: null, layer: null, data: [], times: [], byTime: new Map(), analysis: null,
   signals: [], allSignals: [], focus: null, overview: null, radar: null, live: null, lastPrice: null,
@@ -147,55 +151,27 @@ const state = { view: "chart", symbol: prefs.symbol || null, tf: prefs.tf || "15
 function loadPrefs() { try { return JSON.parse(localStorage.getItem("smc-prefs") || "{}"); } catch { return {}; } }
 function savePrefs() { try { localStorage.setItem("smc-prefs", JSON.stringify({ symbol: state.symbol, tf: state.tf, mode: state.mode, layers: state.layers, alerts: state.alerts })); } catch { /* storage unavailable */ } }
 
-/* ---- focus view (display only) ---------------------------------------------------------------
- * The backend returns every valid zone, break and liquidity level. "Focus" draws only what
- * matters for the next decision: the zones nearest the price, overlapping zones merged, the
- * latest breaks and the nearest liquidity. "All" draws everything the backend returned. */
-const zdist = (z, p) => (p > +z.top ? p - +z.top : p < +z.bottom ? +z.bottom - p : 0);
-function nearest(zones, price, perSide) {
-  const by = (a, b) => zdist(a, price) - zdist(b, price);
-  const inside = zones.filter((z) => zdist(z, price) === 0);
-  const above = zones.filter((z) => +z.bottom > price).sort(by).slice(0, perSide);
-  const below = zones.filter((z) => +z.top < price).sort(by).slice(0, perSide);
-  return [...inside, ...above, ...below];
-}
-function merged(zones) {
-  const groups = new Map();
-  for (const z of zones) {
-    const k = `${z.tf}|${z.kind}|${z.direction}`;
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(z);
-  }
-  const out = [];
-  for (const list of groups.values()) {
-    list.sort((a, b) => +a.bottom - +b.bottom);
-    let cur = null;
-    for (const z of list) {
-      if (cur && +z.bottom <= +cur.top) {  // overlapping: one box for both
-        cur = { ...cur, top: String(Math.max(+cur.top, +z.top)), from: cur.from < z.from ? cur.from : z.from,
-          tested: cur.tested && z.tested, n: (cur.n || 1) + 1, gaps: [...(cur.gaps || []), ...(z.gaps || [])] };
-      } else { if (cur) out.push(cur); cur = { ...z }; }
-    }
-    if (cur) out.push(cur);
-  }
-  return out;
+/* ---- what the chart draws (display only) --------------------------------------------------
+ * "Setups" (default) draws only what the engine can trade: the zone setups the backend selected
+ * (fresh, valid, with the bias, near the price or tied to a position) with their FVG, sweep,
+ * structure break and target levels, plus the positions. "All zones (debug)" draws every zone,
+ * gap, break, liquidity level and setup the backend returned. */
+function setupEvent(s) {
+  return { id: s.event.id, kind: s.event.kind, direction: s.direction, level: s.event.level, from: s.event.from, to: s.event.to };
 }
 function shown() {
   const a = state.analysis;
-  if (!a || !a.ready || state.mode === "all" || state.lastPrice === null) return a;
-  const p = state.lastPrice, pk = poiKinds();
-  const own = merged(a.zones || []);
-  const zones = [...nearest(own.filter((z) => z.kind === "OB"), p, 2), ...nearest(own.filter((z) => z.kind === "FVG"), p, 1)];
-  const htf = nearest(merged((a.htf_zones || []).filter((z) => pk.includes(z.kind))), p, 1);
-  const events = (a.events || []).slice(-3);
-  const bsl = (a.liquidity || []).filter((x) => x.kind === "BSL").sort((x, y) => +x.price - +y.price).slice(0, 1);
-  const ssl = (a.liquidity || []).filter((x) => x.kind === "SSL").sort((x, y) => +y.price - +x.price).slice(0, 1);
-  return { ...a, zones, htf_zones: htf, events, liquidity: [...bsl, ...ssl], focus: true };
+  if (!a || !a.ready) return a;
+  if (state.mode === "debug") return { ...a, setups: a.setups_all || [], debug: true };
+  const setups = a.setups || [];
+  const own = setups.map(setupEvent), ids = new Set(own.map((e) => e.id));
+  const events = [...own, ...(a.events || []).slice(-3).filter((e) => !ids.has(e.id))];
+  return { ...a, zones: [], htf_zones: [], liquidity: [], events, setups };
 }
 function shownPositions() {
-  if (state.mode === "all") return state.signals;
-  const act = state.signals.filter((x) => x.state === "OPEN" || x.state === "PENDING");
-  const closed = state.signals.filter((x) => !(x.state === "OPEN" || x.state === "PENDING")).slice(0, 3);
+  if (state.mode === "debug") return state.signals;
+  const act = state.signals.filter(isActive);
+  const closed = state.signals.filter((x) => !isActive(x)).slice(0, 3);
   return [...act, ...closed, ...state.signals.filter((x) => x.id === state.focus && !act.includes(x) && !closed.includes(x))];
 }
 
@@ -302,7 +278,7 @@ function drawZone(ctx, z, size, htf) {
   if (!s || y1 === null || y2 === null) return;
   const c = zoneColor(z), fresh = !z.tested;
   const h = Math.max(2, y2 - y1);
-  const light = state.mode === "focus" && z.kind === "FVG";  // imbalance: lighter fill
+  const light = z.kind === "FVG";  // imbalance: lighter fill
   ctx.fillStyle = rgba(c, htf ? 0.08 : z.kind === "OB" ? (fresh ? 0.24 : 0.14) : light ? (fresh ? 0.1 : 0.05) : (fresh ? 0.2 : 0.12));
   ctx.fillRect(s[0], y1, s[1] - s[0], h);
   if (htf) { ctx.fillStyle = hatch(ctx, c); ctx.fillRect(s[0], y1, s[1] - s[0], h); hatchCache = null; }
@@ -327,6 +303,64 @@ function drawGaps(ctx, z, size, htf, drawn) {
     ctx.fillStyle = rgba(c, 0.1); ctx.fillRect(s[0], y1, s[1] - s[0], Math.max(2, y2 - y1));
     ctx.strokeStyle = rgba(c, 0.5); ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
     ctx.strokeRect(s[0], y1, s[1] - s[0], Math.max(2, y2 - y1)); ctx.setLineDash([]);
+  }
+}
+/* A zone setup: the order block coloured by its state, the FVG right after it and the sweep
+ * that started it (dashed line at the swept level, dot at the wick). */
+const SETUP_COLOR = { armed: "--c-armed", pending: "--c-pending", open: "--c-open", used: "--c-text", invalid: "--c-text", expired: "--c-text" };
+const setupColor = (s) => SETUP_COLOR[s.state] || (s.direction === "LONG" ? "--c-bull" : "--c-bear");
+const SPENT = ["used", "invalid", "expired"];
+function ageText(min) {
+  if (min === null || min === undefined) return "";
+  return min < 60 ? `${min}m` : min < 1440 ? `${Math.floor(min / 60)}h` : `${Math.floor(min / 1440)}d`;
+}
+function drawSetup(ctx, s, size) {
+  const W = size.width, c = setupColor(s), spent = SPENT.includes(s.state);
+  const ob = span(s.ob.time, null, W), y1 = yOf(s.ob.top), y2 = yOf(s.ob.bottom);
+  if (ob && y1 !== null && y2 !== null) {
+    const h = Math.max(2, y2 - y1);
+    ctx.fillStyle = rgba(c, spent ? 0.05 : 0.2); ctx.fillRect(ob[0], y1, ob[1] - ob[0], h);
+    ctx.strokeStyle = rgba(c, spent ? 0.35 : 1); ctx.lineWidth = spent ? 1 : 2; ctx.setLineDash(spent ? [3, 3] : []);
+    ctx.strokeRect(ob[0], y1, ob[1] - ob[0], h); ctx.setLineDash([]);
+    const why = s.plan && !s.plan.accepted && s.plan.reasons.length ? ` · ${s.plan.reasons[0].code}` : "";
+    zoneLabels.push([`${s.tf} OB · ${ageText(s.age_min)} · ${s.state}${why}`, Math.max(ob[0], 0) + 3, y1 + 10, c, "left", !spent]);
+  }
+  const fc = s.direction === "LONG" ? "--c-fvg-bull" : "--c-fvg-bear";
+  const fv = span(s.fvg.time, null, W), f1 = yOf(s.fvg.top), f2 = yOf(s.fvg.bottom);
+  if (fv && f1 !== null && f2 !== null) {
+    const h = Math.max(2, f2 - f1);
+    ctx.fillStyle = rgba(fc, spent ? 0.04 : 0.14); ctx.fillRect(fv[0], f1, fv[1] - fv[0], h);
+    ctx.strokeStyle = rgba(fc, spent ? 0.3 : 0.85); ctx.lineWidth = 1; ctx.setLineDash([3, 2]);
+    ctx.strokeRect(fv[0], f1, fv[1] - fv[0], h); ctx.setLineDash([]);
+    if (!spent) zoneLabels.push([`${s.tf} FVG`, Math.max(fv[0], 0) + 3, f1 + (s.direction === "LONG" ? 10 : -10), fc, "left", false]);
+  }
+  const xs = xOf(secs(s.sweep.time)), yl = yOf(s.sweep.level), yw = yOf(s.sweep.wick);
+  if (xs !== null && yl !== null && yw !== null && xs > -40 && xs < W + 40) {
+    ctx.strokeStyle = rgba("--c-liq", spent ? 0.4 : 0.95); ctx.lineWidth = 1.4; ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(xs - 36, yl); ctx.lineTo(xs + 14, yl); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = rgba("--c-liq", spent ? 0.4 : 1); ctx.beginPath(); ctx.arc(xs, yw, 3.5, 0, Math.PI * 2); ctx.fill();
+    if (!spent) zoneLabels.push(["Sweep", xs - 36, yl + (s.direction === "LONG" ? 11 : -11), "--c-liq", "left", false, "plain"]);
+  }
+}
+/** Planned entry / stop / TP1-TP3 of a setup that has no order yet (dotted, from its break). */
+function drawPlan(ctx, s, size, drawnPx) {
+  const pl = s.plan, W = size.width;
+  if (!pl || pl.entry === null) return;
+  const x0 = xOf(secs(s.event.to));
+  if (x0 === null || x0 > W) return;
+  const long = s.direction === "LONG";
+  const line = (px, c, text, dash) => {
+    const y = yOf(px);
+    if (y === null || drawnPx.has(`${px}`)) return;
+    drawnPx.add(`${px}`);
+    ctx.strokeStyle = rgba(c, 0.75); ctx.lineWidth = 1; ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(Math.max(x0, 0), y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
+    plainLabel(ctx, text, W - 6, y + (long ? -9 : 9), c, size, "right");
+  };
+  if (pl.sl) line(pl.sl, "--c-bear", `planned SL ${pxs(pl.sl)}`, [2, 3]);
+  for (const name of ["tp1", "tp2", "tp3"]) {
+    const t = pl[name];
+    if (t) line(t.price, "--c-bull", `${name.toUpperCase()} ${t.source}${t.fallback ? " (fixed)" : ""} · ${(+t.net_r).toFixed(2)}R`, [1, 3]);
   }
 }
 function drawBelow(ctx, size) {
@@ -357,6 +391,7 @@ function drawBelowZones(ctx, size) {
   const own = (a.zones || []).filter((z) => (z.kind === "OB" && L.ob) || (z.kind === "FVG" && L.fvg));
   for (const z of own) { drawn.add(z.id); drawZone(ctx, z, size, false); }
   if (L.ob && L.fvg) for (const z of own) drawGaps(ctx, z, size, false, drawn);
+  if (L.ob) for (const st of a.setups || []) drawSetup(ctx, st, size);
 }
 function drawAbove(ctx, size) {
   placed = [];  // same start on every redraw: labels never drift
@@ -382,47 +417,79 @@ function drawAbove(ctx, size) {
       plainLabel(ctx, `${lq.kind} ${pxs(lq.price)}`, W - 6, y + (lq.kind === "BSL" ? -9 : 9), "--c-liq", size, "right");
     }
   }
+  if (a && a.ready && L.liquidity && !a.debug) {
+    const drawnPx = new Set();
+    for (const st of a.setups || []) if (!st.signal_id) drawPlan(ctx, st, size, drawnPx);
+  }
   if (L.positions) for (const p of shownPositions()) drawPosition(ctx, p, size);
-  // zone labels last: over candles and lines; fresh zones first so theirs keep their place
-  for (const [text, x, y, c, align] of [...zoneLabels].sort((u, v) => v[5] - u[5])) pill(ctx, text, x, y, c, size, align);
+  // zone labels last: over candles and lines; live zones first so theirs keep their place
+  for (const [text, x, y, c, align, , kind] of [...zoneLabels].sort((u, v) => v[5] - u[5])) {
+    if (kind === "plain") plainLabel(ctx, text, x, y, c, size, align); else pill(ctx, text, x, y, c, size, align);
+  }
 }
-/** TradingView-style long/short position object: risk box, reward box, entry line, result. */
+/** TradingView-style long/short position object: risk box, reward box to the final target,
+ * entry line, TP1-TP3 with their net R, the time stop / order expiry, the result. */
+function vMark(ctx, iso, text, c, size) {
+  const x = iso ? xOf(secs(iso)) : null;
+  if (x === null || x < 0 || x > size.width) return;
+  ctx.strokeStyle = rgba(c, 0.8); ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+  ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, size.height); ctx.stroke(); ctx.setLineDash([]);
+  plainLabel(ctx, text, x + 4, EDGE + 8, c, size, "left");
+}
 function drawPosition(ctx, p, size) {
   const W = size.width;
-  const open = p.state === "PENDING" || p.state === "OPEN";
+  const open = isActive(p), filled = isFilled(p);
   const s = span(p.created_at, open ? null : p.closed_at, W);
-  const ye = yOf(p.entry), ys = yOf(p.sl), yt = yOf(p.tp);
-  if (!s || ye === null || ys === null || yt === null) return;
+  const ladder = p.ladder || [];
+  const fin = p.tp || (ladder.length ? ladder[ladder.length - 1].price : null);
+  const ye = yOf(p.entry), ys = yOf(p.sl), yt = fin === null ? null : yOf(fin);
+  if (!s || ye === null || ys === null) return;
   const x1 = s[0], x2 = Math.max(s[1], x1 + 24);
   const focus = state.focus === p.id;
-  const a = open || focus ? 1 : state.mode === "focus" ? 0.3 : 0.55;  // history stays in the background
-  ctx.fillStyle = rgba("--c-bull", 0.12 * a); ctx.fillRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
+  const a = open || focus ? 1 : 0.3;  // history stays in the background
+  if (yt !== null) {
+    ctx.fillStyle = rgba("--c-bull", 0.12 * a); ctx.fillRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
+    ctx.strokeStyle = rgba("--c-bull", 0.85 * a); ctx.lineWidth = focus ? 2 : 1.2; ctx.strokeRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
+  }
   ctx.fillStyle = rgba("--c-bear", 0.14 * a); ctx.fillRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
-  ctx.lineWidth = focus ? 2 : 1.2;
-  ctx.strokeStyle = rgba("--c-bull", 0.85 * a); ctx.strokeRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
-  ctx.strokeStyle = rgba("--c-bear", 0.85 * a); ctx.strokeRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
+  ctx.strokeStyle = rgba("--c-bear", 0.85 * a); ctx.lineWidth = focus ? 2 : 1.2; ctx.strokeRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
   ctx.strokeStyle = rgba("--c-text", 0.95 * a); ctx.setLineDash(p.state === "PENDING" ? [4, 3] : []); ctx.lineWidth = 1.6;
   ctx.beginPath(); ctx.moveTo(x1, ye); ctx.lineTo(x2, ye); ctx.stroke(); ctx.setLineDash([]);
+  for (const t of ladder) {  // the ladder rungs inside the reward box
+    const y = yOf(t.price);
+    if (y === null) continue;
+    ctx.strokeStyle = rgba("--c-bull", (t.hit ? 0.45 : 0.95) * a); ctx.lineWidth = 1; ctx.setLineDash(t.hit ? [2, 3] : []);
+    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke(); ctx.setLineDash([]);
+  }
   if (p.filled_at) {
     const xf = xOf(secs(p.filled_at));
     if (xf !== null) { ctx.fillStyle = rgba("--c-text", a); ctx.beginPath(); ctx.arc(xf, ye, 3.5, 0, Math.PI * 2); ctx.fill(); }
   }
-  if (p.exit_price && p.closed_at) {
-    const xx = xOf(secs(p.closed_at)), yx = yOf(p.exit_price);
-    if (xx !== null && yx !== null) { ctx.strokeStyle = rgba("--c-text", a); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(xx - 4, yx - 4); ctx.lineTo(xx + 4, yx + 4); ctx.moveTo(xx + 4, yx - 4); ctx.lineTo(xx - 4, yx + 4); ctx.stroke(); }
+  for (const part of p.parts || []) {  // every exit: a cross at its price and time
+    const xx = xOf(secs(part.at)), yx = yOf(part.price);
+    if (xx === null || yx === null) continue;
+    ctx.strokeStyle = rgba("--c-text", a); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(xx - 4, yx - 4); ctx.lineTo(xx + 4, yx + 4); ctx.moveTo(xx + 4, yx - 4); ctx.lineTo(xx - 4, yx + 4); ctx.stroke();
   }
   const long = p.side === "LONG";
-  const money = open ? (p.state === "OPEN" ? ` · ${rText(p.open_r)} · ${usdSigned(p.open_pnl)} $` : ` · limit ${pxs(p.entry)}${p.deadline ? ` · until ${fmtClock.format(new Date(p.deadline))}` : ""}`)
+  const money = open ? (filled ? ` · ${rText(p.open_r)} · ${usdSigned(p.open_pnl)} $` : ` · limit ${pxs(p.entry)}`)
     : ` · ${STATE[p.state] ? STATE[p.state][1] : p.state} ${rText(p.result_r)}${p.pnl_usdt !== null ? ` · ${usdSigned(p.pnl_usdt)} $` : ""}`;
-  const yLab = long ? Math.min(yt, ye) - 11 : Math.max(yt, ye) + 11;
+  const yLab = long ? Math.min(yt === null ? ye : yt, ye) - 11 : Math.max(yt === null ? ye : yt, ye) + 11;
   pill(ctx, `${long ? "Long" : "Short"}${money}`, Math.max(x1, 0) + 2, yLab, long ? "--c-bull" : "--c-bear", size, "left");
+  if (!open) return;
   const off = (y) => y < EDGE || y > size.height - EDGE;
-  if (open && off(yt)) pill(ctx, `TP ${pxs(p.tp)} ${yt < EDGE ? "↑" : "↓"} off-screen`, x2 - 6, yt < EDGE ? EDGE : size.height - EDGE, "--c-bull", size, "right");
-  if (open && off(ys)) pill(ctx, `SL ${pxs(p.sl)} ${ys < EDGE ? "↑" : "↓"} off-screen`, x2 - 6, ys < EDGE ? EDGE : size.height - EDGE, "--c-bear", size, "right");
-  if (open) {
-    if (!off(yt)) plainLabel(ctx, `TP ${pxs(p.tp)}`, x2 - 6, yt + (long ? 10 : -10), "--c-bull", size, "right");
-    if (!off(ys)) plainLabel(ctx, p.at_breakeven ? `SL at break-even ${pxs(p.sl)}` : `SL ${pxs(p.sl)}`, x2 - 6, ys + (long ? -10 : 10), "--c-bear", size, "right");
+  for (const t of ladder) {
+    const y = yOf(t.price);
+    if (y === null) continue;
+    const text = `${t.name} ${pxs(t.price)} · ${(+t.net_r).toFixed(2)}R${t.fallback ? " (fixed)" : ""}${t.hit ? " ✓" : ""}`;
+    if (off(y)) pill(ctx, `${text} ${y < EDGE ? "↑" : "↓"}`, x2 - 6, y < EDGE ? EDGE : size.height - EDGE, "--c-bull", size, "right");
+    else plainLabel(ctx, text, x2 - 6, y + (long ? 10 : -10), "--c-bull", size, "right");
   }
+  if (!ladder.length && p.tp && yt !== null && !off(yt)) plainLabel(ctx, `TP ${pxs(p.tp)}`, x2 - 6, yt + (long ? 10 : -10), "--c-bull", size, "right");
+  const slText = p.state === "TP2" ? `trailing SL ${pxs(p.sl)}` : p.at_breakeven ? `SL at break-even ${pxs(p.sl)}` : `SL ${pxs(p.sl)}`;
+  if (off(ys)) pill(ctx, `${slText} ${ys < EDGE ? "↑" : "↓"}`, x2 - 6, ys < EDGE ? EDGE : size.height - EDGE, "--c-bear", size, "right");
+  else plainLabel(ctx, slText, x2 - 6, ys + (long ? -10 : 10), "--c-bear", size, "right");
+  if (p.state === "PENDING") vMark(ctx, p.deadline, "order expires", "--c-pending", size);
+  if (p.time_stop_at) vMark(ctx, p.time_stop_at, "time stop", "--c-armed", size);
 }
 
 function chartTheme() {
@@ -505,7 +572,10 @@ function touchCheck(h, l) {
     const long = z.direction === "LONG", top = +z.top, bot = +z.bottom;
     return (!z.tested && (long ? l <= top : h >= bot)) || (z.kind === "FVG" && (long ? l <= bot : h >= top));
   };
-  const zs = [...(a.zones || []), ...(a.htf_zones || [])];
+  const setupZones = (a.setups || []).flatMap((st) => [
+    { kind: "FVG", direction: st.direction, top: st.fvg.top, bottom: st.fvg.bottom, tested: st.state !== "waiting" },
+    { kind: "OB", direction: st.direction, top: st.ob.top, bottom: st.ob.bottom, tested: false }]);
+  const zs = [...(a.zones || []), ...(a.htf_zones || []), ...setupZones];
   const hit = [...zs, ...zs.flatMap((z) => (z.gaps || []).filter((g) => g.status !== "FILLED"))].some(reaches)
     || (a.liquidity || []).some((lq) => (lq.kind === "BSL" ? h > +lq.price : l < +lq.price));
   if (!hit) return;
@@ -545,26 +615,27 @@ function showOhlc(param) {
   if (!c) { box.textContent = ""; return; }
   box.textContent = `${fmtDay.format(new Date(c.open_time))} ${fmtClock.format(new Date(c.open_time))} · O ${pxs(c.open)}  H ${pxs(c.high)}  L ${pxs(c.low)}  C ${pxs(c.close)}${c.forming ? " · forming" : ""}`;
 }
-function poiKinds() {
-  const ps = state.params[state.symbol];
-  const it = ps ? ps.groups.flatMap((g) => g.items).find((i) => i.key === "poi_kinds") : null;
-  return it ? it.value : ["OB", "FVG"];
-}
 function renderLegend() {
   const items = [];
   const sw = (c, text) => el("li", {}, el("span", { class: "sw", style: `--c:${rgba(c, 0.35)};--b:${rgba(c, 0.95)}` }), text);
-  if (state.layers.ob) items.push(sw("--c-bull", "Bullish OB"), sw("--c-bear", "Bearish OB"));
-  const pk = poiKinds();
-  if (state.layers.fvg) items.push(sw("--c-fvg-bull", pk.includes("FVG") ? "Bullish FVG" : "Bullish FVG (imbalance: target, not an entry zone)"), sw("--c-fvg-bear", "Bearish FVG"));
-  if (state.layers.ob && !pk.includes("FVG")) items.push(el("li", { class: "muted" }, "Entry zones (POI): order blocks only"));
-  if (state.layers.htf) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${css("--text-2")}` }), "Higher-TF zone (hatched, label on the right)"));
-  if (state.layers.structure) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${css("--text-2")}` }), "BOS / CHoCH"));
-  if (state.layers.liquidity) items.push(el("li", {}, el("span", { class: "ln", style: `--c:${rgba("--c-liq", 1)}` }), "BSL / SSL liquidity"));
-  items.push(el("li", { class: "muted" }, state.mode === "focus"
-    ? "Focus: nearest zones only, overlaps merged (×n), last 3 breaks, nearest liquidity"
-    : "All valid zones · invalid zones (OB closed through, FVG filled) are removed"));
-  if (state.layers.ob || state.layers.fvg) items.push(el("li", { class: "muted" }, "Fresh = price has not returned to the zone yet (bold border)"));
-  if (state.layers.ob && state.layers.fvg) items.push(el("li", { class: "muted" }, "Every gap the move out of an order block left is drawn, any size · faint dotted box = that gap is already filled"));
+  const ln = (c, text) => el("li", {}, el("span", { class: "ln", style: `--c:${c}` }), text);
+  const ps = state.params[state.symbol];
+  const zt = ps ? (ps.groups.flatMap((g) => g.items).find((i) => i.key === "zone_tf") || {}).value : "1h";
+  if (state.mode === "setups") {
+    if (state.layers.ob) items.push(sw("--c-bull", `${zt} setup OB, waiting (long)`), sw("--c-bear", "waiting (short)"),
+      sw("--c-armed", "armed: price in the FVG"), sw("--c-pending", "limit order resting"), sw("--c-open", "position open"));
+    if (state.layers.ob) items.push(sw("--c-fvg-bull", "its FVG"), ln(rgba("--c-liq", 1), "liquidity sweep (dot = wick)"));
+    if (state.layers.liquidity) items.push(ln(rgba("--c-bull", 1), "planned TP1–TP3 (dotted) · planned SL"));
+    if (state.layers.positions) items.push(ln(css("--text-2"), "positions: entry, SL, TP ladder, time stop / expiry"));
+    items.push(el("li", { class: "muted" }, "Setups: sweep → BOS/CHoCH → OB + FVG, fresh, with the bias, near the price or with a position. Label: timeframe · age · state"));
+  } else {
+    if (state.layers.ob) items.push(sw("--c-bull", "Bullish OB"), sw("--c-bear", "Bearish OB"));
+    if (state.layers.fvg) items.push(sw("--c-fvg-bull", "Bullish FVG"), sw("--c-fvg-bear", "Bearish FVG"));
+    if (state.layers.htf) items.push(ln(css("--text-2"), "Higher-TF zone (hatched, label on the right)"));
+    if (state.layers.structure) items.push(ln(css("--text-2"), "BOS / CHoCH"));
+    if (state.layers.liquidity) items.push(ln(rgba("--c-liq", 1), "BSL / SSL liquidity"));
+    items.push(el("li", { class: "muted" }, "Debug: every valid zone, every gap behind an order block (dotted = filled), every setup in any state · Fresh = untouched"));
+  }
   $("chart-legend").replaceChildren(...items);
 }
 function renderControls() {
@@ -575,8 +646,8 @@ function renderControls() {
     tf, role ? el("span", { class: "r" }, role.split(" ")[0][0]) : null);
   }));
   const modeSeg = el("div", { class: "seg seg-mini", role: "tablist", "aria-label": "Chart detail" },
-    [["focus", "Focus"], ["all", "All"]].map(([k, l]) => el("button", { type: "button", role: "tab", "aria-selected": String(state.mode === k),
-      title: k === "focus" ? "Only what matters near the price" : "Every zone, break and level", onclick: () => { state.mode = k; savePrefs(); renderControls(); renderLegend(); if (state.layer) state.layer.update(); } }, l)));
+    [["setups", "Setups"], ["debug", "All zones (debug)"]].map(([k, l]) => el("button", { type: "button", role: "tab", "aria-selected": String(state.mode === k), "data-mode": k,
+      title: k === "setups" ? "Only the setups the engine can trade, and the positions" : "Every zone, gap, break, liquidity level and setup", onclick: () => { state.mode = k; savePrefs(); renderControls(); renderLegend(); if (state.layer) state.layer.update(); } }, l)));
   $("layer-chips").replaceChildren(modeSeg, ...LAYERS.map(([k, name, c]) => el("button", { type: "button", class: "chip", "aria-pressed": String(!!state.layers[k]),
     onclick: () => { state.layers[k] = !state.layers[k]; savePrefs(); renderControls(); renderLegend(); if (state.layer) state.layer.update(); } },
   el("span", { class: "sw", style: `--c:${rgba(c, 0.9)}` }), name)));
@@ -585,7 +656,7 @@ function renderControls() {
 function renderSymbols() {
   $("sym-seg").replaceChildren(...state.symbols.map((s) => {
     const m = state.markets[s];
-    const busy = state.allSignals.some((x) => x.symbol === s && (x.state === "OPEN" || x.state === "PENDING"));
+    const busy = state.allSignals.some((x) => x.symbol === s && isActive(x));
     return el("button", { type: "button", role: "tab", "aria-selected": String(s === state.symbol), onclick: () => selectSymbol(s) },
       el("span", {}, m ? m.display : s, busy ? el("span", { class: "pos-dot", title: "open position" }) : null),
       el("span", { class: "p" }, m ? pxs(m.price, s) : "—"));
@@ -663,7 +734,7 @@ function renderKpis(w, r) {
   const bias = (r && r.bias) || "UNDEFINED";
   const [bt, bi, bl] = TREND[bias];
   const smc = m.smc || {}, run = smc.runner, hist = smc.history || {};
-  const nOpen = state.allSignals.filter((s) => s.state === "OPEN" || s.state === "PENDING").length;
+  const nOpen = state.allSignals.filter(isActive).length;
   const maxPos = state.params[state.symbol] ? (state.params[state.symbol].groups.flatMap((g) => g.items).find((i) => i.key === "max_positions") || {}).value : 2;
   const ret = w && w.ready ? w.return_pct : null;
   $("kpis").replaceChildren(
@@ -676,26 +747,33 @@ function renderKpis(w, r) {
     k(hist.days >= hist.target_days - 1 ? "ok" : "warn", `History · ${symName(state.symbol)}`, hist.days !== null && hist.days !== undefined ? `${hist.days} d` : "—", `target ${hist.target_days ?? "—"} d · Tabdeal chart`),
   );
 }
+function ladderRows(p) {
+  return (p.ladder || []).map((t) => el("div", { class: `rung${t.hit ? " hit" : ""}` },
+    el("span", { class: "k" }, t.name), el("span", { class: "v num" }, pxs(t.price, p.symbol)),
+    el("span", { class: "num" }, `${(+t.net_r).toFixed(2)}R`), el("span", { class: "muted" }, `${t.frac ? pct(t.frac, 0) : "rest"} · ${t.source}${t.fallback ? " (fixed)" : ""}`),
+    t.hit ? icon("check") : null));
+}
 function posCard(p) {
   const long = p.side === "LONG";
-  const live = p.state === "OPEN";
+  const live = isFilled(p);
   return el("button", { type: "button", class: `pos-card t-${long ? "ok" : "bad"}`, title: "Show on chart",
     onclick: () => { if (p.symbol !== state.symbol) selectSymbol(p.symbol); state.focus = p.id; if (state.layer) state.layer.update(); } },
   el("div", { class: "top" }, el("span", {}, el("span", { class: "sym" }, symName(p.symbol)), " ", sideTag(p.side), " ", stateTag(p.state)),
     el("span", { class: `pnl ${toneOf(p.open_pnl)}` }, live ? `${usdSigned(p.open_pnl)} $` : "—")),
   el("div", { class: "levels" },
     el("div", { class: "t-info" }, el("div", { class: "k" }, "Entry"), el("div", { class: "v num" }, pxs(p.entry, p.symbol))),
-    el("div", { class: "t-bad" }, el("div", { class: "k" }, "Stop loss"), el("div", { class: "v num" }, pxs(p.sl, p.symbol))),
-    el("div", { class: "t-ok" }, el("div", { class: "k" }, "Take profit"), el("div", { class: "v num" }, pxs(p.tp, p.symbol)))),
-  el("div", { class: "meta" }, el("span", {}, live ? rText(p.open_r) : `limit order at ${pxs(p.entry, p.symbol)}`), el("span", {}, `net ${p.net_rr ? (+p.net_rr).toFixed(2) : "—"}R`),
+    el("div", { class: "t-bad" }, el("div", { class: "k" }, p.state === "TP2" ? "Trailing stop" : p.at_breakeven ? "Stop (break-even)" : "Stop loss"), el("div", { class: "v num" }, pxs(p.sl, p.symbol))),
+    el("div", { class: "t-ok" }, el("div", { class: "k" }, (p.ladder || []).length ? "Final target" : "Take profit"), el("div", { class: "v num" }, p.tp ? pxs(p.tp, p.symbol) : "trailing"))),
+  (p.ladder || []).length ? el("div", { class: "ladder-rungs" }, ladderRows(p)) : null,
+  el("div", { class: "meta" }, el("span", {}, live ? rText(p.open_r) : `limit order at ${pxs(p.entry, p.symbol)}`), el("span", {}, `net to TP2 ${p.net_rr ? (+p.net_rr).toFixed(2) : "—"}R`),
     el("span", { class: "num" }, `qty ${grp(String(+p.qty))}`), el("span", { class: "num" }, `${usd(p.notional)} $ · margin ${usd(p.margin)} $`),
     el("span", {}, live ? "opened " : "placed ", when(p.filled_at || p.created_at)),
-    p.deadline ? el("span", { title: live ? "Closed at market if neither stop nor target is hit by then" : "The limit order is cancelled if not filled by then" },
-      live ? "time limit " : "expires ", when(p.deadline)) : null,
-    p.at_breakeven ? el("span", { class: "pos", title: `initial stop ${pxs(p.sl_initial, p.symbol)}` }, "stop at break-even") : null));
+    p.time_stop_at ? el("span", { title: "Closed at market if neither TP1 nor the stop is hit by then" }, "time stop ", when(p.time_stop_at)) : null,
+    p.deadline ? el("span", { title: live ? "The rest is closed at market by then" : "The limit order is cancelled if not filled by then" },
+      live ? "time limit " : "expires ", when(p.deadline)) : null));
 }
 function renderTicket(w) {
-  const act = state.allSignals.filter((s) => s.state === "OPEN" || s.state === "PENDING");
+  const act = state.allSignals.filter(isActive);
   const body = $("ticket-body");
   const mini = w && w.ready ? el("div", { class: "wallet-mini" },
     el("div", {}, el("div", { class: "k" }, "Balance"), el("div", { class: "v" }, `${usd(w.balance)}`)),
@@ -705,7 +783,7 @@ function renderTicket(w) {
   if (!act.length) {
     const last = state.allSignals.find((s) => s.closed_at);
     body.replaceChildren(mini || "", el("div", { class: "ticket-empty" },
-      el("p", { class: "muted small" }, `One shared ${w && w.ready ? usd(w.initial, 0) : "100"} USDT wallet for ${state.symbols.map(symName).join(" and ")}. A position opens when an M1 break reacts inside a higher-timeframe zone aligned with the bias and the target pays the minimum R after fees.`),
+      el("p", { class: "muted small" }, `One shared ${w && w.ready ? usd(w.initial, 0) : "100"} USDT wallet for ${state.symbols.map(symName).join(" and ")}. A limit order rests at the order block of a 1h setup (liquidity sweep → break of structure → order block with its FVG) with the 4h bias, from the moment price first trades into the FVG; exits follow the TP1 / TP2 / TP3 ladder.`),
       last ? el("p", { class: "small" }, "Last: ", symName(last.symbol), " ", sideTag(last.side), " ", stateTag(last.state), " ", rEl(last.result_r), last.pnl_usdt !== null ? ` · ${usdSigned(last.pnl_usdt)} $` : "") : null));
     return;
   }
@@ -723,15 +801,17 @@ function renderRadar(r) {
         el("div", { class: "ev" }, ev ? `${ev.kind === "CHOCH" ? "CHoCH" : "BOS"} ${ev.direction === "LONG" ? "up" : "down"} @ ${pxs(ev.level)} · ` : "no break yet", ev ? when(ev.time) : null)),
       el("span", { class: "tr" }, icon(ic), lab));
   }));
-  $("poi-list").replaceChildren(...(r.pois.length ? r.pois.map((z) => el("li", { class: `t-${z.direction === "LONG" ? "ok" : "bad"}`, title: "Show on chart",
+  const stTone = { waiting: "info", armed: "warn", pending: "info", open: "violet", used: "neutral", invalid: "neutral", expired: "neutral" };
+  $("poi-list").replaceChildren(...(r.setups.length ? r.setups.map((z) => el("li", { class: `t-${z.direction === "LONG" ? "ok" : "bad"}`, title: "Show on chart",
     onclick: () => { state.tf = z.tf; savePrefs(); renderControls(); loadChart(false); } },
-  el("div", {}, el("div", { class: "z" }, `${z.tf} ${z.kind === "OB" ? "Order block" : "Fair value gap"}`, z.tested ? "" : " · fresh"),
-    el("div", { class: "px num" }, `${pxs(z.bottom)} – ${pxs(z.top)}`)),
-  el("div", { class: "dist" }, z.distance !== null ? pct(z.distance, 2) : "—", el("div", { class: "px" }, "away")))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, r.bias === "UNDEFINED" ? "No bias, so no zones are tradable." : "No unmitigated zone with the bias right now."))]));
-  $("trig-list").replaceChildren(...(r.triggers.length ? r.triggers.map((t) => el("li", { class: `t-${t.accepted ? "ok" : "neutral"}` },
-    el("div", { class: "top" }, sideTag(t.direction), el("b", {}, t.kind === "CHOCH" ? "CHoCH" : "BOS"), when(t.time), t.accepted ? tag("ok", "Qualified") : null,
-      t.poi_tf ? el("span", { class: "muted" }, `in ${t.poi_tf} zone`) : null),
-    el("div", { class: "why" }, t.accepted ? `Score ${t.score} · net ${t.net_rr}R` : t.reasons.map((x) => x.text).join(" · ")))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, "No M1 structure break in the window."))]));
+  el("div", {}, el("div", { class: "z" }, `${z.tf} OB · ${ageText(z.age_min)} · `, tag(stTone[z.state] || "neutral", z.state)),
+    el("div", { class: "px num" }, `${pxs(z.ob.bottom)} – ${pxs(z.ob.top)}`),
+    z.plan ? el("div", { class: "px small" }, z.plan.accepted ? `TP2 ${(+z.plan.tp2.net_r).toFixed(2)}R` : z.plan.reasons.map((x) => x.code).join(", ")) : null),
+  el("div", { class: "dist" }, z.distance_atr !== null ? `${(+z.distance_atr).toFixed(1)} ATR` : "—", el("div", { class: "px" }, "away")))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, r.bias === "UNDEFINED" ? "No bias, so no setup is tradable." : "No fresh setup with the bias near the price."))]));
+  $("trig-list").replaceChildren(...(r.recent.length ? r.recent.map((t) => el("li", { class: `t-${stTone[t.state] || "neutral"}` },
+    el("div", { class: "top" }, sideTag(t.direction), el("b", {}, `${t.tf} ${t.event.kind === "CHOCH" ? "CHoCH" : "BOS"}`), when(t.confirmed_at), tag(stTone[t.state] || "neutral", t.state),
+      t.aligned ? null : el("span", { class: "muted" }, "against the bias")),
+    el("div", { class: "why" }, `sweep ${pxs(t.sweep.level)} (wick ${pxs(t.sweep.wick)}) · OB ${pxs(t.ob.bottom)} – ${pxs(t.ob.top)} · FVG ${pxs(t.fvg.bottom)} – ${pxs(t.fvg.top)}`))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, "No complete setup in the lookback."))]));
 }
 
 /* ---- alerts ----------------------------------------------------------------------------------- */
@@ -759,9 +839,10 @@ function notifyChanges(items) {
       const before = state.known.get(s.id);
       if (before === s.state) continue;
       const head = `${symName(s.symbol)} ${s.side === "LONG" ? "Long" : "Short"}`;
-      if (before === undefined) toast(s.side === "LONG" ? "ok" : "bad", `New ${head}`, `Entry ${pxs(s.entry, s.symbol)} · SL ${pxs(s.sl, s.symbol)} · TP ${pxs(s.tp, s.symbol)} · ${usd(s.notional)} $`);
+      if (before === undefined) toast(s.side === "LONG" ? "ok" : "bad", `New ${head}`, `Entry ${pxs(s.entry, s.symbol)} · SL ${pxs(s.sl, s.symbol)} · ${(s.ladder || []).map((t) => `${t.name} ${pxs(t.price, s.symbol)}`).join(" · ")} · ${usd(s.notional)} $`);
       else if (s.state === "OPEN") toast("info", `${head} filled`, `Entry ${pxs(s.entry, s.symbol)}`);
-      else toast(s.state === "TP" ? "ok" : s.state === "SL" ? "bad" : "neutral", `${head} ${STATE[s.state] ? STATE[s.state][1].toLowerCase() : s.state}`, `${rText(s.result_r)}${s.pnl_usdt !== null ? ` · ${usdSigned(s.pnl_usdt)} $` : ""}`);
+      else if (s.state === "TP1" || s.state === "TP2") toast("ok", `${head} ${s.state} hit`, `stop now ${pxs(s.sl, s.symbol)} · ${rText(s.open_r)}`);
+      else toast(["TP", "TRAIL"].includes(s.state) ? "ok" : s.state === "SL" ? "bad" : "neutral", `${head} ${STATE[s.state] ? STATE[s.state][1].toLowerCase() : s.state}`, `${rText(s.result_r)}${s.pnl_usdt !== null ? ` · ${usdSigned(s.pnl_usdt)} $` : ""}`);
     }
   }
   state.known = now;
@@ -781,35 +862,40 @@ async function renderSignals() {
   seg("sig-filter", [["all", "All"], ["active", "Active"], ["closed", "Closed"]], state.sigFilter, (k) => { state.sigFilter = k; renderSignals(); });
   const symq = state.sigSym === "all" ? "" : `&symbol=${encodeURIComponent(state.sigSym)}`;
   const d = await api(`/api/smc/signals?state=${state.sigFilter}&limit=300${symq}`);
-  table("sig-table", ["Created", "Market", "Side", "Trigger", "POI", "Entry", "SL", "TP", "Size $", "Net R:R", "State", "Result", "PnL $"], d.items, (s) => el("tr", {
+  const tpOf = (s, n) => { const t = (s.ladder || []).find((x) => x.name === n); return t ? `${pxs(t.price, s.symbol)}${t.hit ? " ✓" : ""}` : n === "TP3" && s.tp ? pxs(s.tp, s.symbol) : "—"; };
+  table("sig-table", ["Created", "Market", "Side", "Setup", "Entry", "SL", "TP1", "TP2", "TP3", "Size $", "Net R:R TP2", "State", "Result", "PnL $"], d.items, (s) => el("tr", {
     class: "click", "aria-current": String(state.selectedSig === s.id), onclick: () => { state.selectedSig = s.id; renderSignals(); } },
-  el("td", {}, when(s.created_at)), el("td", {}, symName(s.symbol)), el("td", {}, sideTag(s.side)), el("td", {}, s.trigger_kind === "CHOCH" ? "CHoCH" : "BOS"),
-  el("td", {}, s.poi_tf ? `${s.poi_tf} ${(s.detail.poi || {}).kind || ""}` : "—"),
-  el("td", { class: "num" }, pxs(s.entry, s.symbol)), el("td", { class: "num" }, pxs(s.sl, s.symbol)), el("td", { class: "num" }, pxs(s.tp, s.symbol)),
+  el("td", {}, when(s.created_at)), el("td", {}, symName(s.symbol)), el("td", {}, sideTag(s.side)),
+  el("td", {}, `${s.poi_tf || ""} ${s.trigger_kind === "CHOCH" ? "CHoCH" : "BOS"}${s.version ? "" : " · SMC-1.0"}`),
+  el("td", { class: "num" }, pxs(s.entry, s.symbol)), el("td", { class: "num" }, pxs(s.sl, s.symbol)),
+  el("td", { class: "num" }, tpOf(s, "TP1")), el("td", { class: "num" }, tpOf(s, "TP2")), el("td", { class: "num" }, tpOf(s, "TP3")),
   el("td", { class: "num" }, usd(s.notional)), el("td", { class: "num" }, s.net_rr ? `${s.net_rr}R` : "—"), el("td", {}, stateTag(s.state)),
-  el("td", {}, s.state === "OPEN" ? rEl(s.open_r) : rEl(s.result_r)),
-  el("td", { class: `num ${toneOf(s.state === "OPEN" ? s.open_pnl : s.pnl_usdt)}` }, usdSigned(s.state === "OPEN" ? s.open_pnl : s.pnl_usdt))),
+  el("td", {}, isFilled(s) ? rEl(s.open_r) : rEl(s.result_r)),
+  el("td", { class: `num ${toneOf(isFilled(s) ? s.open_pnl : s.pnl_usdt)}` }, usdSigned(isFilled(s) ? s.open_pnl : s.pnl_usdt))),
   "No positions yet. They appear here the moment the engine opens one.");
   const sel = d.items.find((s) => s.id === state.selectedSig);
   if (!sel) return;
   const ev = await api(`/api/smc/signals/${sel.id}/events`);
-  const ft = (state.radar && state.radar.factor_text) || {};
+  const su = (sel.detail || {}).setup;
   $("sig-detail").replaceChildren(
     el("div", { class: "ticket-hero" }, el("div", {}, el("b", {}, symName(sel.symbol)), " ", sideTag(sel.side), " ", stateTag(sel.state)),
-      el("div", { class: "big num" }, sel.state === "OPEN" ? rText(sel.open_r) : rText(sel.result_r))),
+      el("div", { class: "big num" }, isFilled(sel) ? rText(sel.open_r) : rText(sel.result_r))),
     el("div", { class: "levels" },
       el("div", { class: "t-info" }, el("div", { class: "k" }, "Entry"), el("div", { class: "v num" }, pxs(sel.entry, sel.symbol))),
       el("div", { class: "t-bad" }, el("div", { class: "k" }, "Stop loss"), el("div", { class: "v num" }, pxs(sel.sl, sel.symbol))),
-      el("div", { class: "t-ok" }, el("div", { class: "k" }, "Take profit"), el("div", { class: "v num" }, pxs(sel.tp, sel.symbol)))),
-    el("dl", { class: "kv small" }, el("dt", {}, "Target"), el("dd", {}, show(sel.tp_source)), el("dt", {}, "POI zone"),
-      el("dd", { class: "num" }, sel.detail.poi ? `${sel.detail.poi.tf} ${sel.detail.poi.kind} ${pxs(sel.detail.poi.bottom, sel.symbol)} – ${pxs(sel.detail.poi.top, sel.symbol)}` : "—"),
+      el("div", { class: "t-ok" }, el("div", { class: "k" }, "Final target"), el("div", { class: "v num" }, sel.tp ? pxs(sel.tp, sel.symbol) : "trailing"))),
+    (sel.ladder || []).length ? el("div", { class: "ladder-rungs" }, ladderRows(sel)) : null,
+    el("dl", { class: "kv small" },
+      el("dt", {}, "Setup"), el("dd", { class: "num" }, su ? `${su.tf} OB ${pxs(su.ob.bottom, sel.symbol)} – ${pxs(su.ob.top, sel.symbol)} · FVG ${pxs(su.fvg.bottom, sel.symbol)} – ${pxs(su.fvg.top, sel.symbol)}` : "—"),
+      el("dt", {}, "Sweep"), el("dd", { class: "num" }, su ? `${pxs(su.sweep.level, sel.symbol)} (wick ${pxs(su.sweep.wick, sel.symbol)})` : "—"),
+      el("dt", {}, "Break"), el("dd", {}, su ? `${su.event.kind === "CHOCH" ? "CHoCH" : "BOS"} @ ${pxs(su.event.level, sel.symbol)}` : "—"),
       el("dt", {}, "Size"), el("dd", { class: "num" }, `${grp(String(+sel.qty))} · ${usd(sel.notional)} $ · margin ${usd(sel.margin)} $`),
       el("dt", {}, "Exit"), el("dd", { class: "num" }, pxs(sel.exit_price, sel.symbol)),
       el("dt", {}, "PnL"), el("dd", { class: `num ${toneOf(sel.pnl_usdt)}` }, sel.pnl_usdt !== null ? `${usdSigned(sel.pnl_usdt)} $ (fees ${usd(sel.fees_usdt)} $)` : "—")),
-    el("div", { class: "factors" }, Object.entries(sel.detail.factors || {}).map(([f, on]) => el("span", { class: `factor${on ? " on" : ""}` }, ft[f] || f))),
-    el("ol", { class: "timeline" }, ev.items.map((e) => el("li", { class: `t-${{ CREATED: "info", FILLED: "warn", BREAKEVEN: "info", TP: "ok", SL: "bad" }[e.kind] || "neutral"}` },
+    el("ol", { class: "timeline" }, ev.items.map((e) => el("li", { class: `t-${{ CREATED: "info", FILLED: "warn", TP1: "ok", TP2: "ok", TP: "ok", TRAIL: "ok", SL: "bad", BOOKED: "violet" }[e.kind] || "neutral"}` },
       el("b", {}, e.kind), " ", when(e.ts), e.price ? el("span", { class: "num muted" }, ` @ ${pxs(e.price, sel.symbol)}`) : null,
       e.detail && e.detail.result_r ? el("span", {}, " · ", rEl(e.detail.result_r)) : null,
+      e.detail && e.detail.part ? el("span", {}, ` · ${e.detail.part} ${pct(e.detail.frac, 0)}`) : null,
       e.detail && e.detail.pnl_usdt ? el("span", { class: `num ${toneOf(e.detail.pnl_usdt)}` }, ` · ${usdSigned(e.detail.pnl_usdt)} $`) : null))),
     el("p", {}, el("button", { class: "btn", type: "button", onclick: () => showOnChart(sel) }, icon("target"), "Show on chart")));
 }
@@ -867,9 +953,10 @@ async function renderPerformance() {
       statBox("Equity", `${usd(w.equity)} $`, toneOf(+w.equity - +w.initial)), statBox("Return", pct(w.return_pct, 2), toneOf(w.return_pct)),
       statBox("Fees paid", `${usd(w.fees)} $`), statBox("Margin in use", `${usd(w.margin_used)} $`));
     drawLine("wallet-curve", w.curve.map((c) => +c.balance), { base: +w.initial });
-    table("ledger-table", ["Closed", "Market", "Side", "Result", "PnL $", "Balance $"], w.ledger, (l) => el("tr", {},
-      el("td", {}, when(l.ts)), el("td", {}, symName(l.symbol)), el("td", {}, l.side ? sideTag(l.side) : "—"), el("td", {}, l.state ? stateTag(l.state) : "—"),
-      el("td", { class: `num ${toneOf(l.amount)}` }, usdSigned(l.amount)), el("td", { class: "num" }, usd(l.balance_after))), "No closed position yet");
+    table("ledger-table", ["Booked", "Market", "Side", "Exit", "PnL $", "Fees $", "Balance $"], w.ledger, (l) => el("tr", {},
+      el("td", {}, when(l.ts)), el("td", {}, symName(l.symbol)), el("td", {}, l.side ? sideTag(l.side) : "—"), el("td", {}, l.part ? stateTag(l.part) : l.state ? stateTag(l.state) : "—"),
+      el("td", { class: `num ${toneOf(l.amount)}` }, usdSigned(l.amount)), el("td", { class: "num" }, l.fees !== null && l.fees !== undefined ? usd(l.fees, 4) : "—"),
+      el("td", { class: "num" }, usd(l.balance_after))), "No closed position yet");
   }
   table("sym-table", ["Market", "Closed", "Win rate", "Total R", "Avg R", "Profit factor"], state.symbols, (s) => {
     const d = p.by_symbol[s] || {};
@@ -889,12 +976,15 @@ async function renderPerformance() {
   drawLine("bt-equity", b.equity.map((e) => +e.r), { base: 0 });
   const reasons = (state.params[bsym] && state.params[bsym].reasons) || {};
   const st = b.stats;
-  bars("bt-funnel", [["TRIGGERS", st.triggers, "M1 triggers"], ...Object.entries(st.rejections).map(([k, n]) => [k, n, reasons[k] || k]), ["ACCEPTED", st.accepted, "Qualified"], ["TRADED", st.signals, "Traded (capacity, one per POI)"]],
-    { TRIGGERS: "neutral", ACCEPTED: "ok", TRADED: "ok" });
-  bars("bt-outcomes", Object.entries(st.states).map(([k, n]) => [k, n, STATE[k] ? STATE[k][1] : k]), { TP: "ok", SL: "bad", OPEN: "warn", PENDING: "info", EXPIRED: "neutral", MISSED: "neutral", TIMEOUT: "neutral" });
-  table("bt-trades", ["Created", "Side", "POI", "Entry", "SL", "TP", "Score", "State", "Result"], [...b.trades].reverse().slice(0, 60), (t) => el("tr", {},
-    el("td", {}, when(t.created_at)), el("td", {}, sideTag(t.side)), el("td", {}, show(t.poi_tf)), el("td", { class: "num" }, pxs(t.entry, bsym)),
-    el("td", { class: "num" }, pxs(t.sl, bsym)), el("td", { class: "num" }, pxs(t.tp, bsym)), el("td", { class: "num" }, t.score), el("td", {}, stateTag(t.state)), el("td", {}, rEl(t.result_r))));
+  bars("bt-funnel", [["SETUPS", st.setups, "Armed setups"], ...Object.entries(st.rejections).map(([k, n]) => [k, n, reasons[k] || k]), ["ACCEPTED", st.accepted, "Accepted"], ["TRADED", st.signals, "Traded (capacity)"]],
+    { SETUPS: "neutral", ACCEPTED: "ok", TRADED: "ok" });
+  bars("bt-outcomes", [...Object.entries(st.ladder || {}).map(([k, n]) => [k, n, k]), ...Object.entries(st.states).filter(([k]) => ["EXPIRED", "MISSED", "PENDING", "OPEN"].includes(k)).map(([k, n]) => [k, n, STATE[k] ? STATE[k][1] : k])],
+    Object.fromEntries(Object.keys(st.ladder || {}).map((k) => [k, k === "SL" ? "bad" : k.endsWith("TIME_STOP") || k.endsWith("TIMEOUT") || k.endsWith("BE") ? "neutral" : "ok"])));
+  const tpx = (t) => (t ? `${pxs(t.price, bsym)}${t.fallback ? "*" : ""}` : "—");
+  table("bt-trades", ["Created", "Side", "Entry", "SL", "TP1", "TP2", "TP3", "Path", "Result"], [...b.trades].reverse().slice(0, 60), (t) => el("tr", {},
+    el("td", {}, when(t.created_at)), el("td", {}, sideTag(t.side)), el("td", { class: "num" }, pxs(t.entry, bsym)),
+    el("td", { class: "num" }, pxs(t.sl, bsym)), el("td", { class: "num" }, tpx(t.tp1)), el("td", { class: "num" }, tpx(t.tp2)), el("td", { class: "num" }, tpx(t.tp3)),
+    el("td", {}, t.ladder), el("td", {}, rEl(t.result_r))));
 }
 
 /* ---- strategy view ----------------------------------------------------------------------------- */
@@ -908,19 +998,18 @@ async function renderStrategy() {
   $("strat-ver").textContent = `${symName(state.symbol)} · ${p.version} · parameters ${p.params_hash}`;
   const step = (tone, h, tfs, text) => el("li", { class: `t-${tone}` }, el("div", { class: "h" }, h), el("div", { class: "tfs" }, tfs), el("p", {}, text));
   $("model-flow").replaceChildren(
-    step("info", "Bias", `${v.bias_tf} (+ ${v.confirm_bias_tf})`, "The trend of the bias timeframe's last BOS / CHoCH decides the only direction that can be traded."),
-    step("violet", "Point of interest", v.poi_tfs.join(" → "), v.poi_kinds.includes("FVG")
-      ? "A still-valid order block or fair value gap with the bias. Price has to react inside it."
-      : `A still-valid order block (≥ ${v.ob_min_atr} ATR) with the bias; fair value gaps (≥ ${v.fvg_min_atr} ATR) only add confluence. Price has to react inside it.`),
-    step("warn", "Trigger", v.trigger_tf, "An M1 BOS / CHoCH whose order block overlaps the zone confirms the reaction (liquidity sweep and displacement add score)."),
-    step("ok", "Execution", `${v.trigger_tf} · ${v.entry_mode === "market" ? "market" : `limit (${v.entry_mode}, ${v.entry_on === "poi" ? "zone" : "M1 block"})`}`,
-      `Stop ${v.sl_mode === "poi" ? "beyond the zone" : "beyond the M1 block"}, ${v.tp_mode === "fixed" ? `target 1:${v.tp_rr} R:R` : `target the nearest liquidity paying ≥ ${v.min_net_rr}R after fees`}${+v.be_at_r > 0 ? `, stop to break-even at +${v.be_at_r}R` : ""}, time limit ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
+    step("info", "Bias", v.bias_tf, "The trend of the bias timeframe's last BOS / CHoCH is the only direction that can be traded."),
+    step("violet", "Setup", v.zone_tf, `In this order: liquidity sweep (wick beyond unswept swing lows / equal lows within ${v.eq_tol_atr} ATR, close back inside) → a close beyond structure within ${v.sweep_max_bars} bars → order block = last opposite candle (≥ ${v.ob_min_atr} ATR) with the FVG right after it.`),
+    step("warn", "Entry", `${v.zone_tf} → M1`, v.confirm_exec
+      ? `When price first trades into the FVG, wait for a ${v.exec_tf} BOS / CHoCH with the bias and enter at its close.`
+      : `Limit order (maker) at the order-block edge touching the FVG, resting from the setup; armed when price first trades into the FVG, cancelled ${v.pending_expiry_min / 60} h later. Only the first touch.`),
+    step("ok", "Exit", `${v.exec_tf} · M1`, `Stop beyond the sweep wick / OB + ${v.sl_buffer_atr} ATR. TP1 (nearest ${v.exec_tf} swing) ${pct(v.tp1_frac, 0)} + stop to break-even, TP2 (next opposing ${v.zone_tf} OB / FVG) ${pct(v.tp2_frac, 0)}, TP3 (previous day / week, equal highs / lows) for the rest with a trailing stop behind ${v.exec_tf} swings. Needs ≥ ${v.min_net_rr_tp2}R net to TP2, costs ≤ ${pct(v.max_cost_frac, 0)} of the stop. Time stop ${v.time_stop_min / 60} h, limit ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
   $("param-grid").replaceChildren(...p.groups.map((g) => el("section", { class: "card" }, el("h2", {}, g.name),
     el("dl", { class: "kv" }, g.items.flatMap((i) => [el("dt", {}, el("code", {}, i.key)), el("dd", { class: "num" }, Array.isArray(i.value) ? i.value.join(", ") || "—" : show(i.value))])))),
   el("section", { class: "card" }, el("h2", {}, "Costs (from config)"), el("dl", { class: "kv" },
     ...Object.entries(p.costs).flatMap(([k, x]) => [el("dt", {}, el("code", {}, k)), el("dd", { class: "num" }, pct(x, 3))]))));
   const kvs = (target, pairs) => $(target).replaceChildren(...pairs.flatMap(([k, t]) => [el("dt", {}, el("code", {}, k)), el("dd", {}, t)]));
-  kvs("factor-list", Object.entries(p.factors));
+  kvs("factor-list", Object.entries(p.rules));
   kvs("reason-list", Object.entries(p.reasons));
 }
 

@@ -20,7 +20,7 @@ from sp2l.smc.timeframes import ORDER, bucket_start
 
 
 def needed_tfs(p: SmcParams) -> list[str]:
-    want = {p.trigger_tf, p.bias_tf, p.confirm_bias_tf, *p.poi_tfs}
+    want = {"1m", p.bias_tf, p.zone_tf, p.exec_tf}
     return [tf for tf in ORDER if tf in want]
 
 

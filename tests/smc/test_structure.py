@@ -124,20 +124,20 @@ def test_analysis_is_causal(seed, cut):
         assert zf.valid_at(cut - 1) == zp.valid_at(cut - 1)
 
 
-def test_small_higher_timeframe_order_blocks_are_dropped_but_never_the_m1_block():
+def test_small_order_blocks_are_dropped_on_every_timeframe():
     small_ob = SmcParams(swing_len=2, atr_len=3, fvg_min_atr=D(0), ob_min_atr=D(5))
-    htf = analyze(bars(UP), "15m", small_ob)
-    assert htf.events and not htf.order_blocks  # the break is kept, the block is not
-    m1 = analyze(bars(UP), "1m", small_ob)  # the trigger timeframe keeps its block
-    assert m1.event_ob[m1.events[0].id].kind == "OB"
+    for tf in ("15m", "1m"):
+        a = analyze(bars(UP), tf, small_ob)
+        assert a.events and not a.order_blocks  # the break is kept, the block is not
 
 
 def test_ob_require_fvg_drops_blocks_whose_move_left_no_gap():
     strict = SmcParams(swing_len=2, atr_len=3, fvg_min_atr=D(0), ob_require_fvg=True)
-    # UP: bar 7's low 9.8 is above the block's high 9.3 - the rally left a gap: the block stays
-    assert analyze(bars(UP), "15m", strict).order_blocks
+    # UP: bar 7's low 9.8 is above the block's high 9.3 - the gap right after the block
+    (ob,) = analyze(bars(UP), "15m", strict).order_blocks
+    assert ob.gap == (D("9.3"), D("9.8")) and ob.gap_idx == 6
     # the same rally without a gap (every bar overlaps the one two bars back): no block
     nogap = UP[:7] + [(9.9, 11.5, 9.2, 11.4), (11.4, 13, 9.95, 12.8), (12.8, 13.5, 12.6, 13.2)]
     assert analyze(bars(nogap), "15m", strict).events
     assert not analyze(bars(nogap), "15m", strict).order_blocks
-    assert analyze(bars(nogap), "1m", strict).order_blocks  # the M1 trigger block always stays
+    assert not analyze(bars(nogap), "1m", strict).order_blocks  # no exemption any more

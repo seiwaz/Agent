@@ -51,7 +51,7 @@
             </div>
           </div>
           <div class="chips" id="layer-chips" aria-label="Chart layers"></div>
-          <div class="chart-slot"><div id="chart" class="chart" role="img" aria-label="Candlestick chart with order blocks, fair value gaps, structure breaks and positions"></div>
+          <div class="chart-slot"><div id="chart" class="chart" role="img" aria-label="Candlestick chart with zone setups (sweep, order block, fair value gap), targets and positions"></div>
             <button class="go-live" id="go-live" type="button" hidden>Go to live</button>
             <div class="chart-note" id="chart-note" hidden></div>
           </div>
@@ -68,13 +68,13 @@
             <ol class="ladder" id="ladder"></ol>
           </section>
           <section class="card" aria-labelledby="poi-h">
-            <div class="card-head"><h2 id="poi-h">Points of interest</h2><span class="muted small">with the bias</span></div>
+            <div class="card-head"><h2 id="poi-h">Setups</h2><span class="muted small">fresh, with the bias</span></div>
             <ul class="poi-list" id="poi-list"></ul>
           </section>
         </aside>
       </div>
       <section class="card" aria-labelledby="trig-h">
-        <div class="card-head"><h2 id="trig-h">M1 trigger log</h2><span class="muted small">Every M1 BOS / CHoCH, evaluated against the model</span></div>
+        <div class="card-head"><h2 id="trig-h">Setup log</h2><span class="muted small">Every complete zone setup (sweep → break → OB + FVG) and its state</span></div>
         <ul class="trig-list" id="trig-list"></ul>
       </section>
     </section>
@@ -116,7 +116,7 @@
       <section class="card"><h2>Top-down model</h2><ol class="model-flow" id="model-flow"></ol></section>
       <div class="param-grid" id="param-grid"></div>
       <div class="two-col">
-        <section class="card"><h2>Confluence factors</h2><dl class="kv glossary" id="factor-list"></dl></section>
+        <section class="card"><h2>Setup rules</h2><dl class="kv glossary" id="factor-list"></dl></section>
         <section class="card"><h2>Rejection reasons</h2><dl class="kv glossary" id="reason-list"></dl></section>
       </div>
     </section>

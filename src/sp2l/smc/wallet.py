@@ -3,8 +3,9 @@
 - Sizing at entry: risk `risk_pct` of the current balance per position; the position's
   margin (notional / `max_leverage`, cross) must fit into the free balance (balance minus the
   margin of every open position on any market), otherwise the quantity is reduced to fit.
-- Booking at exit: realized PnL = qty x price move - entry fee - exit fee (USDT), appended to
-  the ledger with the running balance.
+- Booking at every exit (TP1, TP2 and the final exit of the rest): realized PnL of that part
+  = its quantity x price move - its share of the entry fee - its exit fee (USDT), appended to
+  the ledger with the running balance; the signal's PnL / fees are the sums.
 Nothing here talks to an exchange.
 """
 
@@ -17,7 +18,7 @@ from decimal import ROUND_DOWN, Decimal
 from sqlalchemy import Connection, Engine, text
 
 from sp2l.core.types import Side
-from sp2l.smc.lifecycle import Tracked
+from sp2l.smc.lifecycle import ACTIVE_SQL, Part, Tracked
 from sp2l.smc.model import Costs, SmcParams
 
 
@@ -34,13 +35,24 @@ def floor_step(v: Decimal, step: Decimal) -> Decimal:
     return (v / step).to_integral_value(rounding=ROUND_DOWN) * step
 
 
-def pnl_usdt(t: Tracked, qty: Decimal, costs: Costs) -> tuple[Decimal, Decimal]:
-    """(net PnL, fees) in USDT of a closed position."""
-    assert t.exit_price is not None
+def part_pnl(t: Tracked, part: Part, qty: Decimal, costs: Costs) -> tuple[Decimal, Decimal]:
+    """(net PnL, fees) in USDT of one exit of a position of `qty`."""
+    q = qty * part.frac
+    fees = q * (t.entry * t.fee_in(costs) + part.price * costs.taker_fee)
     sgn = 1 if t.side is Side.LONG else -1
-    fee_in = costs.taker_fee if t.market else costs.maker_fee
-    fees = qty * (t.entry * fee_in + t.exit_price * costs.taker_fee)
-    return qty * (t.exit_price - t.entry) * sgn - fees, fees
+    return q * (part.price - t.entry) * sgn - fees, fees
+
+
+def ladder_fracs(qty: Decimal, p: SmcParams, step: Decimal) -> tuple[Decimal, Decimal]:
+    """Shares of the position closed at TP1 and TP2, in whole quantity steps; a part that
+    rounds down to nothing passes its share to the next one."""
+    if qty <= 0:
+        return p.tp1_frac, p.tp2_frac
+    q1 = floor_step(qty * p.tp1_frac, step)
+    carry = p.tp1_frac if q1 == 0 else Decimal(0)
+    q2 = floor_step(qty * (p.tp2_frac + carry), step)
+    q2 = min(q2, qty - q1)
+    return q1 / qty, q2 / qty
 
 
 class Wallet:
@@ -100,7 +112,7 @@ class Wallet:
             c.execute(
                 text(
                     "SELECT COUNT(*) FROM smc_signals WHERE wallet_id = :w"
-                    " AND state IN ('PENDING', 'OPEN')"
+                    " AND state IN " + ACTIVE_SQL
                 ),
                 {"w": self.id},
             ).scalar_one()
@@ -109,8 +121,8 @@ class Wallet:
     def open_margin(self, c: Connection) -> Decimal:
         v: Decimal = c.execute(
             text(
-                "SELECT COALESCE(SUM(margin), 0) FROM smc_signals WHERE wallet_id = :w"
-                " AND state IN ('PENDING', 'OPEN')"
+                "SELECT COALESCE(SUM(margin * COALESCE(qty_open / NULLIF(qty, 0), 1)), 0)"
+                " FROM smc_signals WHERE wallet_id = :w AND state IN " + ACTIVE_SQL
             ),
             {"w": self.id},
         ).scalar_one()
@@ -133,20 +145,43 @@ class Wallet:
         notional = qty * entry
         return Size(qty, notional, notional / p.max_leverage, notional / bal, note)
 
-    def book_close(
-        self, c: Connection, sid: int, symbol: str, t: Tracked, qty: Decimal, costs: Costs
+    def book(
+        self,
+        c: Connection,
+        sid: int,
+        symbol: str,
+        t: Tracked,
+        part: Part,
+        qty: Decimal,
+        costs: Costs,
     ) -> Decimal:
-        pnl, fees = pnl_usdt(t, qty, costs)
+        """Book one exit of signal `sid` (a part of size 0 books nothing)."""
+        if part.frac <= 0 or qty <= 0:
+            return Decimal(0)
+        pnl, fees = part_pnl(t, part, qty, costs)
         bal = self.balance(c) + pnl
         c.execute(
             text(
                 "INSERT INTO smc_wallet_ledger (wallet_id, ts, symbol, signal_id, kind, amount,"
-                " balance_after) VALUES (:w, :t, :s, :i, 'REALIZED_PNL', :a, :b)"
+                " balance_after, part, fees) VALUES (:w, :t, :s, :i, 'REALIZED_PNL', :a, :b,"
+                " :p, :f)"
             ),
-            {"w": self.id, "t": t.closed_at, "s": symbol, "i": sid, "a": pnl, "b": bal},
+            {
+                "w": self.id,
+                "t": part.at,
+                "s": symbol,
+                "i": sid,
+                "a": pnl,
+                "b": bal,
+                "p": part.kind,
+                "f": fees,
+            },
         )
         c.execute(
-            text("UPDATE smc_signals SET pnl_usdt = :p, fees_usdt = :f WHERE id = :i"),
+            text(
+                "UPDATE smc_signals SET pnl_usdt = COALESCE(pnl_usdt, 0) + :p,"
+                " fees_usdt = COALESCE(fees_usdt, 0) + :f WHERE id = :i"
+            ),
             {"p": pnl, "f": fees, "i": sid},
         )
         return pnl

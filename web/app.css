@@ -11,6 +11,7 @@
   --c-bull: 38,201,148; --c-bear: 246,103,93; --c-fvg-bull: 84,160,255; --c-fvg-bear: 247,176,64;
   --c-liq: 196,148,255; --c-text: 231,233,236; --c-pd-hi: 246,103,93; --c-pd-lo: 38,201,148;
   --c-on: 10,14,19; --c-pill: 22,26,32;
+  --c-armed: 247,176,64; --c-pending: 116,167,218; --c-open: 169,147,217;
 }
 :root[data-theme="light"] {
   --bg: #f4f5f7; --surface: #ffffff; --surface-2: #f1f3f6; --border: #dde1e7; --border-strong: #c6ccd5;
@@ -22,6 +23,7 @@
   --c-bull: 10,140,98; --c-bear: 205,57,46; --c-fvg-bull: 30,98,214; --c-fvg-bear: 196,118,0;
   --c-liq: 120,64,210; --c-text: 27,34,44; --c-pd-hi: 205,57,46; --c-pd-lo: 10,140,98;
   --c-on: 255,255,255; --c-pill: 255,255,255;
+  --c-armed: 196,118,0; --c-pending: 43,98,165; --c-open: 106,79,176;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -272,3 +274,11 @@ body.has-max { overflow: hidden; }
 .levels div { padding: 6px; }
 .levels .k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .levels .v { white-space: nowrap; font-size: 13px; overflow-wrap: normal; }
+
+/* TP ladder rows (position card, signal detail) */
+.ladder-rungs { display: grid; gap: 2px; margin: 6px 0; font-size: 12px; }
+.ladder-rungs .rung { display: grid; grid-template-columns: 34px minmax(0, 1fr) 52px minmax(0, 2fr) 14px; gap: 6px; align-items: center; }
+.ladder-rungs .rung .k { font-weight: 600; color: var(--ok); }
+.ladder-rungs .rung.hit { opacity: .6; }
+.ladder-rungs .rung .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ladder-rungs .rung svg { width: 12px; height: 12px; color: var(--ok); }

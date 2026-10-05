@@ -1,6 +1,7 @@
 # SMC-2.0 — audit (Phase 0) and change plan (Phase 1)
 
-Status: **waiting for approval**. Nothing in `src/`, `web/`, `config/` or `tests/` has been changed.
+Status: **approved 2026-10-05 (all proposed defaults) and implemented** — see "Implementation
+notes" at the end. Services on the server are not restarted yet.
 Base: branch `smc-engine` @ HEAD (SMC-1.0, `ob_require_fvg: true`, chart gaps deployed 2026-10-05).
 
 ## 0. Open questions (the spec is ambiguous here; each has a proposed default)
@@ -113,3 +114,19 @@ Unit, hand-built candles (`tests/smc/test_setups.py`, `test_ladder.py`):
 ## 8. Deployment
 
 Commit per phase. No service restart until you confirm. Then: migration 0020 → restart engine and API. The open SMC-1.0 position continues under its old rules.
+
+## Implementation notes (Phase 2 / 3)
+
+- Done as planned: items 1–9, migration `0020_smc_ladder`, states, chart, docs (SMC-2.0), tests.
+- One extra key: `tp_inside_r: 1` (the "inside 1R" threshold of the TP fallbacks), in the hash.
+- `risk_unit` now charges the exit fee on the slipped stop fill, so a full stop is exactly −1R
+  (before: about −1R). Stored risk of existing signals is unchanged.
+- Margin in use counts only the open quantity after partial exits.
+- `tests/db/test_schema.py::test_no_second_target_columns_anywhere` (a rule of the retired SP2L
+  tables) now excludes `smc_*` tables, which carry the approved ladder.
+- The UI test uses any installed Playwright WebKit build when the bundled one is missing.
+- Finding (information only, 270 days, local data, after fees): BTC 1h: 317 BOS/CHoCH → 73 OBs
+  (last opposite candle, ≥ 0.5 ATR, FVG right after) → 9 complete sweep→BOS→OB+FVG setups → 8
+  armed → **0 accepted**; XRP: 18 armed → 0 accepted. `max_cost_frac` 0.15 with Tabdeal costs
+  (≈ 0.21 % round trip) needs a stop ≥ 1.38 % of price while `max_risk_pct` caps it at 1 %:
+  no order can pass both. With `max_risk_pct` 0.03 each market trades once in 270 days.

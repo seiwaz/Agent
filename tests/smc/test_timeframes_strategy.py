@@ -59,23 +59,50 @@ def test_aggregate_keeps_only_closed_buckets():
     assert h1[0].high == max(c.high for c in first) and h1[0].low == min(c.low for c in first)
 
 
+# a dense configuration for random data: 5m zones, 15m bias, 1m execution swings
+DENSE = SmcParams(
+    swing_len=2,
+    ob_min_atr=D(0),
+    sweep_max_bars=40,
+    zone_tf="5m",
+    exec_tf="1m",
+    bias_tf="15m",
+    max_risk_pct=D("0.05"),
+    min_net_rr_tp2=D(0),
+    max_cost_frac=D(1),
+)
+
+
 def test_every_accepted_setup_is_consistent():
-    m1 = m1_walk(20 * 1440, 3)
-    p = SmcParams(min_score=0, history_days=20, lookback_4h=100)
+    m1 = m1_walk(6 * 1440, 3)
     costs = Costs(D("0.0002"), D("0.0005"), D("0.0001"))
-    res = run(m1, p, costs)
+    res = run(m1, DENSE, costs)
     accepted = [s for s in res["setups"] if s.accepted]
-    assert res["stats"]["triggers"] > 0
+    assert res["stats"]["setups"] > 0 and accepted
     for s in accepted:
         long = s.direction is Side.LONG
-        assert s.entry is not None and s.sl is not None and s.tp is not None
-        assert (s.sl < s.entry < s.tp) if long else (s.tp < s.entry < s.sl)
-        assert s.net_rr is not None and s.net_rr >= p.min_net_rr
-        assert s.poi is not None and s.entry_zone is not None and s.poi.overlaps(s.entry_zone)
+        z = s.zone
+        assert z.sweep.idx <= z.ob.idx < z.event.break_idx  # sweep -> OB -> break
+        assert z.event.break_idx - z.sweep.idx <= DENSE.sweep_max_bars
+        assert s.entry == z.edge and s.created_at >= z.confirmed_at
+        assert s.sl is not None and s.tp1 is not None and s.tp2 is not None
+        assert (
+            (s.sl < s.entry < s.tp1.price < s.tp2.price)
+            if long
+            else (s.tp2.price < s.tp1.price < s.entry < s.sl)
+        )
+        assert (
+            s.sl <= min(z.sweep.wick, z.ob.bottom) if long else s.sl >= max(z.sweep.wick, z.ob.top)
+        )
+        assert s.tp1.net_r >= DENSE.tp_inside_r and s.tp2.net_r >= DENSE.tp_inside_r
+        if s.tp3 is not None:
+            assert (s.tp3.price > s.tp2.price) if long else (s.tp3.price < s.tp2.price)
         assert s.bias == (1 if long else -1)
-        ru = risk_unit(s.direction, s.entry, s.sl, costs, market=True)
+        ru = risk_unit(s.direction, s.entry, s.sl, costs)
         assert ru > abs(s.entry - s.sl)
     for _, t in res["trades"]:
         assert t.created_at <= (t.filled_at or t.created_at)
         if t.closed_at:
             assert t.closed_at > t.created_at
+        if t.result_r is not None:
+            assert t.result_r == sum(x.r for x in t.parts) and t.result_r >= -1

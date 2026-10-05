@@ -66,19 +66,3 @@ def test_liquidity_traded_through_by_the_forming_bar_is_swept():
     assert {x["kind"] for x in both} == {"BSL", "SSL"}
     swept = liquidity(a, D(10), rng=(D("12.5"), D(9)))  # the forming bar ran above 12
     assert [x["kind"] for x in swept] == ["SSL"]
-
-
-def test_poi_kinds_limit_which_zones_can_be_a_point_of_interest():
-    from sp2l.smc.strategy import find_poi
-
-    m1 = analyze(bars([(10, 9)] * 30), "1m", P)
-    h1 = analyze(bars([(10, 9)] * 30), "1h", P)
-    fvg = Zone("1h:FVG:LONG:1", "FVG", Side.LONG, D("9.8"), D("9.2"), 0, T0, 0, expires_idx=10**6)
-    h1.zones = [fvg]
-    ob = Zone("1m:OB:LONG:1", "OB", Side.LONG, D("9.6"), D("9.1"), 0, T0, 0)
-    t = T0 + timedelta(hours=10)
-    ctx = {"1m": m1, "1h": h1}
-    p_any = SmcParams(poi_tfs=("1h",), poi_kinds=("OB", "FVG"))
-    p_ob = SmcParams(poi_tfs=("1h",), poi_kinds=("OB",))
-    assert find_poi(ctx, p_any, ob, t, Side.LONG) == (fvg, "1h")
-    assert find_poi(ctx, p_ob, ob, t, Side.LONG) is None  # an FVG alone is no POI any more

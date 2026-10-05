@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal as D
 
@@ -10,11 +11,14 @@ from sqlalchemy import text
 
 from sp2l.core.types import Side
 from sp2l.smc import store
+from sp2l.smc.backtest import run as backtest
 from sp2l.smc.history import ensure_history, load_bars, series_end
 from sp2l.smc.lifecycle import Tracked, risk_unit
-from sp2l.smc.model import Costs, Setup, SmcParams, Zone
+from sp2l.smc.model import Costs, Setup, SmcParams, StructureEvent, Sweep, Target, Zone, ZoneSetup
 from sp2l.smc.runner import SmcRunner
 from sp2l.smc.wallet import Wallet
+from tests.smc.fixtures import SETUP, T0, expand
+from tests.smc.fixtures import P as FIXTURE_P
 
 pytestmark = pytest.mark.db
 SYM = "XAUTUSDT"
@@ -41,6 +45,40 @@ def chart(a: datetime, b: datetime) -> list[dict]:
         )
         t += MIN
     return out
+
+
+def make_setup(key: str, created: datetime, entry: D, sl: D, tp: D) -> Setup:
+    """A stored-signal stand-in: the zone setup is only carried along for the record."""
+    ob = Zone(f"1h:OB:LONG:{key}", "OB", Side.LONG, D(4010), D(4000), 0, created, 0)
+    ev = StructureEvent(f"1h:BOS:LONG:{key}", "BOS", Side.LONG, D(4020), 0, created, 1, created)
+    zs = ZoneSetup(
+        ob.id,
+        "1h",
+        Side.LONG,
+        ob,
+        (D(4010), D(4012)),
+        Sweep(0, Side.LONG, D(4001), D(3999), created),
+        ev,
+        created,
+    )
+    tgt = Target(tp, "test", False, D(2))
+    return Setup(
+        key=key,
+        direction=Side.LONG,
+        accepted=True,
+        reasons=(),
+        created_at=created,
+        zone=zs,
+        bias=1,
+        entry=entry,
+        sl=sl,
+        tp1=tgt,
+        tp2=tgt,
+        tp3=None,
+        qty=D(1),
+        notional=entry,
+        leverage=D(41),
+    )
 
 
 @pytest.fixture()
@@ -98,30 +136,7 @@ def test_runner_steps_tracks_an_open_signal_to_its_stop_and_heartbeats(clean):
     p = SmcParams(history_days=2, lookback_4h=10, lookback_1h=40)
     costs = Costs()
     created = NOW.replace(second=0) - timedelta(minutes=30)
-    zone = Zone("15m:OB:LONG:1", "OB", Side.LONG, D(4010), D(4000), 0, created, 0)
-    s = Setup(
-        key="test|1",
-        direction=Side.LONG,
-        accepted=True,
-        reasons=(),
-        created_at=created,
-        trigger_kind="CHOCH",
-        trigger_event_id="1m:CHOCH:LONG:1",
-        bias=1,
-        poi=zone,
-        poi_tf="15m",
-        entry_zone=zone,
-        entry=D(4100),
-        sl=D(4099),
-        tp=D(4200),
-        rr=D(100),
-        net_rr=D(100),
-        score=3,
-        factors={"sweep": True},
-        qty=D(1),
-        notional=D(4100),
-        leverage=D(41),
-    )
+    s = make_setup("test|1", created, D(4100), D(4099), D(4200))
     t = Tracked(
         "test|1",
         Side.LONG,
@@ -156,15 +171,18 @@ def test_runner_steps_tracks_an_open_signal_to_its_stop_and_heartbeats(clean):
             text("SELECT status FROM smc_runner_state WHERE symbol = :s"), {"s": SYM}
         ).scalar_one()
     # the chart prices sit far below 4099: stopped at once
-    assert st == "SL" and res == D(-1) and kinds == ["CREATED", "SL"]
+    assert st == "SL" and res == D(-1) and kinds == ["CREATED", "SL", "BOOKED"]
     with clean.connect() as c:
         led = c.execute(
-            text("SELECT kind, amount, balance_after FROM smc_wallet_ledger ORDER BY id")
+            text("SELECT kind, amount, balance_after, part FROM smc_wallet_ledger ORDER BY id")
         ).all()
         pnl = c.execute(text("SELECT pnl_usdt FROM smc_signals WHERE id = :i"), {"i": sid}).scalar()
-    assert [(k, a) for k, a, _ in led] == [("DEPOSIT", D(100)), ("REALIZED_PNL", D("-0.243"))]
+    assert [(k, a, pt) for k, a, _, pt in led] == [
+        ("DEPOSIT", D(100), None),
+        ("REALIZED_PNL", D("-0.243"), "SL"),
+    ]
     assert led[-1][2] == D("99.757") and pnl == D("-0.243")
-    assert {x["tf"] for x in hb["timeframes"]} == {"1m", "15m", "1h", "4h"}
+    assert {x["tf"] for x in hb["timeframes"]} == {"1m", "15m", "1h", "4h"}  # bias, zone, exec
     assert not r.step(NOW)  # no new minute: nothing to do
 
 
@@ -236,24 +254,7 @@ def test_an_open_market_position_survives_a_restart_and_stays_open(clean):
     ensure_history(clean, OTHER, lambda a, b: chart(a, min(b, NOW)), days=2, now=NOW)
     p = SmcParams(history_days=2, lookback_4h=10, lookback_1h=40)
     created = NOW.replace(second=0) - timedelta(minutes=30)
-    zone = Zone("15m:OB:LONG:2", "OB", Side.LONG, D(3990), D(3980), 0, created, 0)
-    s = Setup(
-        key="test|2",
-        direction=Side.LONG,
-        accepted=True,
-        reasons=(),
-        created_at=created,
-        trigger_kind="BOS",
-        trigger_event_id="1m:BOS:LONG:2",
-        bias=1,
-        poi=zone,
-        poi_tf="15m",
-        entry_zone=zone,
-        entry=D(4010),
-        sl=D(3900),
-        tp=D(4500),
-        score=2,
-    )
+    s = make_setup("test|2", created, D(4010), D(3900), D(4500))
     t = Tracked(
         "test|2",
         Side.LONG,
@@ -276,3 +277,64 @@ def test_an_open_market_position_survives_a_restart_and_stays_open(clean):
             text("SELECT state, last_m1 FROM smc_signals WHERE id = :i"), {"i": sid}
         ).one()
     assert st == "OPEN" and last is not None
+
+
+def test_the_live_runner_replays_exactly_what_the_backtest_finds(clean):
+    """Minute by minute over the same data, the runner opens and closes exactly the trades of
+    the backtest: same setup, entry, stop, targets, exits and R."""
+    sym = "SOLUSDT"
+    rows = SETUP + [
+        (98, 102, 97.8, 101.8),
+        (101.8, 105, 101.5, 104.8),
+        (104.8, 108.5, 104.5, 108),
+        (108, 110, 107.5, 109.5),
+        (109.5, 109.8, 104, 104.5),
+        (104.5, 105, 101, 101.5),
+    ]
+    m1 = expand(rows)
+    p = replace(FIXTURE_P, history_days=2)
+    want = backtest(m1, p, Costs())["trades"]
+    assert want  # the fixture trades
+
+    def fetch(a: datetime, b: datetime) -> list[dict]:
+        return [
+            {
+                "time": int(c.open_time.timestamp()),
+                "open": float(c.open),
+                "high": float(c.high),
+                "low": float(c.low),
+                "close": float(c.close),
+                "volume": 1.0,
+            }
+            for c in m1
+            if a <= c.open_time < b
+        ]
+
+    r = SmcRunner(clean, sym, p, Costs(), fetch=None, wallet=None)
+    r.started = T0
+    start = T0 + timedelta(hours=15)
+    ensure_history(clean, sym, fetch, days=2, now=start)
+    t = start
+    end = m1[-1].open_time + MIN
+    while t <= end:
+        ensure_history(clean, sym, fetch, days=2, now=t + timedelta(seconds=20))
+        r.step(t + timedelta(seconds=20))
+        t += 2 * MIN
+    with clean.connect() as c:
+        got = c.execute(
+            text(
+                "SELECT key, entry, sl, tp1, tp2, tp, state, result_r, parts, created_at,"
+                " filled_at FROM smc_signals WHERE symbol = :s ORDER BY created_at"
+            ),
+            {"s": sym},
+        ).all()
+    assert len(got) == len(want)
+    for row, (s, tr) in zip(got, want, strict=True):
+        assert row.key == s.key and row.created_at == s.created_at
+        assert (row.entry, row.tp1, row.tp2, row.tp) == (tr.entry, tr.tp1, tr.tp2, tr.tp)
+        assert row.sl == tr.sl  # the final (trailed) stop
+        assert row.state == tr.state.value and row.filled_at == tr.filled_at
+        assert row.result_r == (None if tr.result_r is None else round(tr.result_r, 18))
+        assert [(x["kind"], D(x["price"]), D(x["frac"])) for x in row.parts] == [
+            (x.kind, x.price, x.frac) for x in tr.parts
+        ]

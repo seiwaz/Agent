@@ -6,12 +6,13 @@ entry, realized PnL at exit, `max_positions` across markets).
 Loop (every couple of seconds):
 1. keep the Tabdeal chart history current (full depth on start: no live warmup);
 2. when a new final minute exists in the merged series: rebuild the timeframes whose bar
-   closed, advance every PENDING/OPEN signal through the new M1 bars, then evaluate the
-   fresh M1 triggers (break bar closed within the last `FRESH` window) and store accepted
-   ones while capacity (`max_active`) allows;
+   closed, advance every active signal through the new M1 bars (TP ladder, trailing stop
+   behind execution-TF swings, every exit booked in the wallet), then arm the zone setups
+   whose arming minute (first trade into the FVG) closed within the last `FRESH` window
+   (`confirm_exec`: whose confirming bar did) and store accepted ones while capacity allows;
 3. write a heartbeat with the top-down status shown by the dashboard.
 
-Triggers are never created retroactively: after downtime, only fresh ones can fire, while
+Orders are never created retroactively: after downtime, only fresh armings can fire, while
 signals that were already active resume from their last applied minute.
 """
 
@@ -30,11 +31,20 @@ from sqlalchemy import Engine, text
 from sp2l.smc import store
 from sp2l.smc.context import ContextBuilder
 from sp2l.smc.history import Fetch, ensure_history, load_bars, series_end
-from sp2l.smc.lifecycle import Tracked, advance, risk_unit
+from sp2l.smc.lifecycle import advance
 from sp2l.smc.model import Analysis, Costs, SmcParams
-from sp2l.smc.strategy import evaluate, trend_at
+from sp2l.smc.strategy import (
+    ARMED_BEFORE,
+    bar_trail,
+    evaluate,
+    find_arming,
+    order_for,
+    tracked,
+    trend_at,
+    zone_setups,
+)
 from sp2l.smc.timeframes import MINUTE
-from sp2l.smc.wallet import Wallet
+from sp2l.smc.wallet import Wallet, ladder_fracs
 
 log = logging.getLogger("sp2l.smc")
 FRESH = timedelta(minutes=3)
@@ -113,7 +123,7 @@ class SmcRunner:
             self.heartbeat(now)
             return False
         ctx = self.ctx.build(upto)
-        self.advance_active(upto)
+        self.advance_active(upto, ctx)
         created = self.create_signals(ctx, upto)
         self.upto = upto
         self.heartbeat(now, ctx)
@@ -121,57 +131,73 @@ class SmcRunner:
             log.info("new signals: %s", created)
         return True
 
-    def advance_active(self, upto: datetime) -> None:
+    def advance_active(self, upto: datetime, ctx: dict[str, Analysis]) -> None:
         act = store.active(self.db, self.symbol)
         if not act:
             return
+        p = self.params
         since = min(t.last_m1 or (t.created_at - MINUTE) for _, t, _ in act)
         minutes = max(1, int((upto - since) / MINUTE))
         bars = load_bars(self.db, self.symbol, "1m", min(minutes, 60 * 24 * 30), upto)
+        ax = ctx[p.exec_tf]
         with self.db.begin() as c:
             for sid, t, qty in act:
                 for b in bars:
                     if b.open_time < t.created_at:
                         continue
-                    ev = advance(t, b, self.params, self.costs)
-                    if ev is not None:
-                        price = (
-                            t.entry
-                            if ev == "FILLED"
-                            else t.sl
-                            if ev == "BREAKEVEN"
-                            else t.exit_price
-                        )
-                        detail: dict[str, Any] | None = None
+                    booked = len(t.parts)
+                    trail = bar_trail(t, ax, b, p)
+                    for ev in advance(t, b, p, self.costs, trail):
+                        price = {
+                            "FILLED": t.entry,
+                            "TP1": t.tp1,
+                            "TP2": t.tp2,
+                            "STOP_MOVED": t.sl,
+                        }.get(ev, t.exit_price)
+                        detail: dict[str, Any] = {}
                         if t.result_r is not None:
-                            detail = {"result_r": str(t.result_r)}
-                        if ev in ("TP", "SL", "TIMEOUT") and self.wallet is not None and qty > 0:
-                            pnl = self.wallet.book_close(c, sid, self.symbol, t, qty, self.costs)
-                            detail = {**(detail or {}), "pnl_usdt": str(pnl)}
+                            detail["result_r"] = str(t.result_r)
                         store.event(c, sid, b.open_time + MINUTE, ev, price, detail)
+                    for part in t.parts[booked:]:
+                        if self.wallet is not None and qty > 0:
+                            pnl = self.wallet.book(c, sid, self.symbol, t, part, qty, self.costs)
+                            store.event(
+                                c,
+                                sid,
+                                part.at,
+                                "BOOKED",
+                                part.price,
+                                {"part": part.kind, "frac": str(part.frac), "pnl_usdt": str(pnl)},
+                            )
                     if not t.active:
                         break
                 store.save(c, sid, t)
 
     def create_signals(self, ctx: dict[str, Analysis], upto: datetime) -> list[str]:
         p = self.params
-        m1 = ctx[p.trigger_tf]
-        fresh = [
-            e
-            for e in m1.events
-            if e.break_time + MINUTE >= upto - FRESH
-            and e.break_time + MINUTE >= self.started - FRESH
-        ]
+        za, m1 = ctx[p.zone_tf], ctx["1m"].bars
+        kz = len(za.bars) - 1
         out: list[str] = []
-        if not fresh:
-            return out
+        floor = max(upto, self.started) - FRESH
         n_active = len(store.active(self.db, self.symbol))
-        mkt = p.entry_mode == "market"
         with self.db.begin() as c:
-            for e in fresh:
+            for zs in zone_setups(za, p):
+                armed = find_arming(zs, za, kz, m1)
+                if armed is None or armed == ARMED_BEFORE:
+                    continue
+                order = order_for(zs, ctx, p, armed, m1)
+                if order is None:
+                    continue
+                t0, market_px = order
+                known = t0 if market_px is not None else t0 + MINUTE
+                if known < floor or known > upto:
+                    continue  # never retroactive
                 bal = self.wallet.balance(c) if self.wallet is not None else None
-                s = evaluate(e, ctx, p, self.costs, equity=bal)
-                if not s.accepted or n_active >= p.max_active:
+                s = evaluate(zs, ctx, p, self.costs, t0, market_price=market_px, equity=bal)
+                if not s.accepted:
+                    log.info("%s: %s not traded: %s", self.symbol, s.key, ",".join(s.reasons))
+                    continue
+                if n_active >= p.max_active:
                     continue
                 if self.wallet is not None and self.wallet.active_count(c) >= p.max_positions:
                     log.info(
@@ -181,24 +207,15 @@ class SmcRunner:
                         p.max_positions,
                     )
                     continue
-                assert s.entry is not None and s.sl is not None and s.tp is not None
-                t = Tracked(
-                    key=s.key,
-                    side=s.direction,
-                    entry=s.entry,
-                    sl=s.sl,
-                    tp=s.tp,
-                    created_at=s.created_at,
-                    risk=risk_unit(s.direction, s.entry, s.sl, self.costs, market=mkt),
-                    market=mkt,
-                )
+                t = tracked(s, p, self.costs)
                 size = None
                 if self.wallet is not None:
-                    sized = self.wallet.size(c, s.entry, t.risk, self.qty_step)
+                    sized = self.wallet.size(c, t.entry, t.risk, self.qty_step)
                     if isinstance(sized, str):
                         log.info("%s: %s not opened: %s", self.symbol, s.key, sized)
                         continue
                     size = sized
+                    t.frac1, t.frac2 = ladder_fracs(size.qty, p, self.qty_step)
                 wid = self.wallet.id if self.wallet is not None else None
                 if store.insert_signal(c, self.symbol, s, t, p.digest(), size, wid):
                     n_active += 1
@@ -241,12 +258,12 @@ class SmcRunner:
 async def run_smc(runners: list[SmcRunner], stop: asyncio.Event, poll: float = 2.0) -> None:
     for r in runners:
         log.info(
-            "SMC runner for %s (params %s): bias %s, POI %s, trigger %s",
+            "SMC runner for %s (params %s): bias %s, zone %s, execution %s",
             r.symbol,
             r.params.digest(),
             r.params.bias_tf,
-            ",".join(r.params.poi_tfs),
-            r.params.trigger_tf,
+            r.params.zone_tf,
+            r.params.exec_tf,
         )
         r.heartbeat(datetime.now(UTC))  # visible as "loading history" right away
     while not stop.is_set():
