@@ -135,7 +135,7 @@ class SmcParams:
     fvg_adjacent: bool = True  # ... and that FVG must start at the OB candle (bars j..j+2)
     fvg_fill: str = "wick"  # an FVG is gone once fully filled (wick) / only on a close (close)
     eq_tol_atr: Decimal = Decimal("0.1")  # swings this close (x ATR) form one equal-highs/lows pool
-    require_sweep: bool = False  # a setup needs a liquidity sweep before the break (owner: off)
+    require_sweep: bool = True  # a setup needs a liquidity sweep before the break
     sweep_max_bars: int = 12  # zone-TF bars from the sweep to the break at most
     # top-down model: bias -> zone (sweep, displacement, OB + FVG) -> execution
     bias_tf: str = "4h"
