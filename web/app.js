@@ -322,8 +322,11 @@ function drawSetup(ctx, s, size) {
     ctx.fillStyle = rgba(c, spent ? 0.05 : 0.2); ctx.fillRect(ob[0], y1, ob[1] - ob[0], h);
     ctx.strokeStyle = rgba(c, spent ? 0.35 : 1); ctx.lineWidth = spent ? 1 : 2; ctx.setLineDash(spent ? [3, 3] : []);
     ctx.strokeRect(ob[0], y1, ob[1] - ob[0], h); ctx.setLineDash([]);
-    const why = s.plan && !s.plan.accepted && s.plan.reasons.length ? ` · ${s.plan.reasons[0].code}` : "";
-    zoneLabels.push([`${s.tf} OB · ${ageText(s.age_min)} · ${s.state}${why}`, Math.max(ob[0], 0) + 3, y1 + 10, c, "left", !spent]);
+    const pl = s.plan;
+    const why = pl && !pl.accepted && pl.reasons.length ? ` · ${pl.reasons.map((r) => r.code).join(", ")}` : "";
+    const rr = pl && pl.tp ? ` · ${(+pl.tp.net_r).toFixed(2)}R` : "";
+    const cost = pl && pl.cost_frac !== null && pl.cost_frac !== undefined ? ` · cost ${pct(pl.cost_frac, 0)}` : "";
+    zoneLabels.push([`${s.tf} OB · ${ageText(s.age_min)} · ${s.state}${rr}${cost}${why}`, Math.max(ob[0], 0) + 3, y1 + 10, c, "left", !spent]);
   }
   const fc = s.direction === "LONG" ? "--c-fvg-bull" : "--c-fvg-bear";
   const fv = span(s.fvg.time, null, W), f1 = yOf(s.fvg.top), f2 = yOf(s.fvg.bottom);
@@ -359,7 +362,11 @@ function drawPlan(ctx, s, size, drawnPx) {
     plainLabel(ctx, text, W - 6, y + (long ? -9 : 9), c, size, "right");
   };
   if (pl.sl) line(pl.sl, "--c-bear", `planned SL ${pxs(pl.sl)}`, [2, 3]);
-  if (pl.tp) line(pl.tp.price, "--c-bull", `planned TP ${pl.tp.source} · ${(+pl.tp.net_r).toFixed(2)}R`, [1, 3]);
+  if (pl.tp) {
+    line(pl.tp.price, "--c-bull", `planned TP ${pxs(pl.tp.price)} · ${(+pl.tp.net_r).toFixed(2)}R`, [1, 3]);
+    if (pl.tp.level) line(pl.tp.level, "--c-liq", `${pl.tp.source} ${pxs(pl.tp.level)}`, [1, 2]);
+  }
+  if (pl.range_mid) line(pl.range_mid, "--c-text", `50 % ${pxs(pl.range_mid)}`, [1, 4]);
 }
 function drawBelow(ctx, size) {
   zoneLabels = [];
@@ -612,9 +619,9 @@ function renderLegend() {
     if (state.layers.ob) items.push(sw("--c-bull", `${zt} setup OB, waiting (long)`), sw("--c-bear", "waiting (short)"),
       sw("--c-armed", "armed: price in the FVG"), sw("--c-pending", "limit order resting"), sw("--c-open", "position open"));
     if (state.layers.ob) items.push(sw("--c-fvg-bull", "its FVG"), ln(rgba("--c-liq", 1), "liquidity sweep (dot = wick)"));
-    if (state.layers.liquidity) items.push(ln(rgba("--c-bull", 1), "planned TP (previous HH / LL) · planned SL (OB wick), dotted"));
+    if (state.layers.liquidity) items.push(ln(rgba("--c-bull", 1), "planned SL (OB wick) · TP (front-run) and the HH / LL it refers to · 50 % of the range, dotted"));
     if (state.layers.positions) items.push(ln(css("--text-2"), "positions: entry, SL, TP, time stop / expiry"));
-    items.push(el("li", { class: "muted" }, "Setups: (sweep →) BOS/CHoCH → OB + FVG, fresh, with the bias, near the price or with a position. Label: timeframe · age · state"));
+    items.push(el("li", { class: "muted" }, "Setups: sweep → BOS/CHoCH → OB + FVG, fresh, with the bias, passing the filters, near the price or with a position. Label: timeframe · age · state · net R · cost share. Rejected setups: All zones (debug)"));
   } else {
     if (state.layers.ob) items.push(sw("--c-bull", "Bullish OB"), sw("--c-bear", "Bearish OB"));
     if (state.layers.fvg) items.push(sw("--c-fvg-bull", "Bullish FVG"), sw("--c-fvg-bear", "Bearish FVG"));
@@ -791,7 +798,7 @@ function renderRadar(r) {
   $("trig-list").replaceChildren(...(r.recent.length ? r.recent.map((t) => el("li", { class: `t-${stTone[t.state] || "neutral"}` },
     el("div", { class: "top" }, sideTag(t.direction), el("b", {}, `${t.tf} ${t.event.kind === "CHOCH" ? "CHoCH" : "BOS"}`), when(t.confirmed_at), tag(stTone[t.state] || "neutral", t.state),
       t.aligned ? null : el("span", { class: "muted" }, "against the bias")),
-    el("div", { class: "why" }, `${t.sweep ? `sweep ${pxs(t.sweep.level)} (wick ${pxs(t.sweep.wick)}) · ` : ""}OB ${pxs(t.ob.bottom)} – ${pxs(t.ob.top)} · FVG ${pxs(t.fvg.bottom)} – ${pxs(t.fvg.top)}`))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, "No complete setup in the lookback."))]));
+    el("div", { class: "why" }, `${t.plan && !t.plan.accepted ? `${t.plan.reasons.map((r) => r.code).join(", ")} · ` : ""}${t.sweep ? `sweep ${pxs(t.sweep.level)} (wick ${pxs(t.sweep.wick)}) · ` : ""}OB ${pxs(t.ob.bottom)} – ${pxs(t.ob.top)} · FVG ${pxs(t.fvg.bottom)} – ${pxs(t.fvg.top)}`))) : [el("li", { class: "t-neutral" }, el("span", { class: "muted small" }, "No complete setup in the lookback."))]));
 }
 
 /* ---- alerts ----------------------------------------------------------------------------------- */
@@ -980,7 +987,7 @@ async function renderStrategy() {
     step("warn", "Entry", `${v.zone_tf} → M1`, v.confirm_exec
       ? `When price first trades into the FVG, wait for a ${v.exec_tf} BOS / CHoCH with the bias and enter at its close.`
       : `Limit order (maker) at the order-block edge touching the FVG, resting from the setup; armed when price first trades into the FVG, cancelled ${v.pending_expiry_min / 60} h later. Only the first touch.`),
-    step("ok", "Exit", `${v.exec_tf} · M1`, `Stop one tick beyond the order block's wick. One target, from the market, never from the stop: the ${v.tp_ref === "swing" ? "last confirmed" : "previous"} ${v.zone_tf} HH (long: its high) / LL (short: its low). None beyond the entry: no trade.${+v.time_stop_min > 0 ? ` Time stop ${v.time_stop_min / 60} h,` : ""} Closed at market after ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
+    step("ok", "Exit", `${v.exec_tf} · M1`, `Stop one tick beyond the order block's wick. One target, from the market, never from the stop: the ${v.tp_ref === "swing" ? "last confirmed" : "previous"} ${v.zone_tf} HH (long: its high) / LL (short: its low). None beyond the entry: no trade. The TP sits ${v.tp_front_run_atr} ATR before that level. Filters (they reject, never move stop or target): ${v.require_discount ? "long entry in the lower half of sweep wick → HH (short: upper half), " : ""}net R at the TP ≥ ${v.min_net_rr}${+v.max_cost_frac > 0 ? `, costs ≤ ${pct(v.max_cost_frac, 0)} of the stop` : ""}${v.exit_on_choch ? `; exit at a ${v.zone_tf} CHoCH against the trade` : ""}.${+v.time_stop_min > 0 ? ` Time stop ${v.time_stop_min / 60} h,` : ""} Closed at market after ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
   $("param-grid").replaceChildren(...p.groups.map((g) => el("section", { class: "card" }, el("h2", {}, g.name),
     el("dl", { class: "kv" }, g.items.flatMap((i) => [el("dt", {}, el("code", {}, i.key)), el("dd", { class: "num" }, Array.isArray(i.value) ? i.value.join(", ") || "—" : show(i.value))])))),
   el("section", { class: "card" }, el("h2", {}, "Costs (from config)"), el("dl", { class: "kv" },

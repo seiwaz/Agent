@@ -28,6 +28,7 @@ from sp2l.smc.strategy import (
     TREND,
     evaluate,
     find_arming,
+    order_for,
     trend_at,
     zone_setups,
 )
@@ -71,8 +72,13 @@ def plan_json(s: Any) -> dict[str, Any]:
         "entry": None if s.entry is None else _dec(s.entry),
         "sl": None if s.sl is None else _dec(s.sl),
         "tp": target_json(s.tp),
+        "range_mid": None if s.range_mid is None else _dec(s.range_mid),
+        "cost_frac": None if s.cost_frac is None else _dec(round(s.cost_frac, 4)),
         "market": s.market,
     }
+
+
+FILTER_REASONS = {"NOT_DISCOUNT", "NOT_PREMIUM", "LOW_NET_RR", "COST_HEAVY"}
 
 
 def _t(d: datetime) -> str:
@@ -272,9 +278,10 @@ class SmcView:
         price: Decimal | None,
         forming: list[dict[str, Any]],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """(shown, every setup): the zone setups by state. Shown by default: fresh, valid,
-        with the bias and within chart_near_atr x ATR of price, or tied to an active
-        signal; those first, then the nearest, at most chart_top_n (more if positions)."""
+        """(shown, every setup): the zone setups by state, each with its plan (evaluated now
+        while it waits, else at the moment its order existed). Shown by default: fresh, valid,
+        with the bias, not rejected by a filter and within chart_near_atr x ATR of price, or
+        tied to an active signal; those first, then the nearest, at most chart_top_n."""
         p = self.params
         za, m1 = ctx[p.zone_tf], ctx["1m"].bars
         k = len(za.bars) - 1
@@ -321,9 +328,25 @@ class SmcView:
                     "age_min": int((upto - zs.confirmed_at).total_seconds() // 60),
                     "distance_atr": None if dist is None else _dec(round(dist, 2)),
                     "signal_id": None if sig is None else sig["id"],
+                    "plan": None,
                     "_zs": zs,
+                    "_armed": armed,
                 }
             )
+        for x in out:  # the plan: now while waiting, else as it was when its order existed
+            zs, armed = x["_zs"], x["_armed"]
+            if x["state"] in ("waiting", "armed") or armed is None:
+                x["plan"] = plan_json(evaluate(zs, ctx, p, self.costs, upto))
+            elif armed != ARMED_BEFORE and (order := order_for(zs, ctx, p, armed, m1)):
+                x["plan"] = plan_json(
+                    evaluate(zs, ctx, p, self.costs, order[0], market_price=order[1])
+                )
+
+        def filtered(x: dict[str, Any]) -> bool:
+            return x["plan"] is not None and bool(
+                {r["code"] for r in x["plan"]["reasons"]} & FILTER_REASONS
+            )
+
         tied = [x for x in out if x["signal_id"] is not None]
         near = sorted(
             (
@@ -332,17 +355,16 @@ class SmcView:
                 if x["signal_id"] is None
                 and x["state"] in ("waiting", "armed")
                 and x["aligned"]
+                and not filtered(x)
                 and x["distance_atr"] is not None
                 and Decimal(x["distance_atr"]) <= p.chart_near_atr
             ),
             key=lambda x: Decimal(x["distance_atr"]),
         )
         shown = tied + near[: max(0, p.chart_top_n - len(tied))]
-        for x in shown:
-            if x["signal_id"] is None:
-                x["plan"] = plan_json(evaluate(x["_zs"], ctx, p, self.costs, upto))
         for x in out:
             x.pop("_zs")
+            x.pop("_armed")
         return shown, out
 
     def analysis(self, tf: str, bars: int) -> dict[str, Any]:
