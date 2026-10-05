@@ -15,8 +15,9 @@
 5. TARGETS  TP1 = nearest internal liquidity (execution-TF swing), TP2 = next opposing zone-TF
             OB / FVG, TP3 = external liquidity (previous day / week, equal highs / lows).
             Missing or inside 1R: fixed net 1R / 2R, recorded as a fallback.
-6. FILTERS  net R:R to TP2 >= min_net_rr_tp2, stop <= max_risk_pct, round-trip cost <=
-            max_cost_frac of the stop, advisory size within max_leverage.
+6. FILTERS  net R:R to TP2 >= min_net_rr_tp2 (fees and slippage counted), stop <=
+            max_risk_pct, advisory size within max_leverage; optional: round-trip cost <=
+            max_cost_frac of the stop (0 = off, the default).
 
 Every input is causal: closed bars only, swings once confirmed, zone state as of the order.
 """
@@ -393,7 +394,7 @@ def evaluate(
         reasons.append("SL_TOO_WIDE")
     fee_in = costs.taker_fee if market else costs.maker_fee
     cost = entry * fee_in + sl * costs.taker_fee + sl * costs.slippage
-    if cost > p.max_cost_frac * dist:
+    if p.max_cost_frac > 0 and cost > p.max_cost_frac * dist:
         reasons.append("FEE_TOO_HIGH")
     ru = risk_unit(side, entry, sl, costs, market=market)
 

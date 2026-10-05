@@ -149,6 +149,7 @@ def test_filters_fee_stop_width_rr_and_bias():
 
     assert why(P) == ()
     assert "FEE_TOO_HIGH" in why(replace(P, max_cost_frac=D("0.15")), Costs(D("0.01"), D("0.01")))
+    assert "FEE_TOO_HIGH" not in why(replace(P, max_cost_frac=D(0)), Costs(D("0.01"), D("0.01")))
     assert "SL_TOO_WIDE" in why(replace(P, max_risk_pct=D("0.01")))
     assert "LOW_RR" in why(replace(P, min_net_rr_tp2=D(5)))
     assert why(replace(P, bias_tf="4h")) == ("NO_BIAS",)  # 21 hours: no 4h structure yet

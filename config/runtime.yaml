@@ -95,7 +95,7 @@ smc:
   # entry / stop / filters
   sl_buffer_atr: 0.2      # beyond the farther of sweep wick and OB far edge, x ATR(1h)
   max_risk_pct: 0.01      # stop at most 1 % of price
-  max_cost_frac: 0.15     # skip if entry maker + exit taker + slippage > 15 % of the stop
+  max_cost_frac: 0        # off (owner 2026-10-05): fees count only through the net R:R to TP2
   # take-profit ladder
   tp1_frac: 0.5           # TP1 (nearest 15m swing liquidity): close 50 %, stop to break-even
   tp2_frac: 0.3           # TP2 (next opposing 1h OB/FVG): close 30 %, then trail the rest

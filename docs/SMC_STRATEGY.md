@@ -55,8 +55,9 @@ kept at the end of this file.
      `tp1_fallback_r` (1R) / `tp2_fallback_r` (2R) net of fees; the fallback is recorded.
      A fixed TP2 that would sit inside TP1 rejects the trade (NO_TARGET).
 6. **Filters** — net R:R to TP2 ≥ `min_net_rr_tp2` (2) after fees and slippage (LOW_RR);
-   round-trip cost (entry maker + exit taker + slippage) ≤ `max_cost_frac` (15 %) of the stop
-   distance (FEE_TOO_HIGH); advisory size ≤ `max_leverage` (LEVERAGE).
+   `max_cost_frac` (round-trip cost as a share of the stop distance, FEE_TOO_HIGH) is **off**
+   (0, owner 2026-10-05): fees count only through the net R:R to TP2, which already pays the
+   entry fee, the exit fee and slippage; advisory size ≤ `max_leverage` (LEVERAGE).
 7. **Capacity** — `max_active` (1) per market, `max_positions` (2) across markets; orders are
    never created retroactively (only within 3 minutes of the arming minute / confirmation).
 

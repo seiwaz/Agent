@@ -144,7 +144,7 @@ class SmcParams:
     # entry / stop / filters
     sl_buffer_atr: Decimal = Decimal("0.2")  # x ATR of the zone timeframe beyond sweep / OB
     max_risk_pct: Decimal = Decimal("0.01")  # entry-to-SL distance cap (fraction of price)
-    max_cost_frac: Decimal = Decimal("0.15")  # round-trip cost at most this share of the stop
+    max_cost_frac: Decimal = Decimal(0)  # round-trip cost at most this share of the stop; 0 = off
     tick: Decimal = Decimal("0.01")
     # take-profit ladder: TP1 (internal liquidity), TP2 (opposing zone), TP3 (external liquidity)
     tp1_frac: Decimal = Decimal("0.5")  # closed at TP1; the stop then moves to break-even
