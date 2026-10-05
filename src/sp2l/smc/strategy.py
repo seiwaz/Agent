@@ -216,9 +216,9 @@ def previous_extreme(
     s: ZoneSetup, ctx: Mapping[str, Analysis], p: SmcParams, t: datetime, entry: Decimal
 ) -> tuple[Decimal, str] | None:
     """The target: the edge of the previous HH candle (LONG: its high) / LL candle (SHORT: its
-    low) known at `t`. `tp_ref: leg`: the extreme the displacement made, from the break bar up
-    to `t` (closed zone bars + the minutes of the forming one); `swing`: the last confirmed
-    zone-TF swing high / low beyond the entry."""
+    low) known at `t`. `tp_ref: leg`: the extreme price made after the OB candle and before it
+    came back to the zone (closed zone bars after the OB + the minutes of the forming one, up
+    to `t`); `swing`: the last confirmed zone-TF swing high / low beyond the entry."""
     za, m1 = ctx[p.zone_tf], ctx["1m"]
     long = s.direction is Side.LONG
     k = last_closed(za, t)
@@ -232,7 +232,7 @@ def previous_extreme(
                 return sw.price, f"{za.tf} {'HH' if long else 'LL'} (swing)"
             return None
         return None
-    leg = za.bars[s.event.break_idx : k + 1]
+    leg = za.bars[s.ob.idx + 1 : k + 1]
     ext = max(b.high for b in leg) if long else min(b.low for b in leg)
     rng = m1_range(m1, za.bars[k].open_time + length(za.tf), last_closed(m1, t))
     if rng is not None:

@@ -122,7 +122,7 @@ def test_arming_is_the_first_minute_back_in_the_fvg_and_the_order_rests_at_the_e
     (s,) = orders(ctx, P, Costs())
     assert s.accepted and s.created_at == bars[i].open_time and s.entry == D("97.5")
     assert s.sl == D("93.99")  # one tick below the OB's wick (94), nothing else
-    # the target: the high of the HH the displacement made (bar 17, 107.5), not the stop
+    # the target: the HH after the OB candle, before price came back (bar 17, 107.5)
     assert s.tp is not None and (s.tp.price, s.tp.source) == (D("107.5"), "1h HH")
 
 

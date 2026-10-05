@@ -96,7 +96,7 @@ smc:
   # stop and target: independent of each other (owner 2026-10-05)
   # SL one tick beyond the OB's wick; one TP at the edge of the previous HH candle (long: its high)
   # / LL candle (short: its low). No HH / LL beyond the entry: no trade.
-  tp_ref: leg             # leg: the HH / LL the displacement made (break bar .. order); swing: last confirmed 1h swing
+  tp_ref: leg             # leg: the HH / LL after the OB candle, before the first return to the OB; swing: last confirmed 1h swing
   # time
   pending_expiry_min: 120 # unfilled limit cancelled 8 x 15m after arming
   time_stop_min: 180      # market exit if neither TP nor SL within 12 x 15m of the fill

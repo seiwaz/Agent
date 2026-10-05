@@ -46,9 +46,9 @@ kept at the end of this file.
    high for a short). Nothing else: no ATR buffer, no cap on the distance.
 5. **Target** — one, from the market alone, **never derived from the stop** (owner rule
    2026-10-05): the edge of the previous **HH** candle (long: its high) / **LL** candle (short:
-   its low). `tp_ref: leg` (default): the extreme the displacement made, from the break bar up
-   to the order (closed 1h bars + the minutes of the forming one); `swing`: the last confirmed
-   1h swing high / low beyond the entry. None beyond the entry: no trade (NO_TARGET). Its net
+   its low) **made after the OB candle and before price first came back to the OB**
+   (`tp_ref: leg`, default; closed 1h bars after the OB + the minutes of the forming one, up
+   to the order); `swing`: the last confirmed 1h swing high / low beyond the entry. None beyond the entry: no trade (NO_TARGET). Its net
    R after fees is shown for information only.
 6. **Size** — risk `risk_pct` of the wallet over the stop distance plus costs; advisory size
    ≤ `max_leverage` (LEVERAGE).

@@ -145,7 +145,7 @@ class SmcParams:
     # stop: one tick beyond the order block's wick; one target, independent of the stop: the
     # edge of the previous HH candle (long: its high) / LL candle (short: its low)
     tick: Decimal = Decimal("0.01")
-    tp_ref: str = "leg"  # leg: the HH / LL the displacement made (break bar .. order) /
+    tp_ref: str = "leg"  # leg: the HH / LL after the OB candle, before price came back /
     # swing: the last confirmed zone-TF swing high / low beyond the entry
     # data: closed bars analysed per timeframe, and the exchange history kept for them
     lookback_1m: int = 720
