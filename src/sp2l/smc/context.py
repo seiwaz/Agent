@@ -35,7 +35,7 @@ class ContextBuilder:
         self._cache: dict[str, tuple[datetime, float, Analysis]] = {}
 
     def analysis(self, tf: str, upto: datetime) -> Analysis:
-        key = bucket_start(upto, tf)
+        key = bucket_start(upto, tf, self.params.htf_grid)
         hit = self._cache.get(tf)
         now = time.monotonic()
         if (
@@ -44,7 +44,8 @@ class ContextBuilder:
             and (self.max_age is None or now - hit[1] < self.max_age)
         ):
             return hit[2]
-        bars = load_bars(self.db, self.symbol, tf, self.params.lookback(tf), upto)
+        p = self.params
+        bars = load_bars(self.db, self.symbol, tf, p.lookback(tf), upto, grid=p.htf_grid)
         a = analyze(bars, tf, self.params)
         self._cache[tf] = (key, now, a)
         return a

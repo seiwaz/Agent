@@ -172,6 +172,9 @@ def test_live_canonical_minutes_take_precedence_and_timeframes_aggregate(clean):
     assert h1[-1].open_time + timedelta(hours=1) <= upto
     forming = load_bars(clean, SYM, "1h", 5, upto, include_forming=True)
     assert len(forming) == len(h1) + 1 and forming[-1].high == D(9999)
+    utc = load_bars(clean, SYM, "1h", 5, upto, grid="utc")
+    assert all(b.open_time.minute == 0 for b in utc)  # the UTC grid (TradingView, venues)
+    assert utc[-1].open_time + timedelta(hours=1) <= upto
 
 
 def test_runner_steps_tracks_an_open_signal_to_its_stop_and_heartbeats(clean):

@@ -35,7 +35,7 @@ from sp2l.smc.timeframes import MINUTE, aggregate
 
 def build_context(m1: Sequence[Candle], p: SmcParams) -> dict[str, Analysis]:
     upto = m1[-1].open_time + MINUTE
-    return {tf: analyze(aggregate(m1, tf, upto), tf, p) for tf in needed_tfs(p)}
+    return {tf: analyze(aggregate(m1, tf, upto, p.htf_grid), tf, p) for tf in needed_tfs(p)}
 
 
 def orders(ctx: dict[str, Analysis], p: SmcParams, costs: Costs) -> list[Setup]:

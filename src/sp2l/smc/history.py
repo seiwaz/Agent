@@ -190,15 +190,22 @@ def series_end(db: Engine, symbol: str) -> datetime | None:
 
 
 def load_bars(
-    db: Engine, symbol: str, tf: str, bars: int, upto: datetime, *, include_forming: bool = False
+    db: Engine,
+    symbol: str,
+    tf: str,
+    bars: int,
+    upto: datetime,
+    *,
+    include_forming: bool = False,
+    grid: str = "tehran",
 ) -> list[Candle]:
-    """The last `bars` closed `tf` bars ending at or before `upto` (end of the last final M1).
-    With include_forming, the bucket still in progress is appended (chart display only)."""
+    """The last `bars` closed `tf` bars on `grid` ending at or before `upto` (end of the last
+    final M1). With include_forming, the bucket still in progress is appended (chart only)."""
     ln = length(tf)
-    end_bucket = bucket_start(upto, tf)  # bucket containing `upto` = still forming (or empty)
+    end_bucket = bucket_start(upto, tf, grid)  # bucket containing `upto` = still forming
     start = end_bucket - ln * bars
     stop = upto if include_forming else end_bucket
-    origin = EPOCH + offset(tf)
+    origin = EPOCH + offset(tf, grid)
     sql = f"""
         WITH m AS ({MERGED_M1})
         SELECT date_bin(make_interval(secs => :len), open_time, :origin) AS t,

@@ -138,6 +138,7 @@ class SmcParams:
     require_sweep: bool = True  # a setup needs a liquidity sweep before the break
     sweep_max_bars: int = 12  # zone-TF bars from the sweep to the break at most
     # top-down model: bias -> zone (sweep, displacement, OB + FVG) -> execution
+    htf_grid: str = "tehran"  # 1h / 4h bars: tehran (hh:30 UTC, Tabdeal's chart) / utc
     bias_tf: str = "4h"
     zone_tf: str = "1h"
     exec_tf: str = "15m"  # confirmation, trailing swings and time units

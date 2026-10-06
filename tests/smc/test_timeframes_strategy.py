@@ -6,6 +6,8 @@ import random
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal as D
 
+import pytest
+
 from sp2l.core.types import Candle, Side
 from sp2l.smc.backtest import run
 from sp2l.smc.lifecycle import risk_unit
@@ -57,6 +59,22 @@ def test_aggregate_keeps_only_closed_buckets():
     first = [c for c in m1 if bucket_start(c.open_time, "1h") == h1[0].open_time]
     assert h1[0].open == first[0].open and h1[0].close == first[-1].close
     assert h1[0].high == max(c.high for c in first) and h1[0].low == min(c.low for c in first)
+
+
+def test_utc_grid_puts_hourly_and_four_hour_bars_on_the_hour():
+    t = datetime(2026, 1, 1, 10, 29, tzinfo=UTC)
+    assert bucket_start(t, "1h", "utc") == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
+    assert bucket_start(t, "4h", "utc") == datetime(2026, 1, 1, 8, 0, tzinfo=UTC)
+    assert bucket_start(t, "4h", "tehran") == datetime(2026, 1, 1, 8, 30, tzinfo=UTC)
+    assert bucket_start(t, "15m", "utc") == bucket_start(t, "15m", "tehran")  # 15m: UTC always
+    m1 = m1_walk(130, 1)  # 00:00 .. 02:09
+    upto = m1[-1].open_time + timedelta(minutes=1)
+    assert [b.open_time.strftime("%H:%M") for b in aggregate(m1, "1h", upto, "utc")] == [
+        "00:00",
+        "01:00",
+    ]
+    with pytest.raises(ValueError):
+        bucket_start(t, "1h", "local")
 
 
 # a dense configuration for random data: 5m zones, 15m bias, 1m execution swings

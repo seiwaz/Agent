@@ -256,7 +256,9 @@ class SmcView:
         upto = series_end(self.db, self.symbol)
         if upto is None:
             return {"tf": tf, "items": []}
-        bars = load_bars(self.db, self.symbol, tf, limit, upto, include_forming=True)
+        bars = load_bars(
+            self.db, self.symbol, tf, limit, upto, include_forming=True, grid=self.params.htf_grid
+        )
         items = []
         for b in bars:
             items.append(
