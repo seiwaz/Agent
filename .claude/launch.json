@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "smc-api",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "-m", "sp2l", "--config", "config/runtime.yaml", "api", "--port", "8765"],
+      "port": 8765
+    }
+  ]
+}
