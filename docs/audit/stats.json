@@ -1,0 +1,764 @@
+{
+ "current": {
+  "G1_G2_all_markets_net": {
+   "n": 1,
+   "mean": -1.0,
+   "ci95": [
+    -1.0,
+    -1.0
+   ],
+   "total": -1.0,
+   "win_rate": 0.0,
+   "label": "inconclusive (n < 100)"
+  },
+  "G2_all_markets_gross": {
+   "n": 1,
+   "mean": -1.0,
+   "ci95": [
+    -1.0,
+    -1.0
+   ],
+   "total": -1.0,
+   "win_rate": 0.0,
+   "label": "inconclusive (n < 100)"
+  },
+  "G2_btc_xrp_net": {
+   "n": 0
+  },
+  "G3_random_baseline": {
+   "seeds": 500,
+   "trades_per_seed": 1,
+   "mean_r_per_trade": -0.053,
+   "p2.5_p97.5_of_seed_means": [
+    -1.0,
+    2.42
+   ]
+  },
+  "G4_by_market": {
+   "ADAUSDT": {
+    "n": 1,
+    "total_r": -1.0,
+    "mean": -1.0
+   }
+  },
+  "G4_by_side": {
+   "LONG": {
+    "n": 1,
+    "total_r": -1.0,
+    "mean": -1.0
+   }
+  },
+  "G4_by_quarter": {
+   "2026-Q3": {
+    "n": 1,
+    "total_r": -1.0,
+    "mean": -1.0
+   }
+  },
+  "G4_by_hour_utc_block": {
+   "06-11h": {
+    "n": 1,
+    "total_r": -1.0,
+    "mean": -1.0
+   }
+  },
+  "G4_by_stop_size": {
+   "stop>=1%": {
+    "n": 1,
+    "total_r": -1.0,
+    "mean": -1.0
+   }
+  },
+  "top_trade_share": null
+ },
+ "nofilter": {
+  "G1_G2_all_markets_net": {
+   "n": 11,
+   "mean": -0.249,
+   "ci95": [
+    -0.598,
+    0.097
+   ],
+   "total": -2.74,
+   "win_rate": 0.455,
+   "label": "inconclusive (n < 100)"
+  },
+  "G2_all_markets_gross": {
+   "n": 11,
+   "mean": -0.15,
+   "ci95": [
+    -0.548,
+    0.252
+   ],
+   "total": -1.65,
+   "win_rate": 0.545,
+   "label": "inconclusive (n < 100)"
+  },
+  "G2_btc_xrp_net": {
+   "n": 4,
+   "mean": -0.149,
+   "ci95": [
+    -0.729,
+    0.34
+   ],
+   "total": -0.6,
+   "win_rate": 0.5,
+   "label": "inconclusive (n < 100)"
+  },
+  "G3_random_baseline": {
+   "seeds": 500,
+   "trades_per_seed": 11,
+   "mean_r_per_trade": -0.115,
+   "p2.5_p97.5_of_seed_means": [
+    -0.494,
+    0.34
+   ]
+  },
+  "G4_by_market": {
+   "ADAUSDT": {
+    "n": 2,
+    "total_r": -2.0,
+    "mean": -1.0
+   },
+   "BNBUSDT": {
+    "n": 1,
+    "total_r": 0.08,
+    "mean": 0.083
+   },
+   "BTCUSDT": {
+    "n": 3,
+    "total_r": 0.4,
+    "mean": 0.135
+   },
+   "DOGEUSDT": {
+    "n": 1,
+    "total_r": -0.02,
+    "mean": -0.022
+   },
+   "ETHUSDT": {
+    "n": 1,
+    "total_r": 0.41,
+    "mean": 0.414
+   },
+   "LTCUSDT": {
+    "n": 1,
+    "total_r": 0.38,
+    "mean": 0.379
+   },
+   "SOLUSDT": {
+    "n": 1,
+    "total_r": -1.0,
+    "mean": -1.0
+   },
+   "XRPUSDT": {
+    "n": 1,
+    "total_r": -1.0,
+    "mean": -1.0
+   }
+  },
+  "G4_by_side": {
+   "LONG": {
+    "n": 8,
+    "total_r": -3.01,
+    "mean": -0.376
+   },
+   "SHORT": {
+    "n": 3,
+    "total_r": 0.26,
+    "mean": 0.088
+   }
+  },
+  "G4_by_quarter": {
+   "2026-Q1": {
+    "n": 4,
+    "total_r": -1.4,
+    "mean": -0.349
+   },
+   "2026-Q2": {
+    "n": 2,
+    "total_r": 0.06,
+    "mean": 0.031
+   },
+   "2026-Q3": {
+    "n": 5,
+    "total_r": -1.41,
+    "mean": -0.281
+   }
+  },
+  "G4_by_hour_utc_block": {
+   "00-05h": {
+    "n": 3,
+    "total_r": -0.4,
+    "mean": -0.132
+   },
+   "06-11h": {
+    "n": 2,
+    "total_r": -0.62,
+    "mean": -0.31
+   },
+   "12-17h": {
+    "n": 3,
+    "total_r": 0.47,
+    "mean": 0.158
+   },
+   "18-23h": {
+    "n": 3,
+    "total_r": -2.2,
+    "mean": -0.733
+   }
+  },
+  "G4_by_stop_size": {
+   "stop 0.5-1%": {
+    "n": 2,
+    "total_r": -0.62,
+    "mean": -0.31
+   },
+   "stop>=1%": {
+    "n": 9,
+    "total_r": -2.12,
+    "mean": -0.236
+   }
+  },
+  "top_trade_share": 0.351
+ },
+ "smc22": {
+  "G1_G2_all_markets_net": {
+   "n": 14,
+   "mean": -0.679,
+   "ci95": [
+    -1.0,
+    -0.122
+   ],
+   "total": -9.5,
+   "win_rate": 0.143,
+   "label": "inconclusive (n < 100)"
+  },
+  "G2_all_markets_gross": {
+   "n": 14,
+   "mean": -0.624,
+   "ci95": [
+    -1.0,
+    0.037
+   ],
+   "total": -8.74,
+   "win_rate": 0.143,
+   "label": "inconclusive (n < 100)"
+  },
+  "G2_btc_xrp_net": {
+   "n": 4,
+   "mean": -0.699,
+   "ci95": [
+    -1.0,
+    -0.098
+   ],
+   "total": -2.8,
+   "win_rate": 0.25,
+   "label": "inconclusive (n < 100)"
+  },
+  "G3_random_baseline": {
+   "seeds": 500,
+   "trades_per_seed": 14,
+   "mean_r_per_trade": -0.179,
+   "p2.5_p97.5_of_seed_means": [
+    -0.826,
+    0.473
+   ]
+  },
+  "G4_by_market": {
+   "ADAUSDT": {
+    "n": 6,
+    "total_r": -6.0,
+    "mean": -1.0
+   },
+   "AVAXUSDT": {
+    "n": 1,
+    "total_r": -1.0,
+    "mean": -1.0
+   },
+   "BTCUSDT": {
+    "n": 3,
+    "total_r": -1.8,
+    "mean": -0.599
+   },
+   "ETHUSDT": {
+    "n": 1,
+    "total_r": 2.3,
+    "mean": 2.297
+   },
+   "SOLUSDT": {
+    "n": 2,
+    "total_r": -2.0,
+    "mean": -1.0
+   },
+   "XRPUSDT": {
+    "n": 1,
+    "total_r": -1.0,
+    "mean": -1.0
+   }
+  },
+  "G4_by_side": {
+   "LONG": {
+    "n": 10,
+    "total_r": -6.7,
+    "mean": -0.67
+   },
+   "SHORT": {
+    "n": 4,
+    "total_r": -2.8,
+    "mean": -0.699
+   }
+  },
+  "G4_by_quarter": {
+   "2026-Q1": {
+    "n": 4,
+    "total_r": -2.8,
+    "mean": -0.699
+   },
+   "2026-Q2": {
+    "n": 3,
+    "total_r": 0.3,
+    "mean": 0.099
+   },
+   "2026-Q3": {
+    "n": 7,
+    "total_r": -7.0,
+    "mean": -1.0
+   }
+  },
+  "G4_by_hour_utc_block": {
+   "00-05h": {
+    "n": 6,
+    "total_r": -4.8,
+    "mean": -0.8
+   },
+   "06-11h": {
+    "n": 5,
+    "total_r": -5.0,
+    "mean": -1.0
+   },
+   "12-17h": {
+    "n": 2,
+    "total_r": 1.3,
+    "mean": 0.649
+   },
+   "18-23h": {
+    "n": 1,
+    "total_r": -1.0,
+    "mean": -1.0
+   }
+  },
+  "G4_by_stop_size": {
+   "stop 0.5-1%": {
+    "n": 5,
+    "total_r": -1.7,
+    "mean": -0.341
+   },
+   "stop<0.5%": {
+    "n": 4,
+    "total_r": -4.0,
+    "mean": -1.0
+   },
+   "stop>=1%": {
+    "n": 5,
+    "total_r": -3.8,
+    "mean": -0.759
+   }
+  },
+  "top_trade_share": 0.919
+ },
+ "G6_neighbourhood": {
+  "current:swing_len=3": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:swing_len=4": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:swing_len=6": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:swing_len=7": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:sl_buffer_atr=0.1": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:sl_buffer_atr=0.3": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:ob_min_atr=0.3": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:ob_min_atr=0.7": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:fvg_min_atr=0.3": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:fvg_min_atr=0.7": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:confirm_window_min=120": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:confirm_window_min=480": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:sweep_max_bars=6": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "current:sweep_max_bars=24": {
+   "BTCUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   },
+   "XRPUSDT": {
+    "accepted": 0,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "nofilter:swing_len=3": {
+   "BTCUSDT": {
+    "accepted": 15,
+    "closed": 8,
+    "total_r": "-0.44",
+    "win_rate": 0.5
+   },
+   "XRPUSDT": {
+    "accepted": 12,
+    "closed": 3,
+    "total_r": "-0.79",
+    "win_rate": 0.667
+   }
+  },
+  "nofilter:swing_len=4": {
+   "BTCUSDT": {
+    "accepted": 7,
+    "closed": 5,
+    "total_r": "1.06",
+    "win_rate": 0.6
+   },
+   "XRPUSDT": {
+    "accepted": 8,
+    "closed": 1,
+    "total_r": "-1.00",
+    "win_rate": 0.0
+   }
+  },
+  "nofilter:swing_len=6": {
+   "BTCUSDT": {
+    "accepted": 3,
+    "closed": 1,
+    "total_r": "0.52",
+    "win_rate": 1.0
+   },
+   "XRPUSDT": {
+    "accepted": 1,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "nofilter:swing_len=7": {
+   "BTCUSDT": {
+    "accepted": 2,
+    "closed": 1,
+    "total_r": "0.52",
+    "win_rate": 1.0
+   },
+   "XRPUSDT": {
+    "accepted": 1,
+    "closed": 0,
+    "total_r": "0.00",
+    "win_rate": null
+   }
+  },
+  "nofilter:sl_buffer_atr=0.1": {
+   "BTCUSDT": {
+    "accepted": 5,
+    "closed": 3,
+    "total_r": "0.41",
+    "win_rate": 0.667
+   },
+   "XRPUSDT": {
+    "accepted": 5,
+    "closed": 1,
+    "total_r": "-1.00",
+    "win_rate": 0.0
+   }
+  },
+  "nofilter:sl_buffer_atr=0.3": {
+   "BTCUSDT": {
+    "accepted": 5,
+    "closed": 3,
+    "total_r": "0.40",
+    "win_rate": 0.667
+   },
+   "XRPUSDT": {
+    "accepted": 5,
+    "closed": 1,
+    "total_r": "-1.00",
+    "win_rate": 0.0
+   }
+  },
+  "nofilter:ob_min_atr=0.3": {
+   "BTCUSDT": {
+    "accepted": 5,
+    "closed": 3,
+    "total_r": "0.40",
+    "win_rate": 0.667
+   },
+   "XRPUSDT": {
+    "accepted": 5,
+    "closed": 1,
+    "total_r": "-1.00",
+    "win_rate": 0.0
+   }
+  },
+  "nofilter:ob_min_atr=0.7": {
+   "BTCUSDT": {
+    "accepted": 4,
+    "closed": 3,
+    "total_r": "0.40",
+    "win_rate": 0.667
+   },
+   "XRPUSDT": {
+    "accepted": 3,
+    "closed": 1,
+    "total_r": "-1.00",
+    "win_rate": 0.0
+   }
+  },
+  "nofilter:fvg_min_atr=0.3": {
+   "BTCUSDT": {
+    "accepted": 5,
+    "closed": 3,
+    "total_r": "0.40",
+    "win_rate": 0.667
+   },
+   "XRPUSDT": {
+    "accepted": 5,
+    "closed": 1,
+    "total_r": "-1.00",
+    "win_rate": 0.0
+   }
+  },
+  "nofilter:fvg_min_atr=0.7": {
+   "BTCUSDT": {
+    "accepted": 5,
+    "closed": 3,
+    "total_r": "0.40",
+    "win_rate": 0.667
+   },
+   "XRPUSDT": {
+    "accepted": 5,
+    "closed": 1,
+    "total_r": "-1.00",
+    "win_rate": 0.0
+   }
+  },
+  "nofilter:confirm_window_min=120": {
+   "BTCUSDT": {
+    "accepted": 4,
+    "closed": 2,
+    "total_r": "0.32",
+    "win_rate": 0.5
+   },
+   "XRPUSDT": {
+    "accepted": 3,
+    "closed": 1,
+    "total_r": "-1.00",
+    "win_rate": 0.0
+   }
+  },
+  "nofilter:confirm_window_min=480": {
+   "BTCUSDT": {
+    "accepted": 5,
+    "closed": 3,
+    "total_r": "0.40",
+    "win_rate": 0.667
+   },
+   "XRPUSDT": {
+    "accepted": 5,
+    "closed": 1,
+    "total_r": "-1.00",
+    "win_rate": 0.0
+   }
+  },
+  "nofilter:sweep_max_bars=6": {
+   "BTCUSDT": {
+    "accepted": 4,
+    "closed": 3,
+    "total_r": "0.40",
+    "win_rate": 0.667
+   },
+   "XRPUSDT": {
+    "accepted": 5,
+    "closed": 1,
+    "total_r": "-1.00",
+    "win_rate": 0.0
+   }
+  },
+  "nofilter:sweep_max_bars=24": {
+   "BTCUSDT": {
+    "accepted": 7,
+    "closed": 3,
+    "total_r": "0.40",
+    "win_rate": 0.667
+   },
+   "XRPUSDT": {
+    "accepted": 5,
+    "closed": 1,
+    "total_r": "-1.00",
+    "win_rate": 0.0
+   }
+  }
+ },
+ "generated": "2026-10-06T12:12:13.985754"
+}

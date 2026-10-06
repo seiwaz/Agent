@@ -1,0 +1,298 @@
+{
+ "BTCUSDT:5m": {
+  "swings": {
+   "reference": 9805,
+   "engine": 9805,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "events": {
+   "reference": 3826,
+   "engine": 3826,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "fvgs": {
+   "reference": 7430,
+   "engine": 7430,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "obs": {
+   "reference": 1114,
+   "engine": 1114,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "sweeps": {
+   "reference": 3218,
+   "engine": 3218,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  }
+ },
+ "BTCUSDT:15m": {
+  "swings": {
+   "reference": 3302,
+   "engine": 3302,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "events": {
+   "reference": 1243,
+   "engine": 1243,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "fvgs": {
+   "reference": 1606,
+   "engine": 1606,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "obs": {
+   "reference": 381,
+   "engine": 381,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "sweeps": {
+   "reference": 1193,
+   "engine": 1193,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  }
+ },
+ "BTCUSDT:1h": {
+  "swings": {
+   "reference": 822,
+   "engine": 822,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "events": {
+   "reference": 309,
+   "engine": 309,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "fvgs": {
+   "reference": 299,
+   "engine": 299,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "obs": {
+   "reference": 90,
+   "engine": 90,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "sweeps": {
+   "reference": 306,
+   "engine": 306,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  }
+ },
+ "BTCUSDT:4h": {
+  "swings": {
+   "reference": 206,
+   "engine": 206,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "events": {
+   "reference": 75,
+   "engine": 75,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "fvgs": {
+   "reference": 98,
+   "engine": 98,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "obs": {
+   "reference": 18,
+   "engine": 18,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "sweeps": {
+   "reference": 78,
+   "engine": 78,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  }
+ },
+ "XRPUSDT:5m": {
+  "swings": {
+   "reference": 9590,
+   "engine": 9590,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "events": {
+   "reference": 3777,
+   "engine": 3777,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "fvgs": {
+   "reference": 6882,
+   "engine": 6882,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "obs": {
+   "reference": 1140,
+   "engine": 1140,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "sweeps": {
+   "reference": 3275,
+   "engine": 3275,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  }
+ },
+ "XRPUSDT:15m": {
+  "swings": {
+   "reference": 3305,
+   "engine": 3305,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "events": {
+   "reference": 1238,
+   "engine": 1238,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "fvgs": {
+   "reference": 1734,
+   "engine": 1734,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "obs": {
+   "reference": 358,
+   "engine": 358,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "sweeps": {
+   "reference": 1229,
+   "engine": 1229,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  }
+ },
+ "XRPUSDT:1h": {
+  "swings": {
+   "reference": 801,
+   "engine": 801,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "events": {
+   "reference": 298,
+   "engine": 298,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "fvgs": {
+   "reference": 361,
+   "engine": 361,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "obs": {
+   "reference": 68,
+   "engine": 68,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "sweeps": {
+   "reference": 311,
+   "engine": 311,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  }
+ },
+ "XRPUSDT:4h": {
+  "swings": {
+   "reference": 202,
+   "engine": 202,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "events": {
+   "reference": 69,
+   "engine": 69,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "fvgs": {
+   "reference": 85,
+   "engine": 85,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "obs": {
+   "reference": 22,
+   "engine": 22,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  },
+  "sweeps": {
+   "reference": 69,
+   "engine": 69,
+   "only_reference": 0,
+   "only_engine": 0,
+   "examples": []
+  }
+ }
+}

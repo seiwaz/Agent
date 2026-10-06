@@ -1,0 +1,1712 @@
+{
+ "BTCUSDT": {
+  "B1": {
+   "5m": {
+    "swings": 9805,
+    "bars_delay_all_equal_swing_len": true,
+    "min_bars": 5,
+    "max_bars": 5,
+    "mean_hours_pivot_close_to_known": 0.417
+   },
+   "15m": {
+    "swings": 3302,
+    "bars_delay_all_equal_swing_len": true,
+    "min_bars": 5,
+    "max_bars": 5,
+    "mean_hours_pivot_close_to_known": 1.25
+   },
+   "1h": {
+    "swings": 822,
+    "bars_delay_all_equal_swing_len": true,
+    "min_bars": 5,
+    "max_bars": 5,
+    "mean_hours_pivot_close_to_known": 5.0
+   },
+   "4h": {
+    "swings": 206,
+    "bars_delay_all_equal_swing_len": true,
+    "min_bars": 5,
+    "max_bars": 5,
+    "mean_hours_pivot_close_to_known": 20.0
+   },
+   "1d": {
+    "swings": 27,
+    "bars_delay_all_equal_swing_len": true,
+    "min_bars": 5,
+    "max_bars": 5,
+    "mean_hours_pivot_close_to_known": 120.0
+   }
+  },
+  "B4": {
+   "5m": {
+    "bars": 4000,
+    "steps_replayed": 2000,
+    "from": "2026-09-28T12:20:00+00:00",
+    "differences": {
+     "swings_early": 0,
+     "swings_late": 0,
+     "events_early": 0,
+     "events_late": 0,
+     "sweeps_early": 0,
+     "sweeps_late": 0,
+     "zones_early": 0,
+     "zones_late": 0,
+     "zone_state": 0,
+     "trend": 0,
+     "atr": 0,
+     "event_ob": 0
+    },
+    "seconds": 104.7
+   },
+   "15m": {
+    "bars": 6000,
+    "steps_replayed": 3000,
+    "from": "2026-09-04T05:00:00+00:00",
+    "differences": {
+     "swings_early": 0,
+     "swings_late": 0,
+     "events_early": 0,
+     "events_late": 0,
+     "sweeps_early": 0,
+     "sweeps_late": 0,
+     "zones_early": 0,
+     "zones_late": 0,
+     "zone_state": 0,
+     "trend": 0,
+     "atr": 0,
+     "event_ob": 0
+    },
+    "seconds": 252.0
+   },
+   "1h": {
+    "bars": 6000,
+    "steps_replayed": 3000,
+    "from": "2026-06-02T11:00:00+00:00",
+    "differences": {
+     "swings_early": 0,
+     "swings_late": 0,
+     "events_early": 0,
+     "events_late": 0,
+     "sweeps_early": 0,
+     "sweeps_late": 0,
+     "zones_early": 0,
+     "zones_late": 0,
+     "zone_state": 0,
+     "trend": 0,
+     "atr": 0,
+     "event_ob": 0
+    },
+    "seconds": 226.7
+   },
+   "4h": {
+    "bars": 1620,
+    "steps_replayed": 1596,
+    "from": "2026-01-12T08:00:00+00:00",
+    "differences": {
+     "swings_early": 0,
+     "swings_late": 0,
+     "events_early": 0,
+     "events_late": 0,
+     "sweeps_early": 0,
+     "sweeps_late": 0,
+     "zones_early": 0,
+     "zones_late": 0,
+     "zone_state": 0,
+     "trend": 0,
+     "atr": 0,
+     "event_ob": 0
+    },
+    "seconds": 19.8
+   },
+   "1d": {
+    "bars": 270,
+    "steps_replayed": 246,
+    "from": "2026-02-01T00:00:00+00:00",
+    "differences": {
+     "swings_early": 0,
+     "swings_late": 0,
+     "events_early": 0,
+     "events_late": 0,
+     "sweeps_early": 0,
+     "sweeps_late": 0,
+     "zones_early": 0,
+     "zones_late": 0,
+     "zone_state": 0,
+     "trend": 0,
+     "atr": 0,
+     "event_ob": 0
+    },
+    "seconds": 0.6
+   }
+  },
+  "B5": {
+   "current": {
+    "cuts": 8,
+    "setups_compared": 305,
+    "trades_compared": 0,
+    "diffs": []
+   },
+   "nofilter": {
+    "cuts": 8,
+    "setups_compared": 305,
+    "trades_compared": 25,
+    "diffs": []
+   },
+   "smc22": {
+    "cuts": 8,
+    "setups_compared": 305,
+    "trades_compared": 44,
+    "diffs": []
+   }
+  },
+  "LW": {
+   "current": {
+    "setups": 64,
+    "identical": 49,
+    "different": 15,
+    "accepted_backtest": 0,
+    "accepted_live_window": 0,
+    "differences": [
+     {
+      "key": "15m:OB:SHORT:1769087700",
+      "at": "2026-01-22T22:21:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1769303700",
+      "at": "2026-01-25T06:03:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1769796900",
+      "at": "2026-01-31T12:33:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1772970300",
+      "at": "2026-03-08T16:41:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1774598400",
+      "at": "2026-03-31T05:34:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1775139300",
+      "at": "2026-04-02T19:21:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1775744100",
+      "at": "2026-04-12T17:01:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1778378400",
+      "at": "2026-05-10T09:43:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1779281100",
+      "at": "2026-05-20T18:17:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1785398400",
+      "at": "2026-07-31T06:42:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1786563000",
+      "at": "2026-08-13T01:30:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1787930100",
+      "at": "2026-08-30T17:46:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1788437700",
+      "at": "2026-09-08T10:52:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1789390800",
+      "at": "2026-09-15T05:09:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1791124200",
+      "at": "2026-10-04T20:02:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     }
+    ],
+    "bias_trend_mismatch": {
+     "bars": 1440,
+     "mismatch": 0,
+     "rate": 0.0
+    }
+   },
+   "nofilter": {
+    "setups": 64,
+    "identical": 49,
+    "different": 15,
+    "accepted_backtest": 5,
+    "accepted_live_window": 5,
+    "differences": [
+     {
+      "key": "15m:OB:SHORT:1769087700",
+      "at": "2026-01-22T22:21:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1769303700",
+      "at": "2026-01-25T06:03:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1769796900",
+      "at": "2026-01-31T12:33:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1772970300",
+      "at": "2026-03-08T16:41:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1774598400",
+      "at": "2026-03-31T05:34:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1775139300",
+      "at": "2026-04-02T19:21:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1775744100",
+      "at": "2026-04-12T17:01:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1778378400",
+      "at": "2026-05-10T09:43:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1779281100",
+      "at": "2026-05-20T18:17:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1785398400",
+      "at": "2026-07-31T06:42:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1786563000",
+      "at": "2026-08-13T01:30:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1787930100",
+      "at": "2026-08-30T17:46:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1788437700",
+      "at": "2026-09-08T10:52:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1789390800",
+      "at": "2026-09-15T05:09:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1791124200",
+      "at": "2026-10-04T20:02:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     }
+    ],
+    "bias_trend_mismatch": {
+     "bars": 1440,
+     "mismatch": 0,
+     "rate": 0.0
+    }
+   },
+   "smc22": {
+    "setups": 64,
+    "identical": 47,
+    "different": 17,
+    "accepted_backtest": 8,
+    "accepted_live_window": 8,
+    "differences": [
+     {
+      "key": "15m:OB:SHORT:1768016700",
+      "at": "2026-01-10T09:29:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1769796900",
+      "at": "2026-01-31T12:33:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1771126200",
+      "at": "2026-02-15T16:50:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1775512800",
+      "at": "2026-04-08T00:01:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1775744100",
+      "at": "2026-04-12T17:01:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1777248900",
+      "at": "2026-04-27T05:28:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1778665500",
+      "at": "2026-05-14T19:00:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1778707800",
+      "at": "2026-05-14T02:42:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1784098800",
+      "at": "2026-07-15T12:02:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1785458700",
+      "at": "2026-07-31T05:36:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1786076100",
+      "at": "2026-08-07T09:43:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1787930100",
+      "at": "2026-08-30T17:46:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1788090300",
+      "at": "2026-08-31T00:44:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1788269400",
+      "at": "2026-09-01T19:00:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1789390800",
+      "at": "2026-09-15T05:09:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1790519400",
+      "at": "2026-09-27T19:17:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1791124200",
+      "at": "2026-10-04T20:02:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     }
+    ],
+    "bias_trend_mismatch": {
+     "bars": 1440,
+     "mismatch": 0,
+     "rate": 0.0
+    }
+   }
+  }
+ },
+ "XRPUSDT": {
+  "B1": {
+   "5m": {
+    "swings": 9590,
+    "bars_delay_all_equal_swing_len": true,
+    "min_bars": 5,
+    "max_bars": 5,
+    "mean_hours_pivot_close_to_known": 0.417
+   },
+   "15m": {
+    "swings": 3305,
+    "bars_delay_all_equal_swing_len": true,
+    "min_bars": 5,
+    "max_bars": 5,
+    "mean_hours_pivot_close_to_known": 1.25
+   },
+   "1h": {
+    "swings": 801,
+    "bars_delay_all_equal_swing_len": true,
+    "min_bars": 5,
+    "max_bars": 5,
+    "mean_hours_pivot_close_to_known": 5.0
+   },
+   "4h": {
+    "swings": 202,
+    "bars_delay_all_equal_swing_len": true,
+    "min_bars": 5,
+    "max_bars": 5,
+    "mean_hours_pivot_close_to_known": 20.0
+   },
+   "1d": {
+    "swings": 31,
+    "bars_delay_all_equal_swing_len": true,
+    "min_bars": 5,
+    "max_bars": 5,
+    "mean_hours_pivot_close_to_known": 120.0
+   }
+  },
+  "B4": {
+   "5m": {
+    "bars": 4000,
+    "steps_replayed": 2000,
+    "from": "2026-09-28T12:20:00+00:00",
+    "differences": {
+     "swings_early": 0,
+     "swings_late": 0,
+     "events_early": 0,
+     "events_late": 0,
+     "sweeps_early": 0,
+     "sweeps_late": 0,
+     "zones_early": 0,
+     "zones_late": 0,
+     "zone_state": 0,
+     "trend": 0,
+     "atr": 0,
+     "event_ob": 0
+    },
+    "seconds": 114.1
+   },
+   "15m": {
+    "bars": 6000,
+    "steps_replayed": 3000,
+    "from": "2026-09-04T05:00:00+00:00",
+    "differences": {
+     "swings_early": 0,
+     "swings_late": 0,
+     "events_early": 0,
+     "events_late": 0,
+     "sweeps_early": 0,
+     "sweeps_late": 0,
+     "zones_early": 0,
+     "zones_late": 0,
+     "zone_state": 0,
+     "trend": 0,
+     "atr": 0,
+     "event_ob": 0
+    },
+    "seconds": 259.6
+   },
+   "1h": {
+    "bars": 6000,
+    "steps_replayed": 3000,
+    "from": "2026-06-02T11:00:00+00:00",
+    "differences": {
+     "swings_early": 0,
+     "swings_late": 0,
+     "events_early": 0,
+     "events_late": 0,
+     "sweeps_early": 0,
+     "sweeps_late": 0,
+     "zones_early": 0,
+     "zones_late": 0,
+     "zone_state": 0,
+     "trend": 0,
+     "atr": 0,
+     "event_ob": 0
+    },
+    "seconds": 217.4
+   },
+   "4h": {
+    "bars": 1620,
+    "steps_replayed": 1596,
+    "from": "2026-01-12T08:00:00+00:00",
+    "differences": {
+     "swings_early": 0,
+     "swings_late": 0,
+     "events_early": 0,
+     "events_late": 0,
+     "sweeps_early": 0,
+     "sweeps_late": 0,
+     "zones_early": 0,
+     "zones_late": 0,
+     "zone_state": 0,
+     "trend": 0,
+     "atr": 0,
+     "event_ob": 0
+    },
+    "seconds": 19.1
+   },
+   "1d": {
+    "bars": 270,
+    "steps_replayed": 246,
+    "from": "2026-02-01T00:00:00+00:00",
+    "differences": {
+     "swings_early": 0,
+     "swings_late": 0,
+     "events_early": 0,
+     "events_late": 0,
+     "sweeps_early": 0,
+     "sweeps_late": 0,
+     "zones_early": 0,
+     "zones_late": 0,
+     "zone_state": 0,
+     "trend": 0,
+     "atr": 0,
+     "event_ob": 0
+    },
+    "seconds": 0.4
+   }
+  },
+  "B5": {
+   "current": {
+    "cuts": 8,
+    "setups_compared": 340,
+    "trades_compared": 0,
+    "diffs": []
+   },
+   "nofilter": {
+    "cuts": 8,
+    "setups_compared": 340,
+    "trades_compared": 35,
+    "diffs": []
+   },
+   "smc22": {
+    "cuts": 8,
+    "setups_compared": 340,
+    "trades_compared": 43,
+    "diffs": []
+   }
+  },
+  "LW": {
+   "current": {
+    "setups": 63,
+    "identical": 47,
+    "different": 16,
+    "accepted_backtest": 0,
+    "accepted_live_window": 0,
+    "differences": [
+     {
+      "key": "15m:OB:SHORT:1768364100",
+      "at": "2026-01-14T19:13:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1769998500",
+      "at": "2026-02-02T08:26:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1770148800",
+      "at": "2026-02-04T02:07:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1771601400",
+      "at": "2026-02-20T20:17:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1771760700",
+      "at": "2026-02-23T16:37:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1772248500",
+      "at": "2026-02-28T08:29:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1772460900",
+      "at": "2026-03-03T09:50:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1773046800",
+      "at": "2026-03-09T14:46:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1773082800",
+      "at": "2026-03-09T23:45:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1774040400",
+      "at": "2026-03-21T01:45:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1776576600",
+      "at": "2026-04-19T15:32:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1776872700",
+      "at": "2026-04-27T05:00:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1779129900",
+      "at": "2026-05-19T06:53:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1786109400",
+      "at": "2026-08-08T07:30:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1787814900",
+      "at": "2026-08-28T14:03:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1789780500",
+      "at": "2026-09-20T01:36:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     }
+    ],
+    "bias_trend_mismatch": {
+     "bars": 1440,
+     "mismatch": 0,
+     "rate": 0.0
+    }
+   },
+   "nofilter": {
+    "setups": 63,
+    "identical": 47,
+    "different": 16,
+    "accepted_backtest": 5,
+    "accepted_live_window": 5,
+    "differences": [
+     {
+      "key": "15m:OB:SHORT:1768364100",
+      "at": "2026-01-14T19:13:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1769998500",
+      "at": "2026-02-02T08:26:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1770148800",
+      "at": "2026-02-04T02:07:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1771601400",
+      "at": "2026-02-20T20:17:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1771760700",
+      "at": "2026-02-23T16:37:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1772248500",
+      "at": "2026-02-28T08:29:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1772460900",
+      "at": "2026-03-03T09:50:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1773046800",
+      "at": "2026-03-09T14:46:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1773082800",
+      "at": "2026-03-09T23:45:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1774040400",
+      "at": "2026-03-21T01:45:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1776576600",
+      "at": "2026-04-19T15:32:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1776872700",
+      "at": "2026-04-27T05:00:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1779129900",
+      "at": "2026-05-19T06:53:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1786109400",
+      "at": "2026-08-08T07:30:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1787814900",
+      "at": "2026-08-28T14:03:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1789780500",
+      "at": "2026-09-20T01:36:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     }
+    ],
+    "bias_trend_mismatch": {
+     "bars": 1440,
+     "mismatch": 0,
+     "rate": 0.0
+    }
+   },
+   "smc22": {
+    "setups": 63,
+    "identical": 42,
+    "different": 21,
+    "accepted_backtest": 6,
+    "accepted_live_window": 6,
+    "differences": [
+     {
+      "key": "15m:OB:SHORT:1769998500",
+      "at": "2026-02-02T08:26:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1770148800",
+      "at": "2026-02-04T02:07:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1771053300",
+      "at": "2026-02-19T01:08:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1771427700",
+      "at": "2026-02-18T20:01:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1771484400",
+      "at": "2026-02-19T11:46:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1771601400",
+      "at": "2026-02-20T20:17:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1772460900",
+      "at": "2026-03-03T09:50:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1773082800",
+      "at": "2026-03-09T23:45:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1774820700",
+      "at": "2026-03-30T03:00:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1775427300",
+      "at": "2026-04-07T15:01:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1776346200",
+      "at": "2026-04-16T18:51:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1776576600",
+      "at": "2026-04-19T15:32:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1776660300",
+      "at": "2026-04-20T09:37:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1778546700",
+      "at": "2026-05-14T20:59:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1780464600",
+      "at": "2026-06-03T17:25:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1781274600",
+      "at": "2026-06-12T19:31:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1786456800",
+      "at": "2026-08-11T20:23:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1788069600",
+      "at": "2026-08-30T11:22:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:LONG:1789780500",
+      "at": "2026-09-20T01:36:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1790641800",
+      "at": "2026-09-29T10:01:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     },
+     {
+      "key": "15m:OB:SHORT:1790697600",
+      "at": "2026-09-30T13:33:00+00:00",
+      "backtest": [
+       false,
+       [
+        "NO_CONFIRM"
+       ],
+       "None",
+       "None"
+      ],
+      "live": "NO_ORDER_YET"
+     }
+    ],
+    "bias_trend_mismatch": {
+     "bars": 1440,
+     "mismatch": 0,
+     "rate": 0.0
+    }
+   }
+  }
+ }
+}

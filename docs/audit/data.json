@@ -1,0 +1,406 @@
+{
+ "upto": "2026-10-05T11:00:00+00:00",
+ "days": 270,
+ "BTCUSDT": {
+  "A1": {
+   "first": "2026-01-08T11:00:00+00:00",
+   "last": "2026-10-05T10:59:00+00:00",
+   "minutes_present": 388705,
+   "minutes_expected": 388800,
+   "missing_minutes": 95,
+   "holes": 22,
+   "holes_by_length": {
+    "2-4": 5,
+    "5-29": 4,
+    "1": 13
+   },
+   "longest": [
+    [
+     "2026-03-20T19:51:00+00:00",
+     29
+    ],
+    [
+     "2026-05-27T14:55:00+00:00",
+     23
+    ],
+    [
+     "2026-04-19T19:29:00+00:00",
+     10
+    ],
+    [
+     "2026-07-20T07:45:00+00:00",
+     5
+    ],
+    [
+     "2026-06-21T08:16:00+00:00",
+     4
+    ]
+   ],
+   "duplicates": 0,
+   "out_of_order": 0,
+   "impossible_ohlc": {
+    "nonpositive": 0,
+    "high_below_body": 0,
+    "low_above_body": 0,
+    "high_below_low": 0
+   },
+   "zero_volume_minutes": 0,
+   "flat_zero_volume_minutes": 0
+  },
+  "sources": {
+   "live_collector_minutes": 1037,
+   "overlap_with_chart": 1037,
+   "overlap_mismatch": {
+    "open": 573,
+    "high": 89,
+    "low": 99,
+    "close": 22,
+    "volume": 186
+   }
+  },
+  "A4": {
+   "utc:5m": {
+    "bars": 77750,
+    "python_vs_sql_mismatch": 0,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 25,
+    "first_bar_partial": false
+   },
+   "utc:15m": {
+    "bars": 25918,
+    "python_vs_sql_mismatch": 0,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 23,
+    "first_bar_partial": false
+   },
+   "utc:1h": {
+    "bars": 6480,
+    "python_vs_sql_mismatch": 0,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 22,
+    "first_bar_partial": false
+   },
+   "utc:4h": {
+    "bars": 1620,
+    "python_vs_sql_mismatch": 1,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 21,
+    "first_bar_partial": true
+   },
+   "utc:1d": {
+    "bars": 270,
+    "python_vs_sql_mismatch": 1,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 15,
+    "first_bar_partial": true
+   },
+   "tehran:5m": {
+    "bars": 77750,
+    "python_vs_sql_mismatch": 0,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 25,
+    "first_bar_partial": false
+   },
+   "tehran:15m": {
+    "bars": 25918,
+    "python_vs_sql_mismatch": 0,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 23,
+    "first_bar_partial": false
+   },
+   "tehran:1h": {
+    "bars": 6480,
+    "python_vs_sql_mismatch": 1,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 21,
+    "first_bar_partial": true
+   },
+   "tehran:4h": {
+    "bars": 1620,
+    "python_vs_sql_mismatch": 1,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 19,
+    "first_bar_partial": true
+   },
+   "tehran:1d": {
+    "bars": 270,
+    "python_vs_sql_mismatch": 1,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 15,
+    "first_bar_partial": true
+   }
+  },
+  "A2": {
+   "compared": 1440,
+   "only_stored": 0,
+   "only_exchange": 0,
+   "mismatch": {
+    "open": 1,
+    "high": 0,
+    "low": 1,
+    "close": 0,
+    "volume": 0
+   },
+   "mismatch_rate": {
+    "open": 0.00069,
+    "high": 0.0,
+    "low": 0.00069,
+    "close": 0.0,
+    "volume": 0.0
+   },
+   "max_rel_diff": {
+    "open": "0.00007780128843648880427671324921",
+    "high": "0",
+    "low": "0.00006954963663261877958069820762",
+    "close": "0"
+   },
+   "examples": [
+    [
+     "2026-09-27T11:11:00+00:00",
+     "open",
+     "84838.100000000000000000",
+     "84831.5"
+    ],
+    [
+     "2026-09-27T11:11:00+00:00",
+     "low",
+     "84837.400000000000000000",
+     "84831.5"
+    ]
+   ]
+  },
+  "A3": {
+   "compared": 393,
+   "only_stored": 0,
+   "only_exchange": 3,
+   "mismatch": {
+    "open": 0,
+    "high": 0,
+    "low": 0,
+    "close": 0,
+    "volume": 0
+   },
+   "mismatch_rate": {
+    "open": 0.0,
+    "high": 0.0,
+    "low": 0.0,
+    "close": 0.0,
+    "volume": 0.0
+   },
+   "max_rel_diff": {
+    "open": "0",
+    "high": "0",
+    "low": "0",
+    "close": "0"
+   },
+   "examples": [],
+   "edge_minutes_only": {
+    "compared": 60,
+    "mismatch": {
+     "open": 0,
+     "high": 0,
+     "low": 0,
+     "close": 0,
+     "volume": 0
+    },
+    "examples": []
+   },
+   "chunks_stored": 136
+  }
+ },
+ "XRPUSDT": {
+  "A1": {
+   "first": "2026-01-08T11:00:00+00:00",
+   "last": "2026-10-05T10:59:00+00:00",
+   "minutes_present": 388662,
+   "minutes_expected": 388800,
+   "missing_minutes": 138,
+   "holes": 43,
+   "holes_by_length": {
+    "2-4": 10,
+    "30-1439": 1,
+    "1": 28,
+    "5-29": 4
+   },
+   "longest": [
+    [
+     "2026-03-20T19:50:00+00:00",
+     30
+    ],
+    [
+     "2026-05-27T14:54:00+00:00",
+     24
+    ],
+    [
+     "2026-04-19T19:29:00+00:00",
+     13
+    ],
+    [
+     "2026-04-19T21:42:00+00:00",
+     11
+    ],
+    [
+     "2026-07-20T07:45:00+00:00",
+     5
+    ]
+   ],
+   "duplicates": 0,
+   "out_of_order": 0,
+   "impossible_ohlc": {
+    "nonpositive": 0,
+    "high_below_body": 0,
+    "low_above_body": 0,
+    "high_below_low": 0
+   },
+   "zero_volume_minutes": 0,
+   "flat_zero_volume_minutes": 0
+  },
+  "sources": {
+   "live_collector_minutes": 0,
+   "overlap_with_chart": 0,
+   "overlap_mismatch": {
+    "open": 0,
+    "high": 0,
+    "low": 0,
+    "close": 0,
+    "volume": 0
+   }
+  },
+  "A4": {
+   "utc:5m": {
+    "bars": 77748,
+    "python_vs_sql_mismatch": 0,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 43,
+    "first_bar_partial": false
+   },
+   "utc:15m": {
+    "bars": 25918,
+    "python_vs_sql_mismatch": 0,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 34,
+    "first_bar_partial": false
+   },
+   "utc:1h": {
+    "bars": 6480,
+    "python_vs_sql_mismatch": 0,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 27,
+    "first_bar_partial": false
+   },
+   "utc:4h": {
+    "bars": 1620,
+    "python_vs_sql_mismatch": 1,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 24,
+    "first_bar_partial": true
+   },
+   "utc:1d": {
+    "bars": 270,
+    "python_vs_sql_mismatch": 1,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 17,
+    "first_bar_partial": true
+   },
+   "tehran:5m": {
+    "bars": 77748,
+    "python_vs_sql_mismatch": 0,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 43,
+    "first_bar_partial": false
+   },
+   "tehran:15m": {
+    "bars": 25918,
+    "python_vs_sql_mismatch": 0,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 34,
+    "first_bar_partial": false
+   },
+   "tehran:1h": {
+    "bars": 6480,
+    "python_vs_sql_mismatch": 1,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 25,
+    "first_bar_partial": true
+   },
+   "tehran:4h": {
+    "bars": 1620,
+    "python_vs_sql_mismatch": 1,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 23,
+    "first_bar_partial": true
+   },
+   "tehran:1d": {
+    "bars": 270,
+    "python_vs_sql_mismatch": 1,
+    "sql_only": 0,
+    "bars_from_incomplete_buckets": 17,
+    "first_bar_partial": true
+   }
+  },
+  "A2": {
+   "compared": 1440,
+   "only_stored": 0,
+   "only_exchange": 0,
+   "mismatch": {
+    "open": 0,
+    "high": 0,
+    "low": 0,
+    "close": 0,
+    "volume": 0
+   },
+   "mismatch_rate": {
+    "open": 0.0,
+    "high": 0.0,
+    "low": 0.0,
+    "close": 0.0,
+    "volume": 0.0
+   },
+   "max_rel_diff": {
+    "open": "0",
+    "high": "0",
+    "low": "0",
+    "close": "0"
+   },
+   "examples": []
+  },
+  "A3": {
+   "compared": 393,
+   "only_stored": 0,
+   "only_exchange": 3,
+   "mismatch": {
+    "open": 0,
+    "high": 0,
+    "low": 0,
+    "close": 0,
+    "volume": 0
+   },
+   "mismatch_rate": {
+    "open": 0.0,
+    "high": 0.0,
+    "low": 0.0,
+    "close": 0.0,
+    "volume": 0.0
+   },
+   "max_rel_diff": {
+    "open": "0",
+    "high": "0",
+    "low": "0",
+    "close": "0"
+   },
+   "examples": [],
+   "edge_minutes_only": {
+    "compared": 60,
+    "mismatch": {
+     "open": 0,
+     "high": 0,
+     "low": 0,
+     "close": 0,
+     "volume": 0
+    },
+    "examples": []
+   },
+   "chunks_stored": 136
+  }
+ }
+}

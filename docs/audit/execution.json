@@ -1,0 +1,433 @@
+{
+ "costs": {
+  "maker_fee": "0.0008",
+  "taker_fee": "0.00095",
+  "slippage": "0.000326",
+  "funding_rate": "0"
+ },
+ "F1_engine_vs_reference_lifecycle": {
+  "compared": 83,
+  "identical": 83,
+  "diffs": []
+ },
+ "impact": {
+  "baseline": {
+   "nofilter": {
+    "orders": 34,
+    "closed": 11,
+    "states": {
+     "TP": 6,
+     "MISSED": 23,
+     "TIMEOUT": 1,
+     "SL": 4
+    },
+    "net_r": -2.742,
+    "gross_r": -1.648
+   },
+   "smc22": {
+    "orders": 48,
+    "closed": 14,
+    "states": {
+     "EXPIRED": 25,
+     "TIMEOUT": 1,
+     "SL": 12,
+     "MISSED": 9,
+     "TP": 1
+    },
+    "net_r": -9.5,
+    "gross_r": -8.741
+   },
+   "current": {
+    "orders": 1,
+    "closed": 1,
+    "states": {
+     "SL": 1
+    },
+    "net_r": -1.0,
+    "gross_r": -1.0
+   }
+  },
+  "C1_trade_through": {
+   "nofilter": {
+    "orders": 34,
+    "closed": 11,
+    "states": {
+     "TP": 6,
+     "MISSED": 23,
+     "TIMEOUT": 1,
+     "SL": 4
+    },
+    "net_r": -2.742,
+    "gross_r": -1.648
+   },
+   "smc22": {
+    "orders": 48,
+    "closed": 14,
+    "states": {
+     "EXPIRED": 25,
+     "TIMEOUT": 1,
+     "SL": 12,
+     "MISSED": 9,
+     "TP": 1
+    },
+    "net_r": -9.5,
+    "gross_r": -8.741
+   },
+   "current": {
+    "orders": 1,
+    "closed": 1,
+    "states": {
+     "SL": 1
+    },
+    "net_r": -1.0,
+    "gross_r": -1.0
+   }
+  },
+  "C3_gap_stops": {
+   "nofilter": {
+    "orders": 34,
+    "closed": 11,
+    "states": {
+     "TP": 6,
+     "MISSED": 23,
+     "TIMEOUT": 1,
+     "SL": 4
+    },
+    "net_r": -2.742,
+    "gross_r": -1.648
+   },
+   "smc22": {
+    "orders": 48,
+    "closed": 14,
+    "states": {
+     "EXPIRED": 25,
+     "TIMEOUT": 1,
+     "SL": 12,
+     "MISSED": 9,
+     "TP": 1
+    },
+    "net_r": -9.5,
+    "gross_r": -8.741
+   },
+   "current": {
+    "orders": 1,
+    "closed": 1,
+    "states": {
+     "SL": 1
+    },
+    "net_r": -1.0,
+    "gross_r": -1.0
+   }
+  },
+  "C2_market_exit_slip": {
+   "nofilter": {
+    "orders": 34,
+    "closed": 11,
+    "states": {
+     "TP": 6,
+     "MISSED": 23,
+     "TIMEOUT": 1,
+     "SL": 4
+    },
+    "net_r": -2.757,
+    "gross_r": -1.648
+   },
+   "smc22": {
+    "orders": 48,
+    "closed": 14,
+    "states": {
+     "EXPIRED": 25,
+     "TIMEOUT": 1,
+     "SL": 12,
+     "MISSED": 9,
+     "TP": 1
+    },
+    "net_r": -9.508,
+    "gross_r": -8.741
+   },
+   "current": {
+    "orders": 1,
+    "closed": 1,
+    "states": {
+     "SL": 1
+    },
+    "net_r": -1.0,
+    "gross_r": -1.0
+   }
+  },
+  "C2_market_entry_slip": {
+   "nofilter": {
+    "orders": 34,
+    "closed": 11,
+    "states": {
+     "TP": 6,
+     "MISSED": 23,
+     "TIMEOUT": 1,
+     "SL": 4
+    },
+    "net_r": -2.742,
+    "gross_r": -1.648
+   },
+   "smc22": {
+    "orders": 48,
+    "closed": 14,
+    "states": {
+     "EXPIRED": 25,
+     "TIMEOUT": 1,
+     "SL": 12,
+     "MISSED": 9,
+     "TP": 1
+    },
+    "net_r": -9.5,
+    "gross_r": -8.741
+   },
+   "current": {
+    "orders": 1,
+    "closed": 1,
+    "states": {
+     "SL": 1
+    },
+    "net_r": -1.0,
+    "gross_r": -1.0
+   }
+  },
+  "C1_marketable_limits": {
+   "nofilter": {
+    "orders": 34,
+    "closed": 11,
+    "states": {
+     "TP": 6,
+     "MISSED": 23,
+     "TIMEOUT": 1,
+     "SL": 4
+    },
+    "net_r": -2.742,
+    "gross_r": -1.648
+   },
+   "smc22": {
+    "orders": 48,
+    "closed": 14,
+    "states": {
+     "EXPIRED": 25,
+     "TIMEOUT": 1,
+     "SL": 12,
+     "MISSED": 9,
+     "TP": 1
+    },
+    "net_r": -9.5,
+    "gross_r": -8.741
+   },
+   "current": {
+    "orders": 1,
+    "closed": 1,
+    "states": {
+     "SL": 1
+    },
+    "net_r": -1.0,
+    "gross_r": -1.0
+   }
+  },
+  "C5_tp_first": {
+   "nofilter": {
+    "orders": 34,
+    "closed": 11,
+    "states": {
+     "TP": 6,
+     "MISSED": 23,
+     "TIMEOUT": 1,
+     "SL": 4
+    },
+    "net_r": -2.742,
+    "gross_r": -1.648
+   },
+   "smc22": {
+    "orders": 48,
+    "closed": 14,
+    "states": {
+     "EXPIRED": 25,
+     "TIMEOUT": 1,
+     "SL": 12,
+     "MISSED": 9,
+     "TP": 1
+    },
+    "net_r": -9.5,
+    "gross_r": -8.741
+   },
+   "current": {
+    "orders": 1,
+    "closed": 1,
+    "states": {
+     "SL": 1
+    },
+    "net_r": -1.0,
+    "gross_r": -1.0
+   }
+  },
+  "C6_tp_in_fill_minute": {
+   "nofilter": {
+    "orders": 34,
+    "closed": 11,
+    "states": {
+     "TP": 6,
+     "MISSED": 23,
+     "TIMEOUT": 1,
+     "SL": 4
+    },
+    "net_r": -2.742,
+    "gross_r": -1.648
+   },
+   "smc22": {
+    "orders": 48,
+    "closed": 14,
+    "states": {
+     "EXPIRED": 25,
+     "TIMEOUT": 1,
+     "SL": 12,
+     "MISSED": 9,
+     "TP": 1
+    },
+    "net_r": -9.5,
+    "gross_r": -8.741
+   },
+   "current": {
+    "orders": 1,
+    "closed": 1,
+    "states": {
+     "SL": 1
+    },
+    "net_r": -1.0,
+    "gross_r": -1.0
+   }
+  },
+  "all_realistic": {
+   "nofilter": {
+    "orders": 34,
+    "closed": 11,
+    "states": {
+     "TP": 6,
+     "MISSED": 23,
+     "TIMEOUT": 1,
+     "SL": 4
+    },
+    "net_r": -2.757,
+    "gross_r": -1.648
+   },
+   "smc22": {
+    "orders": 48,
+    "closed": 14,
+    "states": {
+     "EXPIRED": 25,
+     "TIMEOUT": 1,
+     "SL": 12,
+     "MISSED": 9,
+     "TP": 1
+    },
+    "net_r": -9.508,
+    "gross_r": -8.741
+   },
+   "current": {
+    "orders": 1,
+    "closed": 1,
+    "states": {
+     "SL": 1
+    },
+    "net_r": -1.0,
+    "gross_r": -1.0
+   }
+  },
+  "gross": {
+   "nofilter": {
+    "orders": 34,
+    "closed": 11,
+    "states": {
+     "TP": 6,
+     "MISSED": 23,
+     "TIMEOUT": 1,
+     "SL": 4
+    },
+    "net_r": -1.648,
+    "gross_r": -1.648
+   },
+   "smc22": {
+    "orders": 48,
+    "closed": 14,
+    "states": {
+     "EXPIRED": 25,
+     "TIMEOUT": 1,
+     "SL": 12,
+     "MISSED": 9,
+     "TP": 1
+    },
+    "net_r": -8.741,
+    "gross_r": -8.741
+   },
+   "current": {
+    "orders": 1,
+    "closed": 1,
+    "states": {
+     "SL": 1
+    },
+    "net_r": -1.0,
+    "gross_r": -1.0
+   }
+  }
+ },
+ "counts": {
+  "nofilter": {
+   "trades": 34,
+   "filled": 11,
+   "sl_and_tp_same_minute": 0,
+   "tp_touched_in_fill_minute": 0,
+   "sl_touched_in_fill_minute": 0,
+   "touch_only_fills": 0,
+   "gap_through_stop": 0,
+   "marketable_limits": 0,
+   "timeouts": 1,
+   "funding_times_spanned": 9
+  },
+  "smc22": {
+   "trades": 48,
+   "filled": 14,
+   "sl_and_tp_same_minute": 0,
+   "tp_touched_in_fill_minute": 0,
+   "sl_touched_in_fill_minute": 1,
+   "touch_only_fills": 1,
+   "gap_through_stop": 0,
+   "marketable_limits": 0,
+   "timeouts": 1,
+   "funding_times_spanned": 8
+  },
+  "current": {
+   "trades": 1,
+   "filled": 1,
+   "sl_and_tp_same_minute": 0,
+   "tp_touched_in_fill_minute": 0,
+   "sl_touched_in_fill_minute": 0,
+   "touch_only_fills": 0,
+   "gap_through_stop": 0,
+   "marketable_limits": 0,
+   "timeouts": 0,
+   "funding_times_spanned": 1
+  }
+ },
+ "stops": {
+  "trades": 26,
+  "stop_pct_median": 1.1346942695257303,
+  "stop_pct_min": 0.39388687568930203,
+  "cost_share_of_1R_median": 0.15466817941628647,
+  "cost_share_of_1R_max": 0.34572521760082464,
+  "round_trip_cost_pct_maker_in": 0.2076
+ },
+ "E1_stop_is_minus_1R": {
+  "sl_trades": 17,
+  "exactly_minus_1": 17
+ },
+ "E2_qty_not_multiple_of_step": {
+  "XRPUSDT": 11
+ },
+ "C8_liquidation_inside_stop": {
+  "count": 0,
+  "examples": []
+ },
+ "D2_funding_sensitivity_r_at_0.01pct_8h": 0.02
+}

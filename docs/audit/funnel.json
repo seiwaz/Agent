@@ -1,0 +1,603 @@
+{
+ "BTCUSDT": {
+  "zone_invalid": 33,
+  "zi_time_matches": 33,
+  "zi_break_before": 0,
+  "zi_examples": [
+   {
+    "key": "15m:OB:SHORT:1767968100",
+    "armed": "2026-01-09T15:00:00+00:00",
+    "invalid_at": "2026-01-09T15:25:00+00:00",
+    "minutes": 25,
+    "breaks_between": 0
+   },
+   {
+    "key": "15m:OB:SHORT:1768016700",
+    "armed": "2026-01-10T05:29:00+00:00",
+    "invalid_at": "2026-01-10T07:40:00+00:00",
+    "minutes": 131,
+    "breaks_between": 0
+   },
+   {
+    "key": "15m:OB:SHORT:1770732900",
+    "armed": "2026-02-10T15:02:00+00:00",
+    "invalid_at": "2026-02-10T16:15:00+00:00",
+    "minutes": 73,
+    "breaks_between": 0
+   },
+   {
+    "key": "15m:OB:LONG:1771126200",
+    "armed": "2026-02-15T12:50:00+00:00",
+    "invalid_at": "2026-02-15T13:30:00+00:00",
+    "minutes": 40,
+    "breaks_between": 0
+   },
+   {
+    "key": "15m:OB:SHORT:1772056800",
+    "armed": "2026-03-02T15:34:00+00:00",
+    "invalid_at": "2026-03-02T15:40:00+00:00",
+    "minutes": 6,
+    "breaks_between": 0
+   }
+  ],
+  "not_fresh": 4,
+  "nf_ob_touched_before_order": 4,
+  "nf_origin_inside_ob": 4
+ },
+ "XRPUSDT": {
+  "zone_invalid": 30,
+  "zi_time_matches": 30,
+  "zi_break_before": 2,
+  "zi_examples": [
+   {
+    "key": "15m:OB:LONG:1768743900",
+    "armed": "2026-01-18T14:38:00+00:00",
+    "invalid_at": "2026-01-18T15:00:00+00:00",
+    "minutes": 22,
+    "breaks_between": 0
+   },
+   {
+    "key": "15m:OB:LONG:1771053300",
+    "armed": "2026-02-18T21:08:00+00:00",
+    "invalid_at": "2026-02-18T23:30:00+00:00",
+    "minutes": 142,
+    "breaks_between": 0
+   },
+   {
+    "key": "15m:OB:LONG:1771427700",
+    "armed": "2026-02-18T16:01:00+00:00",
+    "invalid_at": "2026-02-18T16:10:00+00:00",
+    "minutes": 9,
+    "breaks_between": 0
+   },
+   {
+    "key": "15m:OB:LONG:1771484400",
+    "armed": "2026-02-19T07:46:00+00:00",
+    "invalid_at": "2026-02-19T08:35:00+00:00",
+    "minutes": 49,
+    "breaks_between": 0
+   },
+   {
+    "key": "15m:OB:SHORT:1774820700",
+    "armed": "2026-03-29T23:00:00+00:00",
+    "invalid_at": "2026-03-30T00:20:00+00:00",
+    "minutes": 80,
+    "breaks_between": 0
+   }
+  ],
+  "not_fresh": 2,
+  "nf_ob_touched_before_order": 2,
+  "nf_origin_inside_ob": 2
+ },
+ "not_fresh_counterfactual": {
+  "current": {
+   "not_fresh": 33,
+   "accepted_if_fresh": 0,
+   "closed": 0,
+   "total_r": 0,
+   "rows": [
+    {
+     "sym": "BTCUSDT",
+     "key": "15m:OB:LONG:1774413000",
+     "reasons": [
+      "NOT_DISCOUNT",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "BTCUSDT",
+     "key": "15m:OB:LONG:1784026800",
+     "reasons": [
+      "COST_HEAVY",
+      "NOT_DISCOUNT",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "BTCUSDT",
+     "key": "15m:OB:SHORT:1785886200",
+     "reasons": [
+      "COST_HEAVY",
+      "NOT_PREMIUM",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "BTCUSDT",
+     "key": "15m:OB:LONG:1787841900",
+     "reasons": [
+      "NOT_DISCOUNT",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "XRPUSDT",
+     "key": "15m:OB:SHORT:1786035600",
+     "reasons": [
+      "COST_HEAVY",
+      "NOT_PREMIUM",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "XRPUSDT",
+     "key": "15m:OB:LONG:1790323200",
+     "reasons": [
+      "NOT_DISCOUNT",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "ETHUSDT",
+     "key": "15m:OB:LONG:1769590800",
+     "reasons": [
+      "COST_HEAVY",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "ETHUSDT",
+     "key": "15m:OB:SHORT:1778406300",
+     "reasons": [
+      "COST_HEAVY",
+      "NOT_PREMIUM",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "ETHUSDT",
+     "key": "15m:OB:LONG:1783039500",
+     "reasons": [
+      "COST_HEAVY",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "ETHUSDT",
+     "key": "15m:OB:LONG:1783285200",
+     "reasons": [
+      "COST_HEAVY",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "SOLUSDT",
+     "key": "15m:OB:LONG:1776348900",
+     "reasons": [
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "SOLUSDT",
+     "key": "15m:OB:SHORT:1779962400",
+     "reasons": [
+      "COST_HEAVY",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "SOLUSDT",
+     "key": "15m:OB:SHORT:1780233300",
+     "reasons": [
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "SOLUSDT",
+     "key": "15m:OB:SHORT:1780959600",
+     "reasons": [
+      "NOT_PREMIUM",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "SOLUSDT",
+     "key": "15m:OB:LONG:1782090000",
+     "reasons": [
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "DOGEUSDT",
+     "key": "15m:OB:LONG:1777176900",
+     "reasons": [
+      "COST_HEAVY"
+     ]
+    },
+    {
+     "sym": "DOGEUSDT",
+     "key": "15m:OB:LONG:1778449500",
+     "reasons": [
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "DOGEUSDT",
+     "key": "15m:OB:LONG:1784295000",
+     "reasons": [
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "DOGEUSDT",
+     "key": "15m:OB:LONG:1789947900",
+     "reasons": [
+      "NOT_DISCOUNT",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "ADAUSDT",
+     "key": "15m:OB:SHORT:1770420600",
+     "reasons": [
+      "NOT_PREMIUM",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "ADAUSDT",
+     "key": "15m:OB:LONG:1776697200",
+     "reasons": [
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "ADAUSDT",
+     "key": "15m:OB:LONG:1790224200",
+     "reasons": [
+      "NOT_DISCOUNT",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:SHORT:1774203300",
+     "reasons": [
+      "COST_HEAVY",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:LONG:1776244500",
+     "reasons": [
+      "NOT_DISCOUNT",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:LONG:1776699000",
+     "reasons": [
+      "NOT_DISCOUNT",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:LONG:1779322500",
+     "reasons": [
+      "COST_HEAVY",
+      "NOT_DISCOUNT",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:LONG:1785749400",
+     "reasons": [
+      "COST_HEAVY",
+      "NOT_DISCOUNT",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:SHORT:1789452000",
+     "reasons": [
+      "COST_HEAVY",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:LONG:1790064900",
+     "reasons": [
+      "COST_HEAVY",
+      "NOT_DISCOUNT",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:SHORT:1790512200",
+     "reasons": [
+      "COST_HEAVY",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "LTCUSDT",
+     "key": "15m:OB:LONG:1782090000",
+     "reasons": [
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "LTCUSDT",
+     "key": "15m:OB:SHORT:1790687700",
+     "reasons": [
+      "NOT_PREMIUM",
+      "LOW_NET_RR"
+     ]
+    },
+    {
+     "sym": "AVAXUSDT",
+     "key": "15m:OB:SHORT:1780959600",
+     "reasons": [
+      "LOW_NET_RR"
+     ]
+    }
+   ]
+  },
+  "nofilter": {
+   "not_fresh": 33,
+   "accepted_if_fresh": 33,
+   "closed": 13,
+   "total_r": 0.179,
+   "rows": [
+    {
+     "sym": "BTCUSDT",
+     "key": "15m:OB:LONG:1774413000",
+     "reasons": [],
+     "state": "TP",
+     "r": 0.181
+    },
+    {
+     "sym": "BTCUSDT",
+     "key": "15m:OB:LONG:1784026800",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "BTCUSDT",
+     "key": "15m:OB:SHORT:1785886200",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "BTCUSDT",
+     "key": "15m:OB:LONG:1787841900",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "XRPUSDT",
+     "key": "15m:OB:SHORT:1786035600",
+     "reasons": [],
+     "state": "EXPIRED",
+     "r": null
+    },
+    {
+     "sym": "XRPUSDT",
+     "key": "15m:OB:LONG:1790323200",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "ETHUSDT",
+     "key": "15m:OB:LONG:1769590800",
+     "reasons": [],
+     "state": "SL",
+     "r": -1.0
+    },
+    {
+     "sym": "ETHUSDT",
+     "key": "15m:OB:SHORT:1778406300",
+     "reasons": [],
+     "state": "SL",
+     "r": -1.0
+    },
+    {
+     "sym": "ETHUSDT",
+     "key": "15m:OB:LONG:1783039500",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "ETHUSDT",
+     "key": "15m:OB:LONG:1783285200",
+     "reasons": [],
+     "state": "SL",
+     "r": -1.0
+    },
+    {
+     "sym": "SOLUSDT",
+     "key": "15m:OB:LONG:1776348900",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "SOLUSDT",
+     "key": "15m:OB:SHORT:1779962400",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "SOLUSDT",
+     "key": "15m:OB:SHORT:1780233300",
+     "reasons": [],
+     "state": "TP",
+     "r": 0.353
+    },
+    {
+     "sym": "SOLUSDT",
+     "key": "15m:OB:SHORT:1780959600",
+     "reasons": [],
+     "state": "TP",
+     "r": 0.852
+    },
+    {
+     "sym": "SOLUSDT",
+     "key": "15m:OB:LONG:1782090000",
+     "reasons": [],
+     "state": "TP",
+     "r": 0.567
+    },
+    {
+     "sym": "DOGEUSDT",
+     "key": "15m:OB:LONG:1777176900",
+     "reasons": [],
+     "state": "SL",
+     "r": -1.0
+    },
+    {
+     "sym": "DOGEUSDT",
+     "key": "15m:OB:LONG:1778449500",
+     "reasons": [],
+     "state": "EXPIRED",
+     "r": null
+    },
+    {
+     "sym": "DOGEUSDT",
+     "key": "15m:OB:LONG:1784295000",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "DOGEUSDT",
+     "key": "15m:OB:LONG:1789947900",
+     "reasons": [],
+     "state": "TP",
+     "r": 0.459
+    },
+    {
+     "sym": "ADAUSDT",
+     "key": "15m:OB:SHORT:1770420600",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "ADAUSDT",
+     "key": "15m:OB:LONG:1776697200",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "ADAUSDT",
+     "key": "15m:OB:LONG:1790224200",
+     "reasons": [],
+     "state": "SL",
+     "r": -1.0
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:SHORT:1774203300",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:LONG:1776244500",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:LONG:1776699000",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:LONG:1779322500",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:LONG:1785749400",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:SHORT:1789452000",
+     "reasons": [],
+     "state": "TP",
+     "r": 0.898
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:LONG:1790064900",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "BNBUSDT",
+     "key": "15m:OB:SHORT:1790512200",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "LTCUSDT",
+     "key": "15m:OB:LONG:1782090000",
+     "reasons": [],
+     "state": "TP",
+     "r": 0.759
+    },
+    {
+     "sym": "LTCUSDT",
+     "key": "15m:OB:SHORT:1790687700",
+     "reasons": [],
+     "state": "MISSED",
+     "r": null
+    },
+    {
+     "sym": "AVAXUSDT",
+     "key": "15m:OB:SHORT:1780959600",
+     "reasons": [],
+     "state": "TP",
+     "r": 1.11
+    }
+   ]
+  }
+ }
+}
