@@ -271,7 +271,7 @@ def test_exit_on_choch_closes_the_long_at_the_close_of_the_bearish_choch():
 
 def test_entry_at_fvg_mid_stop_one_ob_height_beyond_and_fixed_rr_target():
     # OB 94 - 97.5 (height 3.5), its FVG 97.5 - 99
-    p = replace(P, entry_ref="fvg_mid", sl_ref="ob_height", tp_rr=D(3), require_discount=False)
+    p = replace(P, entry_ref="fvg_mid", sl_mode="ob_height", tp_rr=D(3), require_discount=False)
     _, s = _order(SETUP, p)
     assert s.accepted and (s.entry, s.sl) == (D("98.25"), D("90.5"))  # 94 - 3.5
     assert s.tp is not None and s.tp.price == D("121.5") and s.tp.source == "3R"  # 98.25 + 3 x 7.75
@@ -304,5 +304,6 @@ def test_execution_tf_confirmation_then_market_or_limit_within_its_window():
     (lim,) = first(replace(conf, confirm_entry="limit"))  # a limit from that close on
     assert not lim.market and lim.created_at == close
     assert lim.reasons == ("NOT_FRESH",)  # the OB was already touched in bar 20
-    assert first(replace(conf, confirm_window_min=30)) == []  # the break came 2 h after arming
+    (late,) = first(replace(conf, confirm_window_min=30))  # the break came 2 h after arming
+    assert late.reasons == ("NO_CONFIRM",) and not late.accepted
     assert first(replace(conf, confirm_window_min=240)) == [mk]

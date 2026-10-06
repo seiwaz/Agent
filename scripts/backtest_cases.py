@@ -148,8 +148,8 @@ def main() -> None:
             cat, reasons = "ARMED_BEFORE", ["armed before the first minute of the data"]
         elif s is None:
             o = order_for(zs, ctx, p, armed, ctx["1m"].bars)
-            cat, reasons = "NO_ORDER", ["no order (execution-TF confirmation missing)"]
-            order_t = o[0] if o else None
+            cat, reasons = "NO_ORDER", ["no order yet (the confirmation window is still open)"]
+            order_t = o.t if o else None
         else:
             order_t = s.created_at
             if s.accepted:

@@ -36,7 +36,7 @@ from sp2l.smc.model import Analysis, Costs, SmcParams
 from sp2l.smc.strategy import (
     ARMED_BEFORE,
     choch_closes,
-    evaluate,
+    evaluate_order,
     find_arming,
     invalidates,
     order_for,
@@ -184,12 +184,12 @@ class SmcRunner:
                 order = order_for(zs, ctx, p, armed, m1)
                 if order is None:
                     continue
-                t0, market_px = order
-                known = t0 if market_px is not None else t0 + MINUTE
+                limit = order.market_price is None and order.reject is None
+                known = order.t + MINUTE if limit else order.t
                 if known < floor or known > upto:
                     continue  # never retroactive
                 bal = self.wallet.balance(c) if self.wallet is not None else None
-                s = evaluate(zs, ctx, p, self.costs, t0, market_price=market_px, equity=bal)
+                s = evaluate_order(zs, ctx, p, self.costs, order, equity=bal)
                 if not s.accepted:
                     log.info("%s: %s not traded: %s", self.symbol, s.key, ",".join(s.reasons))
                     continue

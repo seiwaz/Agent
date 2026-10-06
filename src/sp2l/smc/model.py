@@ -147,12 +147,20 @@ class SmcParams:
     # limit at the entry price from that close on
     confirm_window_min: int = 0  # (confirm_exec) the break must close within this after
     # arming; 0 = pending_expiry_min
+    confirm_in_zone: bool = False  # (confirm_exec) the exec-TF swing the confirming break
+    # reacts from lies inside the zone (OB far edge .. FVG far edge), after arming; an exec-TF
+    # close beyond the OB's far edge first invalidates the setup
     entry_ref: str = "ob_edge"  # limit price: ob_edge (the OB edge touching the FVG) /
-    # fvg_mid (50 % of the FVG after the OB)
-    sl_ref: str = "wick"  # wick: one tick beyond the OB's wick / ob_height: beyond the OB by
-    # its own height (long: OB low - OB height)
-    tp_rr: Decimal = Decimal(0)  # > 0: TP = entry + tp_rr x stop distance (price R:R), in
-    # place of the previous HH / LL; 0 = the HH / LL target
+    # htf_fvg_ce (= fvg_mid: 50 % of the zone-TF FVG) / ltf_fvg_ce (50 % of the exec-TF FVG
+    # of the confirming move, else ltf_ob_edge) / ltf_ob_edge (proximal edge of the exec-TF OB
+    # of the confirming move); without an exec-TF zone: htf_fvg_ce
+    sl_mode: str = "wick"  # wick: one tick beyond the OB's wick / ob_height: beyond the OB by
+    # its own height / structure: beyond the farther of the OB wick and the sweep wick plus
+    # sl_buffer_atr x ATR(zone TF)
+    sl_buffer_atr: Decimal = Decimal("0.2")  # (sl_mode structure)
+    tp_mode: str = "hh_ll"  # hh_ll: the previous HH / LL (tp_ref; tp_rr > 0 = fixed, as
+    # SMC-2.2 configs) / fixed: tp_rr x the stop / liquidity: the nearest unswept liquidity
+    tp_rr: Decimal = Decimal(0)  # (fixed) TP = entry + tp_rr x stop distance (price R:R)
     # stop: one tick beyond the order block's wick; one target, independent of the stop: the
     # edge of the previous HH candle (long: its high) / LL candle (short: its low)
     tick: Decimal = Decimal("0.01")
@@ -161,6 +169,8 @@ class SmcParams:
     tp_front_run_atr: Decimal = Decimal("0.05")  # TP this x ATR(zone TF) before the HH / LL
     # filters: they may reject a trade, they never move the stop or the target
     require_discount: bool = True  # long entry in the lower half of sweep -> HH (short mirrored)
+    discount_ref: str = "target"  # target: the entry vs sweep wick -> the HH of the target /
+    # displacement: the OB's proximal edge vs sweep wick -> the displacement high
     min_net_rr: Decimal = Decimal(2)  # net R at the TP after fees and slippage; 0 = off
     max_cost_frac: Decimal = Decimal(0)  # entry + exit fees + slippage vs the stop; 0 = off
     exit_on_choch: bool = False  # close at a zone-TF CHoCH against the open trade
@@ -244,6 +254,39 @@ class ZoneSetup:
 
 
 @dataclass(frozen=True, slots=True)
+class LtfZone:
+    """An execution-TF FVG or order block of the confirming move (the refined entry)."""
+
+    kind: str  # FVG / OB
+    bottom: Decimal
+    top: Decimal
+    time: datetime  # FVG: its middle bar / OB: the candle
+
+
+@dataclass(frozen=True, slots=True)
+class Confirm:
+    """The execution-TF BOS / CHoCH that confirmed an armed setup (`confirm_exec`)."""
+
+    t: datetime  # close of the confirming bar
+    price: Decimal  # its close
+    event: StructureEvent
+    origin: Decimal  # the exec-TF low (long) / high (short) the reaction started from
+    origin_time: datetime
+    fvg: LtfZone | None = None  # the newest exec-TF FVG of the move, origin .. break
+    ob: LtfZone | None = None  # the last opposite exec-TF candle of the move
+
+
+@dataclass(frozen=True, slots=True)
+class Order:
+    """When an armed setup's order exists (or why it never will)."""
+
+    t: datetime  # limit: from here; market: filled here; reject: decided here
+    market_price: Decimal | None = None
+    confirm: Confirm | None = None
+    reject: str | None = None  # NO_CONFIRM / ZONE_INVALID
+
+
+@dataclass(frozen=True, slots=True)
 class Target:
     price: Decimal
     source: str  # what the level is (e.g. "1h HH")
@@ -271,6 +314,7 @@ class Setup:
     qty: Decimal | None = None
     notional: Decimal | None = None
     leverage: Decimal | None = None
+    confirm: Confirm | None = None  # confirm_exec: the exec-TF break and the refined zone
 
     @property
     def net_rr(self) -> Decimal | None:

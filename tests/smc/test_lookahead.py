@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal as D
 
 from hypothesis import given, settings
@@ -53,3 +54,38 @@ def test_truncating_future_bars_changes_no_past_zone_setup_or_order(cut):
     # orders whose minute had closed by then are identical
     past = [view(s) for s in orders(ctx, DENSE, COSTS) if s.created_at < end]
     assert past == [view(s) for s in FULL_ORDERS if s.created_at < end]
+
+
+# SMC-2.3: 1m confirmation inside the zone, the refined entry, the structural stop and the
+# nearest-liquidity target (1h swings, the previous day) under the same cut-off test
+SMC23 = replace(
+    DENSE,
+    confirm_exec=True,
+    confirm_in_zone=True,
+    confirm_entry="limit",
+    confirm_window_min=120,
+    entry_ref="ltf_fvg_ce",
+    sl_mode="structure",
+    tp_mode="liquidity",
+    discount_ref="displacement",
+    max_cost_frac=D("0.2"),
+)
+WALK23 = m1_walk(4 * 1440, 7)  # a walk with an accepted SMC-2.3 order
+FULL23 = build_context(WALK23, SMC23)
+FULL23_ORDERS = orders(FULL23, SMC23, COSTS)
+
+
+@settings(max_examples=12, deadline=None)
+@given(cut=st.integers(600, 4 * 1440 - 1))
+def test_smc23_orders_known_by_a_cut_never_change(cut):
+    ctx = build_context(WALK23[:cut], SMC23)
+    end = WALK23[cut - 1].open_time
+    past = [view(s) for s in orders(ctx, SMC23, COSTS) if s.created_at < end]
+    assert past == [view(s) for s in FULL23_ORDERS if s.created_at < end]
+
+
+def test_smc23_dense_walk_has_orders_of_every_kind():
+    reasons = {r for s in FULL23_ORDERS for r in s.reasons}
+    assert any(s.accepted for s in FULL23_ORDERS)
+    assert {"NO_CONFIRM", "ZONE_INVALID", "COST_HEAVY"} <= reasons
+    assert any(s.confirm is not None for s in FULL23_ORDERS)

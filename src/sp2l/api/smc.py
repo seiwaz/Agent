@@ -28,6 +28,7 @@ from sp2l.smc.strategy import (
     TREND,
     entry_price,
     evaluate,
+    evaluate_order,
     find_arming,
     order_for,
     trend_at,
@@ -338,12 +339,11 @@ class SmcView:
             )
         for x in out:  # the plan: now while waiting, else as it was when its order existed
             zs, armed = x["_zs"], x["_armed"]
-            if x["state"] in ("waiting", "armed") or armed is None:
+            order = order_for(zs, ctx, p, armed, m1) if armed not in (None, ARMED_BEFORE) else None
+            if order is not None and (p.confirm_exec or x["state"] not in ("waiting", "armed")):
+                x["plan"] = plan_json(evaluate_order(zs, ctx, p, self.costs, order))
+            elif x["state"] in ("waiting", "armed") or armed is None:
                 x["plan"] = plan_json(evaluate(zs, ctx, p, self.costs, upto))
-            elif armed != ARMED_BEFORE and (order := order_for(zs, ctx, p, armed, m1)):
-                x["plan"] = plan_json(
-                    evaluate(zs, ctx, p, self.costs, order[0], market_price=order[1])
-                )
 
         def filtered(x: dict[str, Any]) -> bool:
             return x["plan"] is not None and bool(
@@ -607,7 +607,7 @@ class SmcView:
             ],
             "Entry, stop and target": [
                 "entry_ref",
-                "sl_ref",
+                "sl_mode",
                 "tick",
                 "tp_rr",
                 "tp_ref",

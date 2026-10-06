@@ -17,7 +17,7 @@ SMC-2.1 behaviour, so older configs are unchanged):
   (`confirm_window_min` 240) for a 5m BOS / CHoCH with the setup (`confirm_exec`, `exec_tf` 5m);
   then a **limit at 50 % of the FVG** (`entry_ref: fvg_mid`, `confirm_entry: limit`), cancelled
   2 h later (`pending_expiry_min`). The OB must still be untouched (NOT_FRESH) and valid.
-- **SL beyond the OB by its own height** (`sl_ref: ob_height`; long: OB low − OB height).
+- **SL beyond the OB by its own height** (`sl_mode: ob_height`; long: OB low − OB height).
 - **TP at 3 × the stop distance** (`tp_rr` 3, price R:R 1:3); the HH / LL is still recorded.
 - **Filters off**: `require_discount` false, `min_net_rr` 0 (the owner's chosen variant).
 

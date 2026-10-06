@@ -22,7 +22,7 @@ from sp2l.smc.model import Analysis, Costs, Setup, SmcParams
 from sp2l.smc.strategy import (
     ARMED_BEFORE,
     choch_closes,
-    evaluate,
+    evaluate_order,
     find_arming,
     invalidates,
     order_for,
@@ -50,8 +50,7 @@ def orders(ctx: dict[str, Analysis], p: SmcParams, costs: Costs) -> list[Setup]:
         order = order_for(zs, ctx, p, armed, m1)
         if order is None:
             continue
-        t0, market_px = order
-        out.append(evaluate(zs, ctx, p, costs, t0, market_price=market_px))
+        out.append(evaluate_order(zs, ctx, p, costs, order))
     return out
 
 

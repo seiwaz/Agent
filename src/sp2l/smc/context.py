@@ -21,6 +21,8 @@ from sp2l.smc.timeframes import ORDER, bucket_start
 
 def needed_tfs(p: SmcParams) -> list[str]:
     want = {"1m", p.bias_tf, p.zone_tf, p.exec_tf}
+    if p.tp_mode == "liquidity":  # 1h swings and the previous day's high / low
+        want |= {"1h", "1d"}
     return [tf for tf in ORDER if tf in want]
 
 

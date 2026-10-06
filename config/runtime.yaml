@@ -98,7 +98,7 @@ smc:
   entry_ref: fvg_mid      # entry: 50 % of the FVG right after the (fresh) OB
   # stop and target (owner 2026-10-06): SL beyond the OB by its own height (long: OB low - OB
   # height); TP at 3 x the stop distance (price R:R 1:3)
-  sl_ref: ob_height
+  sl_mode: ob_height
   tp_rr: 3
   tp_ref: leg             # (tp_rr 0 only) the HH / LL after the OB candle, before the first return to the OB
   tp_front_run_atr: 0.05  # (tp_rr 0 only) the TP sits 0.05 ATR before that HH / LL
