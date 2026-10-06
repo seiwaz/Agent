@@ -26,6 +26,7 @@ from sp2l.smc.store import setup_json, target_json
 from sp2l.smc.strategy import (
     ARMED_BEFORE,
     TREND,
+    entry_price,
     evaluate,
     find_arming,
     order_for,
@@ -316,7 +317,7 @@ class SmcView:
                 st = "armed"
             else:
                 st = "waiting"
-            edge = zs.edge
+            edge = entry_price(zs, p)
             dist = None
             if price is not None and atr:
                 dist = max(Decimal(0), (price - edge) if long else (edge - price)) / atr
@@ -594,8 +595,22 @@ class SmcView:
                 "require_sweep",
                 "sweep_max_bars",
             ],
-            "Top-down model": ["bias_tf", "zone_tf", "exec_tf", "confirm_exec"],
-            "Stop and target": ["tick", "tp_ref", "tp_front_run_atr"],
+            "Top-down model": [
+                "bias_tf",
+                "zone_tf",
+                "exec_tf",
+                "confirm_exec",
+                "confirm_entry",
+                "confirm_window_min",
+            ],
+            "Entry, stop and target": [
+                "entry_ref",
+                "sl_ref",
+                "tick",
+                "tp_rr",
+                "tp_ref",
+                "tp_front_run_atr",
+            ],
             "Filters": ["require_discount", "min_net_rr", "max_cost_frac", "exit_on_choch"],
             "Lifecycle": [
                 "pending_expiry_min",

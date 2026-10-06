@@ -14,7 +14,7 @@ from typing import Any
 
 from sp2l.core.types import Candle, Side
 
-VERSION = "SMC-2.1"
+VERSION = "SMC-2.2"
 
 
 class ZoneStatus(StrEnum):
@@ -141,7 +141,17 @@ class SmcParams:
     bias_tf: str = "4h"
     zone_tf: str = "1h"
     exec_tf: str = "15m"  # confirmation, trailing swings and time units
-    confirm_exec: bool = False  # after arming wait for an exec-TF BOS/CHoCH, enter at its close
+    confirm_exec: bool = False  # after arming wait for an exec-TF BOS/CHoCH with the setup
+    confirm_entry: str = "market"  # (confirm_exec) market: at the confirming close / limit: a
+    # limit at the entry price from that close on
+    confirm_window_min: int = 0  # (confirm_exec) the break must close within this after
+    # arming; 0 = pending_expiry_min
+    entry_ref: str = "ob_edge"  # limit price: ob_edge (the OB edge touching the FVG) /
+    # fvg_mid (50 % of the FVG after the OB)
+    sl_ref: str = "wick"  # wick: one tick beyond the OB's wick / ob_height: beyond the OB by
+    # its own height (long: OB low - OB height)
+    tp_rr: Decimal = Decimal(0)  # > 0: TP = entry + tp_rr x stop distance (price R:R), in
+    # place of the previous HH / LL; 0 = the HH / LL target
     # stop: one tick beyond the order block's wick; one target, independent of the stop: the
     # edge of the previous HH candle (long: its high) / LL candle (short: its low)
     tick: Decimal = Decimal("0.01")

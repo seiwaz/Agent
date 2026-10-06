@@ -1,4 +1,4 @@
-# SMC engine — strategy specification (SMC-2.1)
+# SMC engine — strategy specification (SMC-2.2)
 
 Markets: **BTC/USDT and XRP/USDT**, traded together on **one shared simulated wallet**
 (100 USDT). Each market has its own price tick / quantity step (`instruments`). No orders are
@@ -7,6 +7,27 @@ SMC-1.0 M1-trigger model (2026-10-05, owner's intraday entry model); the SMC-1.0
 kept at the end of this file. **SMC-2.1** (2026-10-05) adds the discount / premium and minimum
 net-R filters, the front-run target, an optional fee filter and CHoCH exit, and turns the
 3 h time stop off.
+
+## SMC-2.2 (2026-10-06, owner) — configured, not deployed
+The same structure code, with these settings (`config/*.yaml`; every new key defaults to the
+SMC-2.1 behaviour, so older configs are unchanged):
+- **Zones on 15m** (`zone_tf`), bias **4h**: sweep → BOS/CHoCH by close → fresh OB (last
+  opposite candle) with the FVG right after it.
+- **5m confirmation**: after price first trades into the FVG, wait up to 4 h
+  (`confirm_window_min` 240) for a 5m BOS / CHoCH with the setup (`confirm_exec`, `exec_tf` 5m);
+  then a **limit at 50 % of the FVG** (`entry_ref: fvg_mid`, `confirm_entry: limit`), cancelled
+  2 h later (`pending_expiry_min`). The OB must still be untouched (NOT_FRESH) and valid.
+- **SL beyond the OB by its own height** (`sl_ref: ob_height`; long: OB low − OB height).
+- **TP at 3 × the stop distance** (`tp_rr` 3, price R:R 1:3); the HH / LL is still recorded.
+- **Filters off**: `require_discount` false, `min_net_rr` 0 (the owner's chosen variant).
+
+Backtest (270 days to 2026-10-06, after fees, local merged M1 series): BTC 48 confirmed setups,
+8 orders, 3 filled and closed, 1 win, **−1.80 R**; XRP 42 / 6 / 1 closed, **−1.00 R**. Most
+orders expire unfilled (BTC 5 of 8): after a 5m break price rarely returns to 50 % of the FVG
+within 2 h. Confirmation windows of 2 h / 4 h / 6–48 h gave BTC 5 / 8 / 8 orders; most of the
+extra confirmed setups are rejected by the 4h bias (23–32), an OB closed through (9–13) or
+already touched (7–10). Longer order expiry (4–24 h) filled more orders and lost more
+(−2.8 to −3.8 R). Samples this small decide nothing.
 
 ## Data (no live warmup)
 - Every bar comes from one merged 1-minute series: canonical live candles (`candles_1m`,

@@ -8,14 +8,17 @@
             with the FVG right after it. One function, `zone_setups`, finds these for
             the engine, the backtest and the chart.
 3. ARMING   the first minute after the setup is known that trades into the FVG. The order is
-            a limit (maker) at the OB edge touching the FVG; it rests from the confirmation,
-            so it can fill in the arming minute; it is cancelled `pending_expiry_min`
-            after arming. Only a fresh OB is entered (first touch); one order per setup.
-            `confirm_exec`: instead wait for an execution-TF BOS / CHoCH, enter at market.
-4. STOP     one tick beyond the order block's wick.
-5. TARGET   one, from the market alone (never from the stop distance): the edge of the
-            previous HH candle (long: its high) / LL candle (short: its low), placed
-            `tp_front_run_atr` x ATR before it. None beyond the entry: no trade.
+            a limit (maker) at the OB edge touching the FVG (`entry_ref: fvg_mid`: at 50 %
+            of the FVG); it rests from the confirmation, so it can fill in the arming
+            minute; it is cancelled `pending_expiry_min` after it is placed. Only a fresh
+            OB is entered (first touch); one order per setup. `confirm_exec`: first wait
+            (`confirm_window_min`) for an execution-TF BOS / CHoCH with the setup, then
+            enter at market at its close or (`confirm_entry: limit`) rest the limit from it.
+4. STOP     one tick beyond the order block's wick (`sl_ref: ob_height`: beyond the OB by
+            its own height).
+5. TARGET   one: the edge of the previous HH candle (long: its high) / LL candle (short:
+            its low), placed `tp_front_run_atr` x ATR before it; None beyond the entry: no
+            trade. `tp_rr` > 0 instead: entry + tp_rr x the stop distance.
 6. FILTERS  (reject, never move the stop or the target) entry in the discount (long) /
             premium (short) half of sweep wick -> HH / LL (`require_discount`), net R at the
             TP >= `min_net_rr`, costs <= `max_cost_frac` of the stop (0 = off).
@@ -188,9 +191,10 @@ def confirmation(
     s: ZoneSetup, ax: Analysis, armed_at: datetime, p: SmcParams
 ) -> tuple[datetime, Decimal] | None:
     """`confirm_exec`: the first execution-TF BOS / CHoCH with the setup that closed after the
-    arming minute and within the pending window: (close time, close price)."""
+    arming minute and within `confirm_window_min` (0: the pending window): (close time, close
+    price)."""
     dur = length(ax.tf)
-    end = armed_at - MINUTE + timedelta(minutes=p.pending_expiry_min)
+    end = armed_at - MINUTE + timedelta(minutes=p.confirm_window_min or p.pending_expiry_min)
     for ev in ax.events:
         t = ev.break_time + dur
         if ev.direction is not s.direction or t < armed_at:
@@ -211,6 +215,24 @@ def net_r(
     fee_in = costs.taker_fee if market else costs.maker_fee
     fill = px - px * costs.slippage * sgn
     return ((fill - entry) * sgn - entry * fee_in - fill * costs.taker_fee) / ru
+
+
+def entry_price(s: ZoneSetup, p: SmcParams) -> Decimal:
+    """The limit price: the OB edge touching the FVG, or 50 % of the FVG (`entry_ref`),
+    rounded to the tick away from the market (long: down, short: up)."""
+    if p.entry_ref != "fvg_mid":
+        return s.edge
+    long = s.direction is Side.LONG
+    return _round((s.gap[0] + s.gap[1]) / 2, p.tick, ROUND_FLOOR if long else ROUND_CEILING)
+
+
+def stop_price(s: ZoneSetup, p: SmcParams) -> Decimal:
+    """One tick beyond the OB's wick, or beyond the OB by its own height (`sl_ref`)."""
+    long = s.direction is Side.LONG
+    if p.sl_ref == "ob_height":
+        h = s.ob.top - s.ob.bottom
+        return s.ob.bottom - h if long else s.ob.top + h
+    return s.ob.bottom - p.tick if long else s.ob.top + p.tick
 
 
 def _beyond(side: Side, px: Decimal, ref: Decimal) -> bool:
@@ -288,9 +310,8 @@ def evaluate(
     if s.ob.tested_idx is not None and s.ob.tested_idx <= k and not market:
         return result(["NOT_FRESH"])
     tick = p.tick
-    entry = market_price if market_price is not None else s.edge
-    # the stop sits one tick beyond the order block's wick
-    sl = s.ob.bottom - tick if long else s.ob.top + tick
+    entry = market_price if market_price is not None else entry_price(s, p)
+    sl = stop_price(s, p)
     if not _beyond(side, entry, sl):
         return result(["BAD_STOP"], entry=entry, sl=sl)
     reasons: list[str] = []
@@ -304,6 +325,13 @@ def evaluate(
     lv = previous_extreme(s, ctx, p, t, entry)
     tp: Target | None = None
     mid: Decimal | None = None
+    if p.tp_rr > 0:  # fixed price R:R from the stop distance
+        r = p.tp_rr * dist
+        px = (
+            _round(entry + r, tick, ROUND_FLOOR) if long else _round(entry - r, tick, ROUND_CEILING)
+        )
+        level = lv[0] if lv is not None else None
+        tp = Target(px, f"{p.tp_rr.normalize()}R", net_r(side, entry, px, ru, costs, market), level)
     if lv is not None:
         level, src = lv
         # the target sits a little before the pool (rounded towards the entry)
@@ -313,7 +341,7 @@ def evaluate(
             if long
             else _round(level + front, tick, ROUND_CEILING)
         )
-        if _beyond(side, px, entry):
+        if p.tp_rr <= 0 and _beyond(side, px, entry):
             tp = Target(px, src, net_r(side, entry, px, ru, costs, market), level)
         # dealing range: the sweep wick (else the OB wick) -> the HH / LL
         start = s.sweep.wick if s.sweep is not None else (s.ob.bottom if long else s.ob.top)
@@ -356,7 +384,10 @@ def order_for(
     if not p.confirm_exec:
         return t, None
     c = confirmation(s, ctx[p.exec_tf], t + MINUTE, p)
-    return c
+    if c is None:
+        return None
+    # limit: rests at the entry price from the confirming close on; market: fills at it
+    return (c[0], None) if p.confirm_entry == "limit" else c
 
 
 def tracked(s: Setup, p: SmcParams, costs: Costs) -> Tracked:

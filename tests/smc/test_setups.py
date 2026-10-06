@@ -267,3 +267,42 @@ def test_exit_on_choch_closes_the_long_at_the_close_of_the_bearish_choch():
     assert t_on.closed_at == T0 + 24 * H  # the close of bar 23
     assert t_on.result_r is not None and -1 < t_on.result_r < 0
     assert off["trades"][0][0].tp == on["trades"][0][0].tp  # the target is the same
+
+
+def test_entry_at_fvg_mid_stop_one_ob_height_beyond_and_fixed_rr_target():
+    # OB 94 - 97.5 (height 3.5), its FVG 97.5 - 99
+    p = replace(P, entry_ref="fvg_mid", sl_ref="ob_height", tp_rr=D(3), require_discount=False)
+    _, s = _order(SETUP, p)
+    assert s.accepted and (s.entry, s.sl) == (D("98.25"), D("90.5"))  # 94 - 3.5
+    assert s.tp is not None and s.tp.price == D("121.5") and s.tp.source == "3R"  # 98.25 + 3 x 7.75
+    assert s.tp.level == D("107.5")  # the HH is still recorded
+    _, m = _order(mirror(SETUP), p)
+    assert (m.direction, m.entry, m.sl) == (Side.SHORT, D("101.75"), D("109.5"))
+    assert m.tp is not None and m.tp.price == D("78.5")
+    _, default = _order(SETUP)  # defaults: OB edge, one tick beyond the wick, the HH target
+    assert (default.entry, default.sl) == (D("97.5"), D("93.99"))
+    assert default.tp is not None and default.tp.source == "1h HH"
+
+
+RALLY = SETUP + [
+    (98, 102, 97.8, 101.8),
+    (101.8, 105, 101.5, 104.8),
+    (104.8, 108.5, 104.5, 108),
+    (108, 110, 107.5, 109.5),
+]
+
+
+def test_execution_tf_confirmation_then_market_or_limit_within_its_window():
+    def first(p):
+        ctx = build_context(expand(RALLY), p)
+        return orders(ctx, p, Costs())[:1]
+
+    conf = replace(P, confirm_exec=True, exec_tf="15m")
+    close = T0 + 21 * H + timedelta(minutes=30)  # the bullish 15m CHoCH bar closes at 22:00
+    (mk,) = first(conf)  # market at that close
+    assert mk.market and mk.created_at == close and mk.entry == D("99.9")
+    (lim,) = first(replace(conf, confirm_entry="limit"))  # a limit from that close on
+    assert not lim.market and lim.created_at == close
+    assert lim.reasons == ("NOT_FRESH",)  # the OB was already touched in bar 20
+    assert first(replace(conf, confirm_window_min=30)) == []  # the break came 2 h after arming
+    assert first(replace(conf, confirm_window_min=240)) == [mk]
