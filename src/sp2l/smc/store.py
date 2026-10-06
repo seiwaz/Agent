@@ -175,7 +175,7 @@ def active(db: Engine, symbol: str) -> list[tuple[int, Tracked, Decimal]]:
         rows = c.execute(
             text(
                 "SELECT id, key, side, entry, sl, tp, created_at, risk, state, filled_at, last_m1,"
-                " COALESCE(qty, 0), detail, parts"
+                " COALESCE(qty, 0), detail, parts, COALESCE(funding, 0)"
                 " FROM smc_signals WHERE symbol = :s AND state IN "
                 + ACTIVE_SQL
                 + " ORDER BY created_at"
@@ -210,6 +210,7 @@ def active(db: Engine, symbol: str) -> list[tuple[int, Tracked, Decimal]]:
                 )
                 for x in (r[13] or [])
             ],
+            funding=Decimal(r[14]),
         )
         out.append((int(r[0]), t, Decimal(r[11])))
     return out
@@ -220,7 +221,8 @@ def save(c: Connection, sid: int, t: Tracked) -> None:
         text(
             "UPDATE smc_signals SET state = :st, filled_at = :f, closed_at = :cl, sl = :sl,"
             " exit_price = :x, result_r = :r, last_m1 = :m, parts = CAST(:pt AS jsonb),"
-            " qty_open = qty * :of, realized_r = :rr, updated_at = now() WHERE id = :i"
+            " qty_open = qty * :of, realized_r = :rr, funding = :fu, updated_at = now()"
+            " WHERE id = :i"
         ),
         {
             "st": t.state.value,
@@ -233,6 +235,7 @@ def save(c: Connection, sid: int, t: Tracked) -> None:
             "pt": _parts_json(t),
             "of": t.open_frac if t.active else Decimal(0),
             "rr": t.realized_r,
+            "fu": t.funding,
             "i": sid,
         },
     )

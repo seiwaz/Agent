@@ -3,6 +3,8 @@
 - Sizing at entry: risk `risk_pct` of the current balance per position; the position's
   margin (notional / `max_leverage`, cross) must fit into the free balance (balance minus the
   margin of every open position on any market), otherwise the quantity is reduced to fit.
+- Funding (when `costs.funding_rate` is set): a FUNDING ledger row at every funding time a
+  position spans.
 - Booking at the exit: realized PnL = quantity x price move - entry fee - exit fee (USDT),
   appended to the ledger with the running balance (the exit is named in `part`).
 Nothing here talks to an exchange.
@@ -19,6 +21,7 @@ from sqlalchemy import Connection, Engine, text
 from sp2l.core.types import Side
 from sp2l.smc.lifecycle import ACTIVE_SQL, Part, Tracked
 from sp2l.smc.model import Costs, SmcParams
+from sp2l.smc.strategy import liq_cap
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,7 +118,14 @@ class Wallet:
         ).scalar_one()
         return Decimal(v)
 
-    def size(self, c: Connection, entry: Decimal, risk_unit: Decimal, step: Decimal) -> Size | str:
+    def size(
+        self,
+        c: Connection,
+        entry: Decimal,
+        risk_unit: Decimal,
+        step: Decimal,
+        sl: Decimal | None = None,
+    ) -> Size | str:
         """The position for one new signal, or the reason there is none."""
         p = self.params
         bal = self.balance(c)
@@ -127,6 +137,14 @@ class Wallet:
         if qty * entry / p.max_leverage > free:
             qty = floor_step(max(free, Decimal(0)) * p.max_leverage / entry, step)
             note = "MARGIN_LIMITED"
+        # cross margin: the equity not backing other positions must keep the liquidation
+        # beyond the stop (liq_buffer_r x the stop distance)
+        cap = liq_cap(max(free, Decimal(0)), entry, sl, p) if sl is not None else None
+        if cap is not None and qty > cap:
+            qty = floor_step(cap, step)
+            note = "LIQ_LIMITED"
+            if qty <= 0:
+                return "LIQ_LIMITED"
         if qty <= 0:
             return "NO_FREE_MARGIN" if note else "SIZE_BELOW_STEP"
         notional = qty * entry
@@ -172,3 +190,26 @@ class Wallet:
             {"p": pnl, "f": fees, "i": sid},
         )
         return pnl
+
+    def book_funding(
+        self, c: Connection, sid: int, symbol: str, at: datetime, amount: Decimal
+    ) -> Decimal:
+        """Book one funding payment of signal `sid` (amount > 0: paid by the wallet)."""
+        if amount == 0:
+            return Decimal(0)
+        bal = self.balance(c) - amount
+        c.execute(
+            text(
+                "INSERT INTO smc_wallet_ledger (wallet_id, ts, symbol, signal_id, kind, amount,"
+                " balance_after) VALUES (:w, :t, :s, :i, 'FUNDING', :a, :b)"
+            ),
+            {"w": self.id, "t": at, "s": symbol, "i": sid, "a": -amount, "b": bal},
+        )
+        c.execute(
+            text(
+                "UPDATE smc_signals SET funding_usdt = COALESCE(funding_usdt, 0) + :f,"
+                " pnl_usdt = COALESCE(pnl_usdt, 0) - :f WHERE id = :i"
+            ),
+            {"f": amount, "i": sid},
+        )
+        return -amount

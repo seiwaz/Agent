@@ -444,6 +444,16 @@ def liquidity_target(
     return best
 
 
+def liq_cap(equity: Decimal, entry: Decimal, sl: Decimal, p: SmcParams) -> Decimal | None:
+    """The largest quantity whose estimated cross-margin liquidation lies `liq_buffer_r` x
+    the stop distance beyond the stop: liquidation when equity - qty x move = maintenance
+    margin (rate x notional), so qty <= equity / ((1 + buffer) x stop + rate x entry).
+    None: the guard is off."""
+    if p.liq_buffer_r <= 0:
+        return None
+    return equity / ((1 + p.liq_buffer_r) * abs(entry - sl) + p.maint_margin_rate * entry)
+
+
 def evaluate(
     s: ZoneSetup,
     ctx: Mapping[str, Analysis],
@@ -544,6 +554,11 @@ def evaluate(
         reasons.append("LOW_NET_RR")
     bal = equity if equity is not None and equity > 0 else p.account_usdt
     qty = (bal * p.risk_pct / ru).quantize(Decimal("0.00001"), rounding=ROUND_DOWN)
+    cap = liq_cap(bal, entry, sl, p)
+    if cap is not None and qty > cap:  # smaller, so liquidation stays beyond the stop
+        qty = cap.quantize(Decimal("0.00001"), rounding=ROUND_DOWN)
+        if qty <= 0:
+            reasons.append("LIQ_LIMITED")
     notional = qty * entry
     leverage = notional / bal
     if leverage > p.max_leverage:

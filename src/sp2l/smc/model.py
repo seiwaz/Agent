@@ -119,6 +119,10 @@ class Costs:
     maker_fee: Decimal = Decimal(0)
     taker_fee: Decimal = Decimal(0)
     slippage: Decimal = Decimal(0)
+    # futures funding: a fraction of the notional paid by longs to shorts (negative: the
+    # other way) at every `funding_interval_h` hours from 00:00 UTC; 0 = none
+    funding_rate: Decimal = Decimal(0)
+    funding_interval_h: int = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +199,11 @@ class SmcParams:
     account_usdt: Decimal = Decimal(100)
     risk_pct: Decimal = Decimal("0.01")
     max_leverage: Decimal = Decimal(10)
+    # liquidation guard (cross margin): the estimated liquidation price must lie at least
+    # liq_buffer_r x the stop distance beyond the stop (0 = off); maintenance margin rate
+    # assumed (Tabdeal publishes none)
+    liq_buffer_r: Decimal = Decimal(0)
+    maint_margin_rate: Decimal = Decimal("0.005")
 
     def lookback(self, tf: str) -> int:
         return int(getattr(self, f"lookback_{tf}"))

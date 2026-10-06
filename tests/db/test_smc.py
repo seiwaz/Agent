@@ -294,6 +294,65 @@ def test_shared_wallet_sizes_from_the_balance_and_caps_positions_across_markets(
         assert w2.balance(c) == D(200)
 
 
+def test_wallet_keeps_the_liquidation_beyond_the_stop(clean):
+    p = SmcParams(account_usdt=D(100), risk_pct=D("0.01"), max_leverage=D(10))
+    w = Wallet(clean, replace(p, liq_buffer_r=D(1000)), ["BTCUSDT", "XRPUSDT"])
+    with clean.begin() as c:
+        # 20 units by risk; liquidation 1001 stops away allows 100 / (1001 x 0.05 + 0.0125)
+        s = w.size(c, D("2.5"), D("0.05"), D("0.1"), D("2.45"))
+        assert not isinstance(s, str) and (s.qty, s.note) == (D("1.9"), "LIQ_LIMITED")
+        off = Wallet(clean, p, ["BTCUSDT", "XRPUSDT"]).size(c, D("2.5"), D("0.05"), D("0.1"))
+        assert not isinstance(off, str) and off.qty == D(20)  # liq_buffer_r 0: off
+        far = replace(p, liq_buffer_r=D(10) ** 9)
+        assert (
+            Wallet(clean, far, ["BTCUSDT", "XRPUSDT"]).size(
+                c, D("2.5"), D("0.05"), D("0.1"), D("2.45")
+            )
+            == "LIQ_LIMITED"
+        )
+
+
+def test_funding_is_booked_at_every_funding_time_a_position_spans(clean):
+    sym = "LTCUSDT"
+    ensure_history(clean, sym, lambda a, b: chart(a, min(b, NOW)), days=2, now=NOW)
+    p = SmcParams(history_days=2, lookback_4h=10, lookback_1h=40)
+    created = NOW.replace(second=0, minute=0) - timedelta(hours=3, minutes=30)  # 08:30
+    s = make_setup("test|f", created, D(4010), D(3900), D(4500))
+    t = Tracked(
+        "test|f",
+        Side.LONG,
+        D(4010),
+        D(3900),
+        D(4500),
+        created,
+        risk_unit(Side.LONG, D(4010), D(3900), FUNDING, market=True),
+        market=True,
+    )
+    w = Wallet(clean, p, [sym])
+    size = w.size(clean.connect(), t.entry, t.risk, D("0.001"))
+    assert not isinstance(size, str)
+    with clean.begin() as c:
+        sid = store.insert_signal(c, sym, s, t, p.digest(), size, w.id)
+    r = SmcRunner(clean, sym, p, FUNDING, fetch=None, wallet=w)
+    assert r.step(NOW)  # 09:00, 10:00, 11:00 UTC: three funding times while open
+    with clean.connect() as c:
+        rows = c.execute(
+            text(
+                "SELECT ts, amount FROM smc_wallet_ledger WHERE signal_id = :i AND kind = 'FUNDING'"
+                " ORDER BY ts"
+            ),
+            {"i": sid},
+        ).all()
+        per_unit, usdt = c.execute(
+            text("SELECT funding, funding_usdt FROM smc_signals WHERE id = :i"), {"i": sid}
+        ).one()
+    assert [x.ts.astimezone(UTC).hour for x in rows] == [9, 10, 11]
+    assert all(x.amount < 0 for x in rows)  # a long pays a positive rate
+    assert usdt == -sum(x.amount for x in rows) and per_unit > 0
+    ((_, loaded, _),) = [a for a in store.active(clean, sym) if a[0] == sid]
+    assert loaded.funding == per_unit  # a restart continues from the paid funding
+
+
 def test_an_open_market_position_survives_a_restart_and_stays_open(clean):
     """Regression: an OPEN market entry is reloaded with its fill time (no crash on restart).
     Its own market, so no canonical candle of another test can touch its stop."""
@@ -325,10 +384,22 @@ def test_an_open_market_position_survives_a_restart_and_stays_open(clean):
     assert st == "OPEN" and last is not None
 
 
-@pytest.mark.parametrize("exit_on_choch", [False, True])
-def test_the_live_runner_replays_exactly_what_the_backtest_finds(clean, exit_on_choch):
+SMC23_REPLAY = {
+    "sl_mode": "structure",
+    "tp_mode": "liquidity",
+    "discount_ref": "displacement",
+    "entry_ref": "htf_fvg_ce",
+    "max_cost_frac": D("0.2"),
+    "min_net_rr": D(0),
+    "liq_buffer_r": D(1),
+}
+FUNDING = Costs(funding_rate=D("0.0001"), funding_interval_h=1)
+
+
+@pytest.mark.parametrize(("exit_on_choch", "smc23"), [(False, False), (True, False), (False, True)])
+def test_the_live_runner_replays_exactly_what_the_backtest_finds(clean, exit_on_choch, smc23):
     """Minute by minute over the same data, the runner opens and closes exactly the trades of
-    the backtest: same setup, entry, stop, target, exit and R."""
+    the backtest: same setup, entry, stop, target, exit and R (SMC-2.3: with hourly funding)."""
     sym = "SOLUSDT"
     if exit_on_choch:  # the long is closed by the bearish 1h CHoCH of bar 23
         rows = SETUP + [(98, 100, 97.6, 99.5), (99.5, 100.5, 98.8, 99), (99, 99.2, 95.5, 96)]
@@ -343,7 +414,11 @@ def test_the_live_runner_replays_exactly_what_the_backtest_finds(clean, exit_on_
         ]
     m1 = expand(rows)
     p = replace(FIXTURE_P, history_days=2, exit_on_choch=exit_on_choch)
-    want = backtest(m1, p, Costs())["trades"]
+    costs = Costs()
+    if smc23:
+        p = replace(p, **SMC23_REPLAY)  # type: ignore[arg-type]
+        costs = FUNDING
+    want = backtest(m1, p, costs)["trades"]
     assert want  # the fixture trades
     if exit_on_choch:
         assert want[0][1].state.value == "INVALIDATED"
@@ -362,7 +437,7 @@ def test_the_live_runner_replays_exactly_what_the_backtest_finds(clean, exit_on_
             if a <= c.open_time < b
         ]
 
-    r = SmcRunner(clean, sym, p, Costs(), fetch=None, wallet=None)
+    r = SmcRunner(clean, sym, p, costs, fetch=None, wallet=None)
     r.started = T0
     start = T0 + timedelta(hours=15)
     ensure_history(clean, sym, fetch, days=2, now=start)
@@ -389,3 +464,7 @@ def test_the_live_runner_replays_exactly_what_the_backtest_finds(clean, exit_on_
         assert [(x["kind"], D(x["price"]), D(x["frac"])) for x in row.parts] == [
             (x.kind, x.price, x.frac) for x in tr.parts
         ]
+    if smc23:
+        assert want[0][0].sl is not None and want[0][0].tp is not None
+        assert want[0][0].tp.source.startswith("1h")  # a liquidity target
+        assert want[0][1].funding != 0  # funding was paid over the hours it was open

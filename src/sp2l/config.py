@@ -116,6 +116,26 @@ class RuntimeConfig:
                 problems.append(f"costs.{f}={v!r} >= {MAX_RATE}: use a fraction (0.0002 = 0.02 %)")
             else:
                 values[f] = d
+        # funding (optional: Tabdeal publishes no rate; 0 = none)
+        funding, interval = Decimal(0), 8
+        try:
+            funding = Decimal(str(costs.get("funding_rate", 0)))
+            if not funding.is_finite() or abs(funding) >= MAX_RATE:
+                problems.append(f"costs.funding_rate={funding} must be a fraction below {MAX_RATE}")
+        except InvalidOperation:
+            problems.append(f"costs.funding_rate={costs.get('funding_rate')!r} is not a number")
+        try:
+            interval = int(costs.get("funding_interval_h", 8))
+            if interval < 0:
+                problems.append("costs.funding_interval_h must be >= 0")
+        except (TypeError, ValueError):
+            problems.append(f"costs.funding_interval_h={costs.get('funding_interval_h')!r}")
         if problems:
             raise ConfigError("fee/slippage values are never hardcoded: " + "; ".join(problems))
-        return Costs(values["maker_fee"], values["taker_fee"], values["slippage_allowance"])
+        return Costs(
+            values["maker_fee"],
+            values["taker_fee"],
+            values["slippage_allowance"],
+            funding,
+            interval,
+        )

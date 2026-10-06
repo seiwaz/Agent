@@ -174,3 +174,46 @@ def test_utc_grid_backtest_reads_the_same_setup_on_15m():
     ctx = build_context(expand(SETUP), p)
     assert all(b.open_time.minute == 0 for b in ctx["1h"].bars)
     assert hourly(SETUP)[0].open_time.minute == 30
+
+
+def test_funding_lowers_the_long_and_lifts_the_short_result_at_each_funding_time():
+    from sp2l.smc.lifecycle import Tracked, advance, risk_unit
+
+    costs = Costs(funding_rate=D("0.001"), funding_interval_h=8)
+    t0 = datetime(2026, 1, 6, 7, 58, tzinfo=T0.tzinfo)
+
+    def run(side: Side, rate_costs: Costs):
+        long = side is Side.LONG
+        entry, sl, tp = (D(100), D(90), D(130)) if long else (D(100), D(110), D(70))
+        t = Tracked(
+            "f", side, entry, sl, tp, t0, risk_unit(side, entry, sl, rate_costs), market=True
+        )
+        events = []
+        for i in range(4):  # 07:58 .. 08:01; funding at 08:00
+            events += advance(
+                t,
+                Candle(t0 + i * timedelta(minutes=1), D(100), D(101), D(99), D(100)),
+                P,
+                rate_costs,
+            )
+        return t, events
+
+    lt, lev = run(Side.LONG, costs)
+    assert lev == ["FUNDING"] and lt.funding == D("0.1")  # 0.001 x the 08:00 open
+    st, _ = run(Side.SHORT, costs)
+    assert st.funding == D("-0.1")  # a short receives a positive rate
+    _, none = run(Side.LONG, Costs())
+    assert none == []  # no rate, no funding
+
+
+def test_liquidation_guard_cuts_the_size_and_rejects_below_one_step():
+    p = replace(
+        P, risk_pct=D("0.9"), liq_buffer_r=D(1), require_discount=False, max_leverage=D(100)
+    )
+    _, s = _order(SETUP, p)  # entry 97.5, stop 93.99: by risk 25.6 units
+    cap = D(100) / (2 * D("3.51") + D("0.005") * D("97.5"))  # 13.33
+    assert s.qty == cap.quantize(D("0.00001"), "ROUND_DOWN") and s.accepted
+    _, none = _order(SETUP, replace(p, liq_buffer_r=D(10) ** 9))
+    assert none.reasons == ("LIQ_LIMITED",)
+    _, off = _order(SETUP, replace(p, liq_buffer_r=D(0)))
+    assert off.qty is not None and s.qty is not None and off.qty > s.qty

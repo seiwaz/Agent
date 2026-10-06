@@ -5,6 +5,10 @@ against the trade closed; market exit at that close), TIME_STOP (neither TP nor 
 `time_stop_min` of the fill, market exit; 0 = off), TIMEOUT (`max_hold_min`). Without a fill:
 EXPIRED (`pending_expiry_min` after creation), MISSED (the target traded before the fill).
 
+Funding (`costs.funding_rate`, every `funding_interval_h` hours from 00:00 UTC): an OPEN
+position filled before a funding time pays (long, positive rate) or receives rate x the price
+at that minute's open per unit; it accumulates in `funding` and lowers the result in R.
+
 All path decisions use final M1 candles. Where one minute could have touched both sides the
 conservative reading applies: a stop beats the target in the same minute, and no target is
 credited in the minute the entry filled.
@@ -85,6 +89,7 @@ class Tracked:
     sl0: Decimal | None = None  # the initial stop
     time_stop_min: int = 0  # 0 = no time stop
     parts: list[Part] = field(default_factory=list)
+    funding: Decimal = Decimal(0)  # funding paid so far per unit (negative: received)
 
     def __post_init__(self) -> None:
         if self.market and self.state is State.PENDING:
@@ -114,7 +119,16 @@ class Tracked:
 
 
 def _part(t: Tracked, kind: str, price: Decimal, frac: Decimal, at: datetime, c: Costs) -> None:
-    t.parts.append(Part(kind, price, frac, at, frac * t.net_per_unit(price, c) / t.risk))
+    net = t.net_per_unit(price, c) - t.funding
+    t.parts.append(Part(kind, price, frac, at, frac * net / t.risk))
+
+
+def funding_due(at: datetime, costs: Costs) -> bool:
+    """`at` (a minute's open) is a funding time."""
+    if costs.funding_rate == 0 or costs.funding_interval_h <= 0:
+        return False
+    secs = int(at.timestamp())
+    return secs % (costs.funding_interval_h * 3600) == 0
 
 
 def _close(t: Tracked, state: State, price: Decimal, at: datetime, costs: Costs) -> str:
@@ -169,16 +183,20 @@ def advance(
         if bar.open_time >= t.created_at + timedelta(minutes=p.pending_expiry_min):
             return [_end(t, State.EXPIRED, end)]
         return []
-    if _stopped(t, bar):
-        return [_stop(t, end, costs)]
-    if _hit(t, bar, t.tp):  # a market take-profit: taker fee + the slippage allowance
-        return [_close(t, State.TP, _slipped(t, t.tp, costs), end, costs)]
-    if invalidate:
-        return [_close(t, State.INVALIDATED, bar.close, end, costs)]
     assert t.filled_at is not None
+    ev: list[str] = []
+    if t.filled_at < bar.open_time and funding_due(bar.open_time, costs):
+        t.funding += costs.funding_rate * bar.open * (1 if long else -1)
+        ev.append("FUNDING")
+    if _stopped(t, bar):
+        return ev + [_stop(t, end, costs)]
+    if _hit(t, bar, t.tp):  # a market take-profit: taker fee + the slippage allowance
+        return ev + [_close(t, State.TP, _slipped(t, t.tp, costs), end, costs)]
+    if invalidate:
+        return ev + [_close(t, State.INVALIDATED, bar.close, end, costs)]
     held = bar.open_time - t.filled_at
     if t.time_stop_min > 0 and held >= timedelta(minutes=t.time_stop_min):
-        return [_close(t, State.TIME_STOP, bar.close, end, costs)]
+        return ev + [_close(t, State.TIME_STOP, bar.close, end, costs)]
     if held >= timedelta(minutes=p.max_hold_min):
-        return [_close(t, State.TIMEOUT, bar.close, end, costs)]
-    return []
+        return ev + [_close(t, State.TIMEOUT, bar.close, end, costs)]
+    return ev

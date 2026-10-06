@@ -147,8 +147,23 @@ class SmcRunner:
                     if b.open_time < t.created_at:
                         continue
                     booked = len(t.parts)
+                    funded = t.funding
                     inv = invalidates(t, b, closes, p)
                     for ev in advance(t, b, p, self.costs, invalidate=inv):
+                        if ev == "FUNDING":
+                            per_unit = t.funding - funded
+                            usdt = per_unit * qty
+                            if self.wallet is not None and qty > 0:
+                                self.wallet.book_funding(c, sid, self.symbol, b.open_time, usdt)
+                            store.event(
+                                c,
+                                sid,
+                                b.open_time,
+                                "FUNDING",
+                                b.open,
+                                {"per_unit": str(per_unit), "usdt": str(usdt)},
+                            )
+                            continue
                         price = t.entry if ev == "FILLED" else t.exit_price
                         detail: dict[str, Any] = {}
                         if t.result_r is not None:
@@ -206,7 +221,7 @@ class SmcRunner:
                 t = tracked(s, p, self.costs)
                 size = None
                 if self.wallet is not None:
-                    sized = self.wallet.size(c, t.entry, t.risk, self.qty_step)
+                    sized = self.wallet.size(c, t.entry, t.risk, self.qty_step, t.sl)
                     if isinstance(sized, str):
                         log.info("%s: %s not opened: %s", self.symbol, s.key, sized)
                         continue
