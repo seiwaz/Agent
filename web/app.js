@@ -794,7 +794,12 @@ function renderTicket(w) {
   if (!act.length) {
     const last = state.allSignals.find((s) => s.closed_at);
     body.replaceChildren(mini || "", el("div", { class: "ticket-empty" },
-      el("p", { class: "muted small" }, `One shared ${w && w.ready ? usd(w.initial, 0) : "100"} USDT wallet for ${state.symbols.map(symName).join(" and ")}. A limit order rests at the order block of a 1h setup (break of structure → order block with its FVG) with the 4h bias, from the moment price first trades into the FVG; the stop sits beyond the OB's wick, the target at the previous HH / LL.`),
+      el("p", { class: "muted small" }, `One shared ${w && w.ready ? usd(w.initial, 0) : "100"} USDT wallet for ${state.symbols.map(symName).join(" and ")}. ${(() => {
+        const ps = state.params[state.symbol], v = {};
+        if (ps) for (const g of ps.groups) for (const i of g.items) v[i.key] = i.value;
+        const z = v.zone_tf || "zone", b = v.bias_tf || "bias";
+        return `Signals come from ${z} setups (sweep → break of structure → order block with its FVG) in the direction of the ${b} trend${v.confirm_exec ? `, confirmed by a ${v.exec_tf} break before the limit order is placed` : ""}. Entry, stop and target rules: Strategy page.`;
+      })()}`),
       last ? el("p", { class: "small" }, "Last: ", symName(last.symbol), " ", sideTag(last.side), " ", stateTag(last.state), " ", rEl(last.result_r), last.pnl_usdt !== null ? ` · ${usdSigned(last.pnl_usdt)} $` : "") : null));
     return;
   }
