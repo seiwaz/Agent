@@ -73,6 +73,10 @@ costs:
   taker_fee: 0.00095         # market entries and every exit (TP charged taker conservatively)
   slippage_allowance: 0.000326   # modeled worst SL fill beyond the SL price (XAUT)
   evidence_id: "docs/cost_evidence.json@2026-09-30T08:26Z"
+  # futures funding: Tabdeal publishes no funding rate or interval (public market data and academy
+  # checked read-only 2026-10-06), so it is modelled as 0; set both when known.
+  funding_rate: 0            # fraction of the notional per funding time; longs pay a positive rate
+  funding_interval_h: 8      # funding times every 8 h from 00:00 UTC (0 = none)
 
 
 validation:
@@ -96,24 +100,30 @@ smc:
   eq_tol_atr: 0.1         # swings within 0.1 ATR form one equal-highs / equal-lows pool
   require_sweep: true     # a liquidity sweep is required before the break (restored 2026-10-05)
   sweep_max_bars: 12      # (with require_sweep) the sweep is at most 12 zone bars before the break
-  # top-down model (SMC-2.2, owner 2026-10-06)
+  # top-down model (SMC-2.3, owner 2026-10-06: the standard SMC / ICT model for crypto futures)
+  htf_grid: utc           # 1h / 4h bars at 00:00, 04:00, ... UTC (TradingView, large venues); tehran = Tabdeal's hh:30 grid
   bias_tf: 4h
   zone_tf: 15m            # sweep, displacement, OB + FVG
-  exec_tf: 5m             # confirmation
-  confirm_exec: true      # after price first trades into the FVG, wait for a 5m BOS/CHoCH with the setup ...
-  confirm_window_min: 240 # ... closing within 4 h (longer windows added no order in the 270-day BTC test) ...
-  confirm_entry: limit    # ... then a limit (maker) at the entry price from that close on
-  entry_ref: fvg_mid      # entry: 50 % of the FVG right after the (fresh) OB
-  # stop and target (owner 2026-10-06): SL beyond the OB by its own height (long: OB low - OB
-  # height); TP at 3 x the stop distance (price R:R 1:3)
-  sl_mode: ob_height
-  tp_rr: 3
-  tp_ref: leg             # (tp_rr 0 only) the HH / LL after the OB candle, before the first return to the OB
-  tp_front_run_atr: 0.05  # (tp_rr 0 only) the TP sits 0.05 ATR before that HH / LL
-  # filters: off in SMC-2.2 (owner 2026-10-06: the variant without them)
-  require_discount: false # true: long entry at or below 50 % of sweep wick -> HH (short mirrored)
-  min_net_rr: 0           # net R at the TP after fees and slippage; 0 = off
-  max_cost_frac: 0        # off (owner): costs count only through min_net_rr
+  exec_tf: 5m             # confirmation and the refined entry
+  confirm_exec: true      # after price first trades into the 15m FVG, wait for a 5m BOS/CHoCH with the setup ...
+  confirm_window_min: 240 # ... closing within 4 h ...
+  confirm_in_zone: true   # ... reacting from a 5m swing inside the 15m OB + FVG zone; a 5m close beyond the OB's far edge first: ZONE_INVALID
+  confirm_entry: limit    # then a limit (maker) ...
+  entry_ref: ltf_fvg_ce   # ... at 50 % of the 5m FVG of the confirming move, else the edge of its 5m OB (htf_fvg_ce = SMC-2.2)
+  # stop: beyond the farther of the OB wick and the sweep wick + 0.2 ATR(15m) (ob_height = SMC-2.2)
+  sl_mode: structure
+  sl_buffer_atr: 0.2
+  # target: the nearest unswept liquidity beyond the entry (displacement high / low, unswept 15m and 1h
+  # swings and equal highs / lows, the previous UTC day's high / low), 0.05 ATR(15m) before it (fixed = SMC-2.2)
+  tp_mode: liquidity
+  tp_rr: 3                # (tp_mode fixed only)
+  tp_ref: leg
+  tp_front_run_atr: 0.05
+  # filters: they may reject a trade, they never move the stop or the target
+  require_discount: true  # the OB's proximal edge in the discount (long) / premium (short) half ...
+  discount_ref: displacement # ... of sweep wick -> displacement high / low
+  min_net_rr: 2           # net R at the TP after maker entry, taker exit incl. slippage
+  max_cost_frac: 0.2      # round-trip costs above 20 % of the stop distance: COST_HEAVY
   exit_on_choch: false    # true: close at market at a zone-TF CHoCH against the open trade
   # time
   pending_expiry_min: 120 # an unfilled limit is cancelled 2 h after it is placed
@@ -129,4 +139,6 @@ smc:
   risk_pct: 0.01          # risk per position, of the wallet balance at entry
   max_active: 1           # active positions per symbol
   max_positions: 2        # active positions across all symbols
+  liq_buffer_r: 1         # cross-margin liquidation at least 1 x the stop beyond the stop, else a smaller size (LIQ_LIMITED)
+  maint_margin_rate: 0.005 # assumed: Tabdeal publishes no maintenance margin rate
 # SMC-1.0 evidence (270 days, M1-trigger model) is kept in docs/SMC_STRATEGY.md.

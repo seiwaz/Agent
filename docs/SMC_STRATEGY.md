@@ -1,4 +1,4 @@
-# SMC engine — strategy specification (SMC-2.2)
+# SMC engine — strategy specification (SMC-2.3)
 
 Markets: **BTC/USDT and XRP/USDT**, traded together on **one shared simulated wallet**
 (100 USDT). Each market has its own price tick / quantity step (`instruments`). No orders are
@@ -8,7 +8,79 @@ kept at the end of this file. **SMC-2.1** (2026-10-05) adds the discount / premi
 net-R filters, the front-run target, an optional fee filter and CHoCH exit, and turns the
 3 h time stop off.
 
-## SMC-2.2 (2026-10-06, owner) — configured, not deployed
+## SMC-2.3 (2026-10-06, owner) — the standard SMC / ICT model for crypto futures
+Long described; short mirrored. Every rule is a setting (`config/*.yaml` → `smc` / `costs`);
+code defaults keep SMC-2.2 / 2.1, so earlier configs give their earlier trades.
+
+1. **Bias** (`bias_tf` 4h): the 4h structure (last BOS / CHoCH by close) must point the
+   trade's way (NO_BIAS / BIAS_MISMATCH). 1h / 4h bars on the **UTC grid** (`htf_grid: utc`,
+   00:00, 04:00, … like TradingView and the large venues; `tehran` = Tabdeal's hh:30 grid).
+   Detection delay of the 4h bias (first minute beyond the broken level → close of the 4h
+   bar that confirms the break), full local history: BTC 2.3 h (UTC) / 2.2 h (Tehran), XRP
+   2.2 h / 2.5 h on average.
+2. **Setup on 15m** (`zone_tf`), in this order: sweep of confirmed lows (a whole equal-lows
+   pool within `eq_tol_atr` 0.1 ATR; close back inside) → BOS / CHoCH by close within
+   `sweep_max_bars` 12 → OB = last opposite candle at or after the sweep bar, ≥ `ob_min_atr`
+   0.5 ATR → the FVG right after it. **Discount**: the OB's proximal edge in the lower half
+   of sweep wick → displacement high (the highest high from the sweep to the bar on whose
+   close the setup was known) (`require_discount`, `discount_ref: displacement`;
+   NOT_DISCOUNT / NOT_PREMIUM).
+3. **Activation and 5m confirmation** (`confirm_exec`, `exec_tf` 5m): activation = price
+   first trades into the 15m FVG. Within `confirm_window_min` 240 a 5m BOS / CHoCH with the
+   setup must close, reacting from a 5m low (the lowest low between the broken 5m swing and
+   the break) that lies inside the zone (OB far edge .. FVG far edge) and was made after
+   activation (`confirm_in_zone`). A 5m close beyond the OB's far edge first: ZONE_INVALID.
+   No such break in time: NO_CONFIRM.
+4. **OB state at order time**: fresh (NOT_FRESH) and valid (ZONE_INVALID).
+5. **Entry** (`confirm_entry: limit`, `entry_ref: ltf_fvg_ce`): a limit (maker) from the
+   confirming close at 50 % (consequent encroachment) of the newest 5m FVG of the confirming
+   move (its third bar between the reaction low and the break); without one, at the proximal
+   edge of the move's last opposite 5m candle (`ltf_ob_edge`); without either, at 50 % of
+   the 15m FVG (`htf_fvg_ce`, the SMC-2.2 entry). Cancelled `pending_expiry_min` 120 later;
+   one order per setup; never retroactive.
+6. **Stop** (`sl_mode: structure`): beyond the farther of the 15m OB's wick and the sweep
+   wick, plus `sl_buffer_atr` 0.2 × ATR(15m), rounded to the tick away from the entry
+   (`ob_height` = SMC-2.2, `wick` = SMC-2.1).
+7. **Target** (`tp_mode: liquidity`): the **nearest** unswept external liquidity beyond the
+   entry, known at the order: the displacement-leg high, unswept 15m and 1h swing highs
+   (reported as equal highs when two lie within 0.1 ATR), the previous UTC day's high (while
+   today has not traded above it). The TP sits `tp_front_run_atr` 0.05 × ATR(15m) before it;
+   a level whose TP would not lie beyond the entry is skipped; never a farther level for a
+   better R:R (`fixed` = `tp_rr` × the stop, SMC-2.2; `hh_ll` = SMC-2.1).
+8. **Filters**: `min_net_rr` 2 (net R at the TP: maker entry fee, taker exit fee with TP
+   slippage, the stop's slippage in the risk unit; LOW_NET_RR) and `max_cost_frac` 0.20
+   (entry fee + stop exit fee + slippage per unit above 20 % of the stop distance:
+   COST_HEAVY). Filters never move the TP or the SL.
+9. **Size and capacity**: 1 % of the shared wallet over stop + costs, ≤ 10× leverage, margin
+   within the free balance, 1 position per market, 2 in total. **Liquidation guard**
+   (`liq_buffer_r` 1, `maint_margin_rate` 0.005 assumed; cross margin): the estimated
+   liquidation (equity not backing other positions − qty × move = rate × notional) must lie
+   at least one stop distance beyond the stop, otherwise a smaller size, or no trade when
+   even the smallest step fails (LIQ_LIMITED). At 1 % risk it rarely binds.
+10. **After entry**: TP, SL, or TIMEOUT at 24 h (market); no time stop, no CHoCH exit;
+    same-minute rule: SL first. **Funding** (`costs.funding_rate`, `funding_interval_h`):
+    Tabdeal publishes no funding rate or interval (public market data and its academy,
+    checked read-only 2026-10-06), so it is modelled as **0**; when set, every funding time
+    an open position spans lowers its R and books a FUNDING ledger row.
+
+### Backtest, full local history (2025-12-13 .. 2026-10-06, after fees, for information)
+| | BTC SMC-2.2 | BTC SMC-2.3 | XRP SMC-2.2 | XRP SMC-2.3 |
+|---|---|---|---|---|
+| complete 15m setups | 70 | 70 | 70 | 70 |
+| orders / closed trades | 8 / 3 | 0 / 0 | 6 / 1 | 0 / 0 |
+| win rate | 33 % | — | 0 % | — |
+| gross R / net R | −1.89 / −1.80 | 0 / 0 | −1.07 / −1.00 | 0 / 0 |
+| PF | 0.10 | — | 0 | — |
+| average stop | 1.39 % of price, 4.4 × the round-trip cost | — | 1.10 %, 4.9 × | — |
+| rejections | BIAS_MISMATCH 26, NO_CONFIRM 19, ZONE_INVALID 9, NOT_FRESH 7, NO_BIAS 1 | ZONE_INVALID 36, NO_CONFIRM 16, BIAS_MISMATCH 8, LOW_NET_RR 5, NOT_FRESH 4, COST_HEAVY 1, NOT_DISCOUNT / NOT_PREMIUM 2, NO_BIAS 1 | NO_CONFIRM 25, BIAS_MISMATCH 23, ZONE_INVALID 10, NOT_FRESH 5, NO_BIAS 1 | ZONE_INVALID 32, NO_CONFIRM 21, BIAS_MISMATCH 10, LOW_NET_RR 5, COST_HEAVY 2, NOT_FRESH 2 |
+
+SMC-2.3 found no tradable setup in this history: all 36 (BTC) / 32 (XRP) ZONE_INVALID are a
+5m close beyond the OB's far edge while waiting for the confirmation from inside the zone;
+of the 18 BTC setups that were confirmed, the 4h bias, LOW_NET_RR and freshness removed the
+rest. For information (BTC, same history): without the filters 5 orders (2 TP, 2 MISSED,
+1 TIMEOUT, +0.40 R); without the in-zone rule and the filters 8 orders (−0.38 R).
+
+## SMC-2.2 (2026-10-06, owner) — superseded by SMC-2.3 before it was deployed
 The same structure code, with these settings (`config/*.yaml`; every new key defaults to the
 SMC-2.1 behaviour, so older configs are unchanged):
 - **Zones on 15m** (`zone_tf`), bias **4h**: sweep → BOS/CHoCH by close → fresh OB (last
@@ -33,8 +105,9 @@ already touched (7–10). Longer order expiry (4–24 h) filled more orders and 
 - Every bar comes from one merged 1-minute series: canonical live candles (`candles_1m`,
   collector) where they exist, otherwise **Tabdeal chart history** (`exchange_m1`), fetched
   on demand for `history_days` (35) when the engine starts and topped up every minute.
-- Higher timeframes are aggregated from that series in SQL, on Tabdeal's own grid: 1m–15m
-  UTC-aligned, **1h and 4h on Tehran time** (bars open at hh:30 UTC).
+- Higher timeframes are aggregated from that series in SQL: 1m–15m and 1d UTC-aligned; 1h and
+  4h on `htf_grid` — **UTC** in SMC-2.3 (00:00, 04:00, …), `tehran` = Tabdeal's own chart
+  (bars open at hh:30 UTC, SMC-1.0 .. 2.2).
 - Only closed bars are analysed; a swing is usable only `swing_len` bars after it formed. The
   chart, the engine and the backtest call the same functions with the same parameters.
 
@@ -123,6 +196,9 @@ so a stop-out is exactly −1R.
 Migration `0020_smc_ladder`: `smc_signals` gains `targets` (source, net R, level), `parts`
 (the exit), `qty_open`, `realized_r`, `version`; `smc_wallet_ledger` gains `part` and `fees`.
 Migration `0021`: the unused `tp1` / `tp2` / `tp3` columns are dropped.
+Migration `0022` (SMC-2.3): `smc_signals.funding` (funding paid per unit so far; a restart
+continues from it) and `funding_usdt`; ledger kind `FUNDING`. Signal details store the 5m
+confirmation (break, reaction origin, the 5m FVG / OB).
 Signals of SMC-1.0 keep their single TP and finish under the old rule.
 
 ## Parameters
@@ -130,19 +206,27 @@ All in `config/*.yaml` → `smc` (defaults: `src/sp2l/smc/model.py`), listed on 
 Strategy page with their hash. Every signal stores the hash of the parameters that made it.
 SMC-2.1 keys: `tp_front_run_atr` 0.05, `require_discount` true, `min_net_rr` 2,
 `max_cost_frac` 0 (off), `exit_on_choch` false, `time_stop_min` 0 (off).
+SMC-2.2 keys: `confirm_entry`, `confirm_window_min`, `entry_ref` (`fvg_mid`), `sl_mode`
+(`ob_height`), `tp_rr` 3. SMC-2.3 keys (code default → SMC-2.3 value): `htf_grid` tehran →
+utc, `confirm_in_zone` false → true, `entry_ref` ob_edge → ltf_fvg_ce, `sl_mode` wick →
+structure, `sl_buffer_atr` 0.2, `tp_mode` hh_ll → liquidity, `discount_ref` target →
+displacement, `min_net_rr` 2, `max_cost_frac` 0 → 0.2, `liq_buffer_r` 0 → 1,
+`maint_margin_rate` 0.005; `costs.funding_rate` 0, `costs.funding_interval_h` 8.
 
 ## Reason codes (a setup evaluated when its order would exist)
 | Code | Meaning |
 |---|---|
 | NO_BIAS / BIAS_MISMATCH | the 4h bias is undefined / against the trade |
-| ZONE_INVALID | the OB was closed through or expired before the order |
+| NO_CONFIRM | no 5m BOS / CHoCH from inside the zone within `confirm_window_min` |
+| ZONE_INVALID | the OB was closed through (15m, or a 5m close while waiting for the confirmation) or expired before the order |
 | NOT_FRESH | the OB was already touched (first touch only) |
 | BAD_STOP | the stop would sit on the wrong side of the entry |
-| NO_TARGET | no previous HH / LL beyond the entry |
-| NOT_DISCOUNT / NOT_PREMIUM | entry not in the discount / premium half of sweep wick → HH / LL |
+| NO_TARGET | no HH / LL (hh_ll) or unswept liquidity (liquidity) beyond the entry |
+| NOT_DISCOUNT / NOT_PREMIUM | entry (target) / the OB's proximal edge (displacement) not in the discount / premium half of the dealing range |
 | LOW_NET_RR | net R at the TP below `min_net_rr` |
 | COST_HEAVY | fees + slippage above `max_cost_frac` of the stop (when on) |
 | LEVERAGE | the size would need more than `max_leverage` |
+| LIQ_LIMITED | the liquidation would lie within `liq_buffer_r` × the stop beyond the stop even at the smallest size |
 
 ## SMC-1.0 (retired 2026-10-05) — evidence
 SMC-1.0 traded M1 BOS / CHoCH triggers reacting inside 4h / 1h order blocks with a single

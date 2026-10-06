@@ -14,7 +14,7 @@ from typing import Any
 
 from sp2l.core.types import Candle, Side
 
-VERSION = "SMC-2.2"
+VERSION = "SMC-2.3"
 
 
 class ZoneStatus(StrEnum):
