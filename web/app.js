@@ -359,12 +359,38 @@ function drawPlan(ctx, s, size, drawnPx) {
     ctx.beginPath(); ctx.moveTo(Math.max(x0, 0), y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
     plainLabel(ctx, text, W - 6, y + (long ? -9 : 9), c, size, "right");
   };
+  const cf = pl.confirm;
+  if (cf) drawConfirm(ctx, s, cf, size);
+  if (cf && pl.entry) line(pl.entry, "--c-text", `planned entry ${pxs(pl.entry)}${cf.zone ? ` · ${cf.tf} ${cf.zone.kind} ${cf.zone.kind === "FVG" ? "50 %" : "edge"}` : ""}`, [4, 3]);
   if (pl.sl) line(pl.sl, "--c-bear", `planned SL ${pxs(pl.sl)}`, [2, 3]);
   if (pl.tp) {
     line(pl.tp.price, "--c-bull", `planned TP ${pxs(pl.tp.price)} · ${(+pl.tp.net_r).toFixed(2)}R`, [1, 3]);
     if (pl.tp.level) line(pl.tp.level, "--c-liq", `${pl.tp.source} ${pxs(pl.tp.level)}`, [1, 2]);
   }
   if (pl.range_mid) line(pl.range_mid, "--c-text", `50 % ${pxs(pl.range_mid)}`, [1, 4]);
+}
+/** The execution-TF confirmation of a setup: its BOS / CHoCH (the broken level, from the
+ * swing to the break), the low / high the reaction started from, and the refined entry zone. */
+function drawConfirm(ctx, s, cf, size) {
+  const W = size.width, long = s.direction === "LONG";
+  const x1 = xOf(secs(cf.event.from)), x2 = xOf(secs(cf.event.to)), y = yOf(cf.event.level);
+  if (x1 !== null && x2 !== null && y !== null && x2 > -40 && x1 < W + 40) {
+    ctx.strokeStyle = rgba("--c-open", 0.95); ctx.lineWidth = 1.4; ctx.setLineDash([5, 3]);
+    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke(); ctx.setLineDash([]);
+    zoneLabels.push([`${cf.tf} ${cf.event.kind}`, (x1 + x2) / 2, y + (long ? -10 : 10), "--c-open", "left", false, "plain"]);
+  }
+  const xo = xOf(secs(cf.origin_time)), yo = yOf(cf.origin);
+  if (xo !== null && yo !== null && xo > -10 && xo < W + 10) {
+    ctx.fillStyle = rgba("--c-open", 1); ctx.beginPath(); ctx.arc(xo, yo, 3, 0, Math.PI * 2); ctx.fill();
+  }
+  const z = cf.zone;
+  if (!z) return;
+  const sp = span(z.time, null, W), y1 = yOf(z.top), y2 = yOf(z.bottom);
+  if (!sp || y1 === null || y2 === null) return;
+  ctx.fillStyle = rgba("--c-pending", 0.18); ctx.fillRect(sp[0], y1, sp[1] - sp[0], Math.max(2, y2 - y1));
+  ctx.strokeStyle = rgba("--c-pending", 0.9); ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+  ctx.strokeRect(sp[0], y1, sp[1] - sp[0], Math.max(2, y2 - y1)); ctx.setLineDash([]);
+  zoneLabels.push([`${cf.tf} ${z.kind} (entry zone)`, Math.max(sp[0], 0) + 3, (long ? y2 : y1) + (long ? 10 : -10), "--c-pending", "left", false]);
 }
 function drawBelow(ctx, size) {
   zoneLabels = [];
@@ -617,7 +643,7 @@ function renderLegend() {
     if (state.layers.ob) items.push(sw("--c-bull", `${zt} setup OB, waiting (long)`), sw("--c-bear", "waiting (short)"),
       sw("--c-armed", "armed: price in the FVG"), sw("--c-pending", "limit order resting"), sw("--c-open", "position open"));
     if (state.layers.ob) items.push(sw("--c-fvg-bull", "its FVG"), ln(rgba("--c-liq", 1), "liquidity sweep (dot = wick)"));
-    if (state.layers.liquidity) items.push(ln(rgba("--c-bull", 1), "planned SL (OB wick) · TP (front-run) and the HH / LL it refers to · 50 % of the range, dotted"));
+    if (state.layers.liquidity) items.push(ln(rgba("--c-bull", 1), "execution-TF BOS / CHoCH and its entry zone · planned entry, SL, TP (front-run) and the level it refers to · 50 % of the range, dotted"));
     if (state.layers.positions) items.push(ln(css("--text-2"), "positions: entry, SL, TP, time stop / expiry"));
     items.push(el("li", { class: "muted" }, "Setups: sweep → BOS/CHoCH → OB + FVG, fresh, with the bias, passing the filters, near the price or with a position. Label: timeframe · age · state · net R · cost share. Rejected setups: All zones (debug)"));
   } else {
@@ -983,18 +1009,36 @@ async function renderStrategy() {
     step("info", "Bias", v.bias_tf, "The trend of the bias timeframe's last BOS / CHoCH is the only direction that can be traded."),
     step("violet", "Setup", v.zone_tf, `In this order: ${v.require_sweep ? `liquidity sweep (wick beyond unswept swing lows / equal lows within ${v.eq_tol_atr} ATR, close back inside) → a close beyond structure within ${v.sweep_max_bars} bars` : "a close beyond structure (BOS / CHoCH; no liquidity sweep required)"} → order block = last opposite candle (≥ ${v.ob_min_atr} ATR) with the FVG right after it.`),
     step("warn", "Entry", `${v.zone_tf} → ${v.confirm_exec ? `${v.exec_tf} → ` : ""}M1`, (() => {
-      const at = v.entry_ref === "fvg_mid" ? "50 % of the FVG after the order block" : "the order-block edge touching the FVG";
+      const at = {
+        ob_edge: "the order-block edge touching the FVG",
+        htf_fvg_ce: `50 % of the ${v.zone_tf} FVG`, fvg_mid: `50 % of the ${v.zone_tf} FVG`,
+        ltf_fvg_ce: `50 % of the ${v.exec_tf} FVG of the confirming move (else the edge of its ${v.exec_tf} order block)`,
+        ltf_ob_edge: `the edge of the ${v.exec_tf} order block of the confirming move`,
+      }[v.entry_ref] || v.entry_ref;
       if (!v.confirm_exec) return `Limit order (maker) at ${at}, resting from the setup; armed when price first trades into the FVG, cancelled ${v.pending_expiry_min / 60} h later. Only a fresh order block.`;
       const win = (+v.confirm_window_min || +v.pending_expiry_min) / 60;
+      const zone = v.confirm_in_zone ? ` reacting from a ${v.exec_tf} swing inside the zone (order block + FVG); a ${v.exec_tf} close beyond the order block's far edge first cancels the setup` : "";
       return v.confirm_entry === "limit"
-        ? `When price first trades into the FVG, wait up to ${win} h for a ${v.exec_tf} BOS / CHoCH with the setup; then a limit order (maker) at ${at}, cancelled ${v.pending_expiry_min / 60} h later. Only a fresh order block.`
-        : `When price first trades into the FVG, wait up to ${win} h for a ${v.exec_tf} BOS / CHoCH with the setup and enter at market at its close.`;
+        ? `When price first trades into the FVG, wait up to ${win} h for a ${v.exec_tf} BOS / CHoCH with the setup${zone}; then a limit order (maker) at ${at}, cancelled ${v.pending_expiry_min / 60} h later. Only a fresh, valid order block; one order per setup.`
+        : `When price first trades into the FVG, wait up to ${win} h for a ${v.exec_tf} BOS / CHoCH with the setup${zone} and enter at market at its close.`;
     })()),
-    step("ok", "Exit", `${v.exec_tf} · M1`, `${v.sl_mode === "ob_height" ? "Stop beyond the order block by its own height (long: OB low − OB height)." : "Stop one tick beyond the order block's wick."} ${+v.tp_rr > 0 ? `One target at ${v.tp_rr} × the stop distance (price R:R 1:${v.tp_rr}).` : `One target, from the market, never from the stop: the ${v.tp_ref === "swing" ? "last confirmed" : "previous"} ${v.zone_tf} HH (long: its high) / LL (short: its low). None beyond the entry: no trade. The TP sits ${v.tp_front_run_atr} ATR before that level.`} Filters (they reject, never move stop or target): ${v.require_discount ? "long entry in the lower half of sweep wick → HH (short: upper half), " : ""}net R at the TP ≥ ${v.min_net_rr}${+v.max_cost_frac > 0 ? `, costs ≤ ${pct(v.max_cost_frac, 0)} of the stop` : ""}${v.exit_on_choch ? `; exit at a ${v.zone_tf} CHoCH against the trade` : ""}.${+v.time_stop_min > 0 ? ` Time stop ${v.time_stop_min / 60} h,` : ""} Closed at market after ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`));
+    step("ok", "Exit", `${v.exec_tf} · M1`, (() => {
+      const sl = { ob_height: "Stop beyond the order block by its own height (long: OB low − OB height).",
+        structure: `Stop beyond the farther of the order block's wick and the sweep wick, plus ${v.sl_buffer_atr} × ATR(${v.zone_tf}).`,
+      }[v.sl_mode] || "Stop one tick beyond the order block's wick.";
+      const mode = v.tp_mode === "hh_ll" && +v.tp_rr > 0 ? "fixed" : v.tp_mode;
+      const tp = mode === "fixed" ? `One target at ${v.tp_rr} × the stop distance (price R:R 1:${v.tp_rr}).`
+        : mode === "liquidity" ? `One target at the nearest unswept liquidity beyond the entry (the displacement high / low, unswept ${v.zone_tf} and 1h swings and equal highs / lows, the previous day's high / low), ${v.tp_front_run_atr} ATR before it; never a farther level.`
+        : `One target, from the market, never from the stop: the ${v.tp_ref === "swing" ? "last confirmed" : "previous"} ${v.zone_tf} HH (long: its high) / LL (short: its low), ${v.tp_front_run_atr} ATR before it. None beyond the entry: no trade.`;
+      const disc = v.require_discount ? (v.discount_ref === "displacement" ? "order-block edge in the discount (long) / premium (short) half of sweep wick → displacement high / low, " : "long entry in the lower half of sweep wick → HH (short: upper half), ") : "";
+      const filters = `${disc}net R at the TP ≥ ${v.min_net_rr}${+v.max_cost_frac > 0 ? `, costs ≤ ${pct(v.max_cost_frac, 0)} of the stop` : ""}${+v.liq_buffer_r > 0 ? `, liquidation ≥ ${v.liq_buffer_r} × the stop beyond the stop (else smaller size)` : ""}`;
+      return `${sl} ${tp} Filters (they reject, never move stop or target): ${filters}${v.exit_on_choch ? `; exit at a ${v.zone_tf} CHoCH against the trade` : ""}.${+v.time_stop_min > 0 ? ` Time stop ${v.time_stop_min / 60} h,` : ""} Closed at market after ${v.max_hold_min / 60} h. Size: ${pct(v.risk_pct)} of the shared wallet, ≤ ${v.max_leverage}x.`;
+    })()));
   $("param-grid").replaceChildren(...p.groups.map((g) => el("section", { class: "card" }, el("h2", {}, g.name),
     el("dl", { class: "kv" }, g.items.flatMap((i) => [el("dt", {}, el("code", {}, i.key)), el("dd", { class: "num" }, Array.isArray(i.value) ? i.value.join(", ") || "—" : show(i.value))])))),
   el("section", { class: "card" }, el("h2", {}, "Costs (from config)"), el("dl", { class: "kv" },
-    ...Object.entries(p.costs).flatMap(([k, x]) => [el("dt", {}, el("code", {}, k)), el("dd", { class: "num" }, pct(x, 3))]))));
+    ...Object.entries(p.costs).flatMap(([k, x]) => [el("dt", {}, el("code", {}, k)), el("dd", { class: "num" }, pct(x, 3))]),
+    ...(p.funding_interval_h !== undefined ? [el("dt", {}, el("code", {}, "funding_interval_h")), el("dd", { class: "num" }, `${p.funding_interval_h} h${+p.costs.funding_rate === 0 ? " (no rate published: modelled 0)" : ""}`)] : []))));
   const kvs = (target, pairs) => $(target).replaceChildren(...pairs.flatMap(([k, t]) => [el("dt", {}, el("code", {}, k)), el("dd", {}, t)]));
   kvs("factor-list", Object.entries(p.rules));
   kvs("reason-list", Object.entries(p.reasons));

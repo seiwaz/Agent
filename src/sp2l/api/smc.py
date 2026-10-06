@@ -41,13 +41,15 @@ TREND_LABEL = {1: "BULLISH", -1: "BEARISH", 0: "UNDEFINED"}
 REASON_TEXT = {
     "NO_BIAS": "Bias timeframe has no trend yet",
     "BIAS_MISMATCH": "Against the bias timeframe's trend",
-    "ZONE_INVALID": "Order block closed through or expired before the order",
+    "ZONE_INVALID": "Order block closed through (zone or execution TF) or expired before the order",
+    "NO_CONFIRM": "No execution-TF BOS / CHoCH from inside the zone within confirm_window_min",
+    "LIQ_LIMITED": "Liquidation would sit too close to the stop even at the smallest size",
     "NOT_FRESH": "Order block already touched (only the first touch is an entry)",
     "BAD_STOP": "Stop would sit on the wrong side of the entry",
-    "NO_TARGET": "No previous HH (long) / LL (short) beyond the entry for the target",
+    "NO_TARGET": "No HH / LL or unswept liquidity beyond the entry for the target",
     "LEVERAGE": "Position size would need more than the allowed leverage",
-    "NOT_DISCOUNT": "Long entry above 50 % of the dealing range (sweep wick -> HH)",
-    "NOT_PREMIUM": "Short entry below 50 % of the dealing range (sweep wick -> LL)",
+    "NOT_DISCOUNT": "Long entry / OB edge above 50 % of the dealing range (sweep wick -> high)",
+    "NOT_PREMIUM": "Short entry / OB edge below 50 % of the dealing range (sweep wick -> low)",
     "LOW_NET_RR": "Net R at the target below min_net_rr after fees and slippage",
     "COST_HEAVY": "Entry + exit fees + slippage above max_cost_frac of the stop distance",
 }
@@ -66,9 +68,39 @@ SETUP_STATE = {"PENDING": "pending", "OPEN": "open"}
 FRESH_ARMING = timedelta(minutes=3)  # the runner's window for a new arming
 
 
-def plan_json(s: Any) -> dict[str, Any]:
+def confirm_json(c: Any, tf: str, entry_ref: str) -> dict[str, Any] | None:
+    """The execution-TF confirmation of a setup and the refined zone the entry uses."""
+    if c is None:
+        return None
+    zone = c.fvg if entry_ref == "ltf_fvg_ce" and c.fvg is not None else c.ob
+    if entry_ref not in ("ltf_fvg_ce", "ltf_ob_edge"):
+        zone = None
+    return {
+        "tf": tf,
+        "t": _t(c.t),
+        "origin": _dec(c.origin),
+        "origin_time": _t(c.origin_time),
+        "event": {
+            "kind": c.event.kind,
+            "level": _dec(c.event.level),
+            "from": _t(c.event.level_time),
+            "to": _t(c.event.break_time),
+        },
+        "zone": None
+        if zone is None
+        else {
+            "kind": zone.kind,
+            "bottom": _dec(zone.bottom),
+            "top": _dec(zone.top),
+            "time": _t(zone.time),
+        },
+    }
+
+
+def plan_json(s: Any, tf: str = "", entry_ref: str = "") -> dict[str, Any]:
     """An evaluated setup (strategy.Setup) as the chart shows it."""
     return {
+        "confirm": confirm_json(getattr(s, "confirm", None), tf, entry_ref),
         "accepted": s.accepted,
         "reasons": [{"code": r, "text": REASON_TEXT.get(r, r)} for r in s.reasons],
         "entry": None if s.entry is None else _dec(s.entry),
@@ -80,7 +112,7 @@ def plan_json(s: Any) -> dict[str, Any]:
     }
 
 
-FILTER_REASONS = {"NOT_DISCOUNT", "NOT_PREMIUM", "LOW_NET_RR", "COST_HEAVY"}
+FILTER_REASONS = {"NOT_DISCOUNT", "NOT_PREMIUM", "LOW_NET_RR", "COST_HEAVY", "LIQ_LIMITED"}
 
 
 def _t(d: datetime) -> str:
@@ -308,11 +340,15 @@ class SmcView:
             long = zs.direction is Side.LONG
             sig = act.get(zs.key)
             armed = find_arming(zs, za, k, m1)
+            order = order_for(zs, ctx, p, armed, m1) if armed not in (None, ARMED_BEFORE) else None
             live_in = rng is not None and (rng[1] <= zs.gap[1] if long else rng[0] >= zs.gap[0])
             if sig is not None:
                 st = SETUP_STATE.get(sig["state"], "open")
             elif not zs.ob.valid_at(k):
                 st = "expired" if k > zs.ob.expires_idx else "invalid"
+            elif p.confirm_exec and armed not in (None, ARMED_BEFORE):
+                # armed: waiting for the execution-TF confirmation; decided: used
+                st = "armed" if order is None else "used"
             elif armed is not None:  # traded into the FVG: armed now, used once that minute passed
                 recent = armed != ARMED_BEFORE and m1[armed].open_time >= upto - FRESH_ARMING
                 st = "armed" if recent else "used"
@@ -335,15 +371,19 @@ class SmcView:
                     "plan": None,
                     "_zs": zs,
                     "_armed": armed,
+                    "_order": order,
                 }
             )
         for x in out:  # the plan: now while waiting, else as it was when its order existed
-            zs, armed = x["_zs"], x["_armed"]
-            order = order_for(zs, ctx, p, armed, m1) if armed not in (None, ARMED_BEFORE) else None
+            zs, armed, order = x["_zs"], x["_armed"], x["_order"]
             if order is not None and (p.confirm_exec or x["state"] not in ("waiting", "armed")):
-                x["plan"] = plan_json(evaluate_order(zs, ctx, p, self.costs, order))
+                x["plan"] = plan_json(
+                    evaluate_order(zs, ctx, p, self.costs, order), p.exec_tf, p.entry_ref
+                )
             elif x["state"] in ("waiting", "armed") or armed is None:
-                x["plan"] = plan_json(evaluate(zs, ctx, p, self.costs, upto))
+                x["plan"] = plan_json(
+                    evaluate(zs, ctx, p, self.costs, upto), p.exec_tf, p.entry_ref
+                )
 
         def filtered(x: dict[str, Any]) -> bool:
             return x["plan"] is not None and bool(
@@ -368,6 +408,7 @@ class SmcView:
         for x in out:
             x.pop("_zs")
             x.pop("_armed")
+            x.pop("_order")
         return shown, out
 
     def analysis(self, tf: str, bars: int) -> dict[str, Any]:
@@ -598,22 +639,32 @@ class SmcView:
                 "sweep_max_bars",
             ],
             "Top-down model": [
+                "htf_grid",
                 "bias_tf",
                 "zone_tf",
                 "exec_tf",
                 "confirm_exec",
                 "confirm_entry",
                 "confirm_window_min",
+                "confirm_in_zone",
             ],
             "Entry, stop and target": [
                 "entry_ref",
                 "sl_mode",
+                "sl_buffer_atr",
                 "tick",
+                "tp_mode",
                 "tp_rr",
                 "tp_ref",
                 "tp_front_run_atr",
             ],
-            "Filters": ["require_discount", "min_net_rr", "max_cost_frac", "exit_on_choch"],
+            "Filters": [
+                "require_discount",
+                "discount_ref",
+                "min_net_rr",
+                "max_cost_frac",
+                "exit_on_choch",
+            ],
             "Lifecycle": [
                 "pending_expiry_min",
                 "time_stop_min",
@@ -623,7 +674,13 @@ class SmcView:
             ],
             "Chart": ["chart_near_atr", "chart_top_n"],
             "Data": [f"lookback_{tf}" for tf in ORDER] + ["history_days"],
-            "Shared wallet": ["account_usdt", "risk_pct", "max_leverage"],
+            "Shared wallet": [
+                "account_usdt",
+                "risk_pct",
+                "max_leverage",
+                "liq_buffer_r",
+                "maint_margin_rate",
+            ],
         }
         d = p.as_dict()
         return {
@@ -647,8 +704,10 @@ class SmcView:
                     "maker_fee": self.costs.maker_fee,
                     "taker_fee": self.costs.taker_fee,
                     "slippage": self.costs.slippage,
+                    "funding_rate": self.costs.funding_rate,
                 }
             ),
+            "funding_interval_h": self.costs.funding_interval_h,
             "rules": RULE_TEXT,
             "reasons": REASON_TEXT,
         }

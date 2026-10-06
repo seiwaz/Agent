@@ -160,3 +160,38 @@ def test_a_setup_rejected_by_a_filter_is_hidden_by_default_and_shown_in_debug(da
         if SHOTS:
             page.locator("#chart-card").screenshot(path=str(Path(SHOTS) / "rejected_debug.png"))
         page.click("[data-mode=setups]")
+
+
+SMC23 = {
+    **SMC,
+    "sl_mode": "structure",
+    "tp_mode": "liquidity",
+    "discount_ref": "displacement",
+    "max_cost_frac": 0.2,
+    "min_net_rr": 2,
+    "liq_buffer_r": 1,
+}
+
+
+def test_smc23_default_view_shows_the_liquidity_target_and_hides_liq_limited(data, browser):
+    with serve(SMC23) as url:
+        page = _open(browser, url)
+        d = _drawn(page)
+        assert d["setups"] == [[KEY, "waiting"]] and d["reasons"] == [[]]
+        plan = page.evaluate("() => state.analysis.setups[0].plan")
+        assert plan["tp"]["source"].startswith("1h")  # nearest unswept liquidity
+        assert float(plan["sl"]) < 94  # beyond the OB / sweep wick (94) by the ATR buffer
+        assert float(plan["range_mid"]) == 100  # sweep wick 94 -> displacement high 106
+        page.goto(f"{url}/#/strategy")
+        page.wait_for_function(
+            "() => document.getElementById('model-flow').innerText.includes('liquidity')",
+            timeout=30000,
+        )
+        flow = page.inner_text("#model-flow")
+        assert "nearest unswept liquidity" in flow and "ATR" in flow
+    with serve({**SMC23, "liq_buffer_r": 10**9}) as url:
+        page = _open(browser, url)
+        assert _drawn(page)["setups"] == []  # LIQ_LIMITED: not in the default view
+        page.click("[data-mode=debug]")
+        d = _drawn(page)
+        assert "LIQ_LIMITED" in d["reasons"][d["setups"].index([KEY, "waiting"])]

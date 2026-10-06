@@ -74,7 +74,18 @@ def target_json(x: Target | None) -> dict[str, Any] | None:
 
 
 def setup_detail(s: Setup) -> dict[str, Any]:
-    return {"setup": setup_json(s.zone), "bias": s.bias}
+    out: dict[str, Any] = {"setup": setup_json(s.zone), "bias": s.bias}
+    c = s.confirm
+    if c is not None:  # the execution-TF confirmation and the refined zones
+        out["confirm"] = {
+            "t": c.t.isoformat(),
+            "kind": c.event.kind,
+            "level": str(c.event.level),
+            "origin": str(c.origin),
+            "fvg": None if c.fvg is None else [str(c.fvg.bottom), str(c.fvg.top)],
+            "ob": None if c.ob is None else [str(c.ob.bottom), str(c.ob.top)],
+        }
+    return out
 
 
 def _parts_json(t: Tracked) -> str:
