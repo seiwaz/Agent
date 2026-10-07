@@ -305,3 +305,4 @@ body[data-view="chart"] main { max-width: none; padding: 8px 12px 12px; }
 .b-origin { color: var(--warn); margin-left: 4px; }
 .ws-trade-acts { display: flex; gap: 6px; }
 .ws-attn { border-color: var(--warn); color: var(--warn); }
+.ws-raw { margin-top: 6px; color: var(--text-2); word-break: break-word; }

@@ -88,6 +88,12 @@ with "No stop / target on Tabdeal". Drag the stop / target of a linked drawing a
 entry follows the exchange and cannot be dragged; the part from the entry to the current price is
 shaded by the live PnL.
 
+The open trades update live: the price, PnL and ROE of each open position every second, from
+the latest traded price on Tabdeal (`/api/trade/prices`, also moving the chart's forming bar);
+Tabdeal's own mark price, PnL and liquidation every `trading.poll_s`. Times in the table and on the
+chart's axis are in the browser's time zone (Tehran on Tabdeal's side). A trade's details (click
+its row) show its log and the position row exactly as Tabdeal reports it.
+
 Tabdeal has no futures user stream, so the API server polls it every `trading.poll_s` seconds
 while a trade is open — with or without a browser — and the table follows the exchange: a fill,
 a stop or target, a cancel or a close made in Tabdeal's own app all show up here.

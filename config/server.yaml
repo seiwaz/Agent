@@ -180,7 +180,7 @@ trading:
   max_leverage: 20          # the dialog's leverage is capped here
   max_margin_usdt: 50       # margin (USDT) of one trade is capped here
   working_type: MARK_PRICE  # stop / target trigger: MARK_PRICE or CONTRACT_PRICE
-  poll_s: 3                 # Tabdeal has no futures user stream: fills and exits are polled
+  poll_s: 2                 # Tabdeal has no futures user stream: fills and exits are polled
   credentials_file: ~/.config/sp2l/tabdeal.env
 
 # Dashboard login (src/sp2l/api/auth.py). Users and their password hashes live outside the repo

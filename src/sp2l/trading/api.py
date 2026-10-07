@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -23,11 +25,49 @@ from sp2l.trading.manager import TradeError, TradeManager, TradingConfig
 
 log = logging.getLogger("sp2l.trading")
 JSON_BODY = Body(...)
+PRICE_TTL_S = 1.0  # the live price of a market is fetched at most once a second
+
+
+def last_price(market: str) -> tuple[float, float]:
+    """(price, epoch s) of the newest trade on Tabdeal's futures market (public feed)."""
+    from sp2l.marketdata.tabdeal_public import recent_trades
+
+    t = recent_trades(market, timeout=3.0)
+    if not t:
+        raise ValueError(f"no recent trades on {market}")
+    return float(t[-1].price), t[-1].created.timestamp()
+
+
+class Prices:
+    """The live price per market for the trades table, cached PRICE_TTL_S."""
+
+    def __init__(self, fetch: Callable[[str], tuple[float, float]] | None = None,
+                 clock: Callable[[], float] = time.monotonic) -> None:
+        self.fetch, self.clock = fetch or last_price, clock
+        self._lock = threading.Lock()
+        self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+    def get(self, symbol: str) -> dict[str, Any]:
+        from sp2l.marketdata.tabdeal_ws import ws_market
+
+        with self._lock:
+            hit = self._cache.get(symbol)
+            if hit is not None and self.clock() - hit[0] < PRICE_TTL_S:
+                return hit[1]
+            try:
+                price, at = self.fetch(ws_market(symbol))
+                out: dict[str, Any] = {"price": price, "at": at}
+            except (OSError, ValueError) as e:
+                out = {"price": None, "error": str(e)[:200]}
+            self._cache[symbol] = (self.clock(), out)
+            return out
 
 
 class TradingDesk:
-    def __init__(self, cfg: Any, db: Engine, manager: TradeManager | None = None) -> None:
+    def __init__(self, cfg: Any, db: Engine, manager: TradeManager | None = None,
+                 prices: Prices | None = None) -> None:
         self.symbols: list[str] = [str(s) for s in cfg.symbols]
+        self.prices = prices or Prices()
         self.problem: str | None = None
         self.manager: TradeManager | None = manager
         try:
@@ -92,6 +132,12 @@ class TradingDesk:
             return {**self.cfg.public(), "ready": self.manager is not None,
                     "problem": self.problem, "symbols": self.symbols,
                     "poll_error": self.manager.poll_error if self.manager else None}
+
+        @app.get("/api/trade/prices")
+        def trade_prices(symbols: str = Query("", max_length=200)) -> Any:
+            """The latest traded price of each market (the live columns of the trades table)."""
+            want = [s for s in symbols.split(",") if s in self.symbols] or self.symbols
+            return {s: self.prices.get(s) for s in want}
 
         @app.get("/api/trade/account")
         def trade_account(symbol: str | None = None) -> Any:

@@ -617,6 +617,8 @@ class TradeManager:
             "liquidation": fnum(pos.get("liquidationPrice")) if pos else None,
             "leverage": fnum(pos.get("leverage")) if pos else None,
             "at": self.clock(),
+            # Tabdeal's own row, shown in the trade's details to compare with its app
+            "raw": {k: v for k, v in (pos or {}).items() if isinstance(v, (str, int, float, bool))},
         }
         if t["position_id"] is None:
             p = self._position(market)

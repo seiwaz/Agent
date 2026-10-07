@@ -34,6 +34,13 @@
     return e;
   };
   const bar = (b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c });
+  const fmtOf = (o) => new Intl.DateTimeFormat(undefined, { hourCycle: "h23", ...o });
+  const LOCAL = {  // axis and crosshair in the browser's time zone
+    long: fmtOf({ year: "2-digit", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }),
+    year: fmtOf({ year: "numeric" }), month: fmtOf({ month: "short" }), day: fmtOf({ day: "numeric" }),
+    time: fmtOf({ hour: "2-digit", minute: "2-digit" }),
+    readout: fmtOf({ year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }),
+  };
   const defaults = (settings) => Object.fromEntries((settings || []).map((x) => [x.key, x.def]));
 
   class ChartWorkspace {
@@ -254,6 +261,16 @@
       this.layer.set(this.layer.items, bars.map((b) => b.t));
       if (this.tools) this.tools.redraw();
     }
+    /** The latest traded price (every second while a position is open): moves the forming bar. */
+    livePrice(price, at) {
+      if (!this.bars.length || !price) return;
+      const last = this.bars[this.bars.length - 1];
+      if (at && at >= last.t + TF_SEC[this.tf]) return;  // a new bar: the tail refresh adds it
+      Object.assign(last, { c: price, h: Math.max(last.h, price), l: Math.min(last.l, price) });
+      this.candles.update({ time: last.t, open: last.o, high: last.h, low: last.l, close: last.c });
+      this.el.price.textContent = fmt(price);
+      if (this.tools) this.tools.redraw();
+    }
     /** Fold a live 1-minute candle into the shown timeframe's forming bar. */
     applyMinute(m) {
       if (!this.bars.length || m.o === undefined) return;
@@ -330,7 +347,7 @@
     note(text) { this.el.note.textContent = text; this.el.note.hidden = !text; }
     readout(p) {
       const b = p && p.time !== undefined ? this.bars.find((x) => x.t === p.time) : null;
-      this.el.readout.textContent = b ? `${new Date(b.t * 1000).toISOString().replace("T", " ").slice(0, 16)} UTC · O ${fmt(b.o)}  H ${fmt(b.h)}  L ${fmt(b.l)}  C ${fmt(b.c)}` : "";
+      this.el.readout.textContent = b ? `${LOCAL.readout.format(new Date(b.t * 1000))} · O ${fmt(b.o)}  H ${fmt(b.h)}  L ${fmt(b.l)}  C ${fmt(b.c)}` : "";
     }
     isFull() { return document.fullscreenElement === this.root || this.root.classList.contains("ws-max"); }
     toggleFull() {
@@ -359,7 +376,10 @@
         grid: { vertLines: { color: css("--border") }, horzLines: { color: css("--border") } },
         rightPriceScale: { borderColor: css("--border") },
         crosshair: { mode: 0 },
-        timeScale: { borderColor: css("--border"), timeVisible: true, secondsVisible: false, rightOffset: 8 },
+        // the browser's time zone (e.g. Tehran), as on Tabdeal and in the rest of the dashboard
+        localization: { timeFormatter: (t) => LOCAL.long.format(new Date(t * 1000)) },
+        timeScale: { borderColor: css("--border"), timeVisible: true, secondsVisible: false, rightOffset: 8,
+          tickMarkFormatter: (t, kind) => (kind === 0 ? LOCAL.year : kind === 1 ? LOCAL.month : kind === 2 ? LOCAL.day : LOCAL.time).format(new Date(t * 1000)) },
       };
     }
     candleColors() {

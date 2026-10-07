@@ -10,7 +10,9 @@
 "use strict";
 (function () {
   const PREFS = "ets-trade-prefs";
-  const OPEN_EVERY_MS = 3000;
+  const OPEN_EVERY_MS = 2000;  // the trades (status, fills, stop / target, Tabdeal's own PnL)
+  const PRICE_EVERY_MS = 1000;  // the live price: price, PnL and ROE of open positions
+  const PRICE_STALE_S = 15;  // an older price is not shown as live
   const HISTORY_EVERY_MS = 30000;
 
   const h = (tag, attrs, ...kids) => {
@@ -32,17 +34,22 @@
     return n.toLocaleString(undefined, { minimumFractionDigits: dd, maximumFractionDigits: dd });
   }
   const usd = (v) => (v === null || v === undefined ? "—" : `${+v >= 0 ? "+" : "−"}${num(Math.abs(+v), 2)}`);
-  const when = (iso) => (iso ? new Date(iso).toISOString().replace("T", " ").slice(5, 16) : "—");
+  // local time (the browser's zone, e.g. Tehran), as on Tabdeal and in the rest of the dashboard
+  const LOCAL = new Intl.DateTimeFormat(undefined, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const LOCAL_S = new Intl.DateTimeFormat(undefined, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+  const when = (iso) => (iso ? LOCAL.format(new Date(iso)) : "—");
   const tone = (v) => (v === null || v === undefined || +v === 0 ? "" : +v > 0 ? "pos" : "neg");
 
   class Trading {
     constructor(ws) {
       this.ws = ws; this.cfg = null; this.open = []; this.history = null; this.tab = "open";
+      this.prices = {}; this.cells = {}; this.sig = "";
       this.expanded = new Set();
       this.collapsed = !!store.get(PREFS, {}).collapsed;
       this.build();
       this.loadConfig();
       this.timer = setInterval(() => { if (!document.hidden) this.refresh(); }, OPEN_EVERY_MS);
+      this.priceTimer = setInterval(() => { if (!document.hidden) this.loadPrices(); }, PRICE_EVERY_MS);
       this.histTimer = setInterval(() => { if (!document.hidden && this.tab === "history") this.loadHistory(); }, HISTORY_EVERY_MS);
     }
 
@@ -74,7 +81,50 @@
       } catch (e) {
         this.problem = e.message;
       }
-      this.render();
+      // rebuild the table only when a trade changed (buttons stay put); else the live cells
+      const sig = this.signature();
+      if (sig !== this.sig || this.tab !== "open") { this.sig = sig; this.render(); } else this.updateLive();
+    }
+    signature() {
+      const tools = this.ws.tools;
+      return JSON.stringify([this.problem, this.open.map((t) => [t.id, t.status, t.protected, t.sl, t.tp, t.filled_qty, t.qty,
+        t.avg_entry, t.last_error, (t.events || []).length, !!(tools && (tools.linked(t.id) || {}).dirty)])]);
+    }
+    /** The latest traded price of every market with an open position, every second. */
+    async loadPrices() {
+      if (!this.ready() || this.loadingPrices) return;
+      const syms = [...new Set(this.open.filter((t) => t.status === "ACTIVE").map((t) => t.symbol))];
+      if (!syms.length) return;
+      this.loadingPrices = true;
+      try {
+        const p = await this.call("GET", `/api/trade/prices?symbols=${encodeURIComponent(syms.join(","))}`);
+        for (const [sym, v] of Object.entries(p)) if (v && v.price !== null && v.price !== undefined) this.prices[sym] = v;
+        const mine = this.prices[this.ws.symbol];
+        if (mine && this.ws.livePrice) this.ws.livePrice(mine.price, mine.at);
+        this.updateLive();
+      } catch { /* the next second retries */ } finally { this.loadingPrices = false; }
+    }
+    /** Price, PnL and ROE of an active trade at the live price (Tabdeal's mark until there is one). */
+    live(t) {
+      const lv = t.live || {}, p = this.prices[t.symbol];
+      const fresh = p && Date.now() / 1000 - p.at < PRICE_STALE_S;
+      const price = fresh ? +p.price : lv.mark;
+      const qty = +t.filled_qty, avg = +(t.avg_entry || t.entry), dir = t.side === "LONG" ? 1 : -1;
+      if (!price || !qty) return { price: price || null, pnl: lv.upnl, roe: lv.roe_pct, liq: lv.liquidation, live: false };
+      const pnl = (price - avg) * qty * dir, margin = (qty * avg) / t.leverage;
+      return { price, pnl, roe: margin ? (pnl / margin) * 100 : null, liq: lv.liquidation, live: !!fresh };
+    }
+    updateLive() {
+      for (const t of this.open) {
+        const c = this.cells[t.id];
+        if (!c || t.status !== "ACTIVE") continue;
+        const v = this.live(t);
+        c.price.textContent = v.price ? num(v.price) : "—";
+        c.price.title = v.live ? "Last traded price on Tabdeal (live)" : "Tabdeal's mark price";
+        c.pnl.textContent = usd(v.pnl); c.pnl.className = `num ${tone(v.pnl)}`;
+        c.roe.textContent = v.roe === null || v.roe === undefined ? "—" : `${num(v.roe, 2)}%`; c.roe.className = `num ${tone(v.roe)}`;
+        c.liq.textContent = v.liq ? num(v.liq) : "—";
+      }
     }
     async loadHistory() {
       if (!this.ready()) return;
@@ -128,7 +178,9 @@
         h("button", { type: "button", role: "tab", "aria-selected": String(this.tab === "history"), onclick: () => this.setTab("history") }, "History"));
       this.el.status.textContent = this.problem || "";
       this.el.status.className = `ws-trade-status small${this.problem ? " neg" : ""}`;
+      this.cells = {};
       this.el.body.replaceChildren(this.content());
+      this.updateLive();
     }
     content() {
       if (!this.cfg) return h("p", { class: "ws-trade-empty" }, "Trading status unavailable.");
@@ -143,20 +195,25 @@
     }
     events(t, span) {
       return h("tr", { class: "ws-trade-events" }, h("td", { colspan: span },
-        h("ol", {}, (t.events || []).map((e) => h("li", {}, h("span", { class: "num" }, new Date(e.at * 1000).toISOString().replace("T", " ").slice(5, 19)), " ", e.event))),
-        t.last_error ? h("div", { class: "neg" }, `Last error: ${t.last_error}`) : null));
+        h("ol", {}, (t.events || []).map((e) => h("li", {}, h("span", { class: "num" }, LOCAL_S.format(new Date(e.at * 1000))), " ", e.event))),
+        t.last_error ? h("div", { class: "neg" }, `Last error: ${t.last_error}`) : null,
+        t.live && t.live.raw ? h("div", { class: "ws-raw small" }, h("b", {}, "Tabdeal reports: "),
+          Object.entries(t.live.raw).map(([k, v]) => `${k} ${v}`).join(" · ")) : null));
     }
     rowToggle(t) {
       return () => { if (this.expanded.has(t.id)) this.expanded.delete(t.id); else this.expanded.add(t.id); this.render(); };
     }
     openTable() {
-      const head = ["#", "Market", "Side", "Status", "Entry", "Size", "Lev.", "Stop", "Target", "Mark", "PnL (USDT)", "ROE", "Liq.", "Opened", ""];
+      const head = ["#", "Market", "Side", "Status", "Entry", "Size", "Lev.", "Stop", "Target", "Price", "PnL (USDT)", "ROE", "Liq.", "Opened", ""];
       const rows = [];
       for (const t of this.open) {
-        const lv = t.live || {}, active = t.status === "ACTIVE";
+        const active = t.status === "ACTIVE";
         const prot = active ? (t.protected ? h("span", { class: "pos", title: "Stop / target set on the position" }, " ✓") : h("span", { class: "neg", title: t.last_error || "No stop / target on Tabdeal" }, " ⚠ no stop / target")) : null;
         const src = t.origin === "TABDEAL" ? h("span", { class: "ws-badge b-origin", title: "Opened directly on Tabdeal; followed here" }, "Tabdeal") : null;
         const moved = active && this.ws.tools && (this.ws.tools.linked(t.id) || {}).dirty;
+        const cell = () => h("td", { class: "num" }, "—");
+        const c = { price: cell(), pnl: cell(), roe: cell(), liq: cell() };
+        if (active) this.cells[t.id] = c;  // updated in place every second (updateLive)
         rows.push(h("tr", { class: "ws-trade-row", onclick: this.rowToggle(t) },
           h("td", { class: "num" }, String(t.id)),
           h("td", {}, this.ws.display(t.symbol)),
@@ -167,10 +224,7 @@
           h("td", { class: "num" }, `${t.leverage}×`),
           h("td", { class: "num" }, num(t.sl)),
           h("td", { class: "num" }, num(t.tp)),
-          h("td", { class: "num" }, lv.mark ? num(lv.mark) : "—"),
-          h("td", { class: `num ${tone(lv.upnl)}` }, active ? usd(lv.upnl) : "—"),
-          h("td", { class: `num ${tone(lv.roe_pct)}` }, lv.roe_pct === undefined || lv.roe_pct === null ? "—" : `${num(lv.roe_pct, 2)}%`),
-          h("td", { class: "num" }, lv.liquidation ? num(lv.liquidation) : "—"),
+          c.price, c.pnl, c.roe, c.liq,
           h("td", { class: "num" }, when(t.created_at)),
           h("td", { class: "ws-trade-acts" },
             active ? h("button", { class: `btn btn-quiet${moved || !t.protected ? " ws-attn" : ""}`, type: "button", title: "Send the stop / target of this trade's drawing to Tabdeal", onclick: (e) => { e.stopPropagation(); this.setSlTp(t); } }, "SL/TP") : null,

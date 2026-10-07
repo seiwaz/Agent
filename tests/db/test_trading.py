@@ -363,3 +363,24 @@ def test_an_adoption_stored_as_1970_is_corrected(tm, ex):
         c.execute(text("UPDATE manual_trades SET filled_at = to_timestamp(1791300), created_at = to_timestamp(1791300)"))
     tm.reconcile()
     assert tm.trades(None, "open")[0]["filled_at"].startswith("2026-10-06T15:20")
+
+
+def test_live_prices_are_cached_for_a_second_and_errors_are_reported():
+    from sp2l.trading.api import Prices
+
+    now = [100.0]
+    calls: list[str] = []
+
+    def fetch(market: str) -> tuple[float, float]:
+        calls.append(market)
+        if market == "XRP_USDT":
+            raise OSError("timed out")
+        return 60000.5 + len(calls), 1_791_300_000.0
+
+    p = Prices(fetch, clock=lambda: now[0])
+    assert p.get("BTCUSDT") == {"price": 60001.5, "at": 1_791_300_000.0}
+    assert p.get("BTCUSDT")["price"] == 60001.5 and calls == ["BTC_USDT"]  # cached
+    now[0] += 1.1
+    assert p.get("BTCUSDT")["price"] == 60002.5
+    x = p.get("XRPUSDT")
+    assert x["price"] is None and "timed out" in x["error"]
