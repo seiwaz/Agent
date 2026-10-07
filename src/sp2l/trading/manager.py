@@ -28,7 +28,6 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine, text
@@ -55,7 +54,6 @@ class TradingConfig:
     max_margin_usdt: float = 50.0
     working_type: str = "MARK_PRICE"
     poll_s: float = 3.0
-    token_file: str = "~/.config/sp2l/trade.token"
     credentials_file: str = "~/.config/sp2l/tabdeal.env"
 
     @classmethod
@@ -72,7 +70,6 @@ class TradingConfig:
             float(m.get("max_margin_usdt", cls.max_margin_usdt)),
             str(m.get("working_type", cls.working_type)),
             float(m.get("poll_s", cls.poll_s)),
-            str(m.get("token_file", cls.token_file)),
             str(m.get("credentials_file", cls.credentials_file)),
         )
         if not 1 <= c.max_leverage <= 125:
@@ -92,30 +89,6 @@ class TradingConfig:
             "max_margin_usdt": self.max_margin_usdt,
             "working_type": self.working_type,
         }
-
-
-# ---- the trade token (the dashboard's permission to trade) --------------------------------------
-def new_token(path: Path) -> str:
-    """Write a fresh token (file 600 in a 700 directory) and return it."""
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    path.parent.chmod(0o700)
-    tok = secrets.token_urlsafe(24)
-    path.touch(mode=0o600, exist_ok=True)
-    path.chmod(0o600)
-    path.write_text(tok + "\n")
-    return tok
-
-
-def load_token(path: Path) -> str | None:
-    """The token, or None if the file is missing or readable by others."""
-    try:
-        if path.stat().st_mode & 0o077:
-            log.error("%s must be mode 600; trading is locked", path)
-            return None
-        tok = path.read_text().strip()
-    except OSError:
-        return None
-    return tok or None
 
 
 # ---- numbers ------------------------------------------------------------------------------------

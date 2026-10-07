@@ -289,3 +289,16 @@ body[data-view="chart"] main { max-width: none; padding: 8px 12px 12px; }
 @media (max-width: 1100px) { .tf-trends { display: none; } .chart-ws .ws-trends { display: flex !important; } .ws-panel { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 760px) { .ws-slot { height: 70vh; min-height: 380px; } .ws-trends { order: 5; } }
 
+
+/* ---- sign in (web/login.html) ---- */
+.logout-form { display: inline; margin: 0; }
+.login-body { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.login { width: min(380px, 100%); padding: 24px 26px; display: grid; gap: 12px; }
+.login h1 { margin: 4px 0 0; font-size: 20px; }
+.login-form { display: grid; gap: 12px; }
+.login-form label { display: grid; gap: 4px; font-size: 13px; color: var(--text-2); }
+.login-form input { padding: 9px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-2); color: var(--text); font: 15px "IBM Plex Sans", sans-serif; }
+.login-form input:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
+.login-btn { justify-content: center; min-height: 40px; background: var(--info); border-color: var(--info); color: #fff; }
+.login-warn { margin: 0; font-size: 13px; color: var(--warn); background: var(--warn-bg); padding: 8px 10px; border-radius: 8px; }
+.login-err { margin: 0; font-size: 13px; color: var(--bad); background: var(--bad-bg); padding: 8px 10px; border-radius: 8px; }

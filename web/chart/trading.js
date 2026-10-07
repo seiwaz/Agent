@@ -5,11 +5,10 @@
  * and the gain at the target, then places a LIMIT entry at the drawing's entry; once filled, the
  * server sets the position's stop and target (/api/trade/*, sp2l/trading). The panel under the
  * chart lists the open trades (pending / active, live from Tabdeal) with Cancel / Close, and the
- * history. Trading is off unless the server's config enables it; the server's trade token is
- * asked for once and kept in this browser. */
+ * history. Trading is off unless the server's config enables it, and only behind the dashboard
+ * login (the session cookie authorizes every call). */
 "use strict";
 (function () {
-  const TOKEN = "ets-trade-token";
   const PREFS = "ets-trade-prefs";
   const OPEN_EVERY_MS = 3000;
   const HISTORY_EVERY_MS = 30000;
@@ -48,13 +47,13 @@
     }
 
     /* ---- server ------------------------------------------------------------------------------ */
-    token() { return store.get(TOKEN, ""); }
     async call(method, path, body) {
-      const headers = { Accept: "application/json", "X-Trade-Token": this.token() };
+      const headers = { Accept: "application/json" };
       if (body !== undefined) headers["Content-Type"] = "application/json";
       const r = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
       let data = null;
       try { data = await r.json(); } catch { /* no body */ }
+      if (r.status === 401) { location.href = "/login"; throw new Error("login required"); }
       if (!r.ok) { const e = new Error((data && data.detail) || `HTTP ${r.status}`); e.status = r.status; throw e; }
       return data;
     }
@@ -65,7 +64,7 @@
     }
     ready() { return this.cfg && this.cfg.enabled && this.cfg.ready; }
     async refresh() {
-      if (!this.ready() || !this.token()) return this.render();
+      if (!this.ready()) return this.render();
       try {
         const d = await this.call("GET", "/api/trade/trades?scope=open");
         const before = new Set(this.open.map((t) => t.id));
@@ -73,12 +72,11 @@
         if ([...before].some((id) => !this.open.find((t) => t.id === id))) this.loadHistory();
       } catch (e) {
         this.problem = e.message;
-        if (e.status === 401) store.set(TOKEN, null);
       }
       this.render();
     }
     async loadHistory() {
-      if (!this.ready() || !this.token()) return;
+      if (!this.ready()) return;
       try { this.history = (await this.call("GET", "/api/trade/trades?scope=history&limit=200")).items; } catch (e) { this.problem = e.message; }
       this.render();
     }
@@ -122,16 +120,9 @@
     }
     content() {
       if (!this.cfg) return h("p", { class: "ws-trade-empty" }, "Trading status unavailable.");
-      if (!this.cfg.enabled) return h("p", { class: "ws-trade-empty" }, "Trading is off. To trade from the chart, set ", h("code", {}, "trading.enabled: true"), " in the server config, run ", h("code", {}, "python -m sp2l trade-token"), " and restart the API.");
+      if (!this.cfg.enabled) return h("p", { class: "ws-trade-empty" }, "Trading is off. To trade from the chart, set ", h("code", {}, "trading.enabled: true"), " in the server config and restart the API.");
       if (!this.cfg.ready) return h("p", { class: "ws-trade-empty neg" }, `Trading is not ready: ${this.cfg.problem || "unknown"}`);
-      if (!this.token()) return this.tokenForm();
       return this.tab === "open" ? this.openTable() : this.historyTable();
-    }
-    tokenForm() {
-      const inp = h("input", { type: "password", autocomplete: "off", placeholder: "trade token", "aria-label": "Trade token" });
-      return h("form", { class: "ws-trade-empty ws-token", onsubmit: (e) => { e.preventDefault(); if (inp.value.trim()) { store.set(TOKEN, inp.value.trim()); this.refresh(); } } },
-        h("span", {}, "Enter the server's trade token (", h("code", {}, "python -m sp2l trade-token"), ") once for this browser:"), inp,
-        h("button", { class: "btn btn-quiet", type: "submit" }, "Save"));
     }
     table(head, rows, empty) {
       return h("div", { class: "ws-trade-wrap" }, h("table", { class: "ws-trade-table" },
@@ -203,7 +194,6 @@
       const max = this.cfg ? this.cfg.max_leverage : 1, maxMargin = this.cfg ? this.cfg.max_margin_usdt : 0;
       const lev = h("input", { type: "number", min: 1, max, step: 1, value: Math.min(max, prefs.leverage || 10), required: true });
       const margin = h("input", { type: "number", min: 0.01, max: maxMargin, step: 0.01, value: Math.min(maxMargin, prefs.margin || 10), required: true });
-      const tok = h("input", { type: "password", autocomplete: "off", placeholder: "trade token" });
       const calc = h("dl", { class: "ws-dl" });
       const msg = h("p", { class: "ws-dlg-msg", "aria-live": "polite" });
       const go = h("button", { class: `btn ws-go ${side === "LONG" ? "go-long" : "go-short"}`, type: "submit" }, `Place ${side} limit on Tabdeal`);
@@ -224,8 +214,6 @@
       const notReady = !this.cfg ? "Trading status unavailable." : !this.cfg.enabled ? "Trading is off: set trading.enabled: true in the server config and restart the API." : !this.cfg.ready ? `Trading is not ready: ${this.cfg.problem}` : "";
       const form = h("form", { method: "dialog", onsubmit: async (e) => {
         e.preventDefault();
-        if (tok.value.trim()) store.set(TOKEN, tok.value.trim());
-        if (!this.token()) { msg.textContent = "Enter the trade token."; return; }
         const L = Math.round(+lev.value), m = +margin.value;
         if (!(L >= 1 && L <= max) || !(m > 0 && m <= maxMargin)) { msg.textContent = `Leverage 1–${max}, margin up to ${maxMargin} USDT.`; return; }
         store.set(PREFS, { ...store.get(PREFS, {}), leverage: L, margin: m });
@@ -235,7 +223,6 @@
           if (t.status === "REJECTED") { msg.textContent = `Tabdeal rejected it: ${t.last_error}`; go.disabled = false; return; }
           close(); this.tab = "open"; this.setCollapsed(false); this.refresh();
         } catch (err) {
-          if (err.status === 401) { store.set(TOKEN, null); tok.closest("label").hidden = false; }
           msg.textContent = err.message; go.disabled = false;
         }
       } },
@@ -243,8 +230,7 @@
       h("p", { class: "small muted" }, "A LIMIT order at the entry. Once it fills, the position gets its stop and target on Tabdeal (cross margin)."),
       h("div", { class: "ws-fields" },
         h("label", { class: "ws-field" }, h("span", {}, `Leverage (1–${max})`), lev),
-        h("label", { class: "ws-field" }, h("span", {}, `Margin, USDT (≤ ${maxMargin})`), margin),
-        h("label", { class: "ws-field", hidden: !!this.token() }, h("span", {}, "Trade token"), tok)),
+        h("label", { class: "ws-field" }, h("span", {}, `Margin, USDT (≤ ${maxMargin})`), margin)),
       calc, msg,
       h("div", { class: "ws-dlg-actions" }, h("button", { class: "btn", type: "button", onclick: close }, "Cancel"), go));
       lev.addEventListener("input", update); margin.addEventListener("input", update);
@@ -254,12 +240,11 @@
       dlg.showModal();
       update();
       if (notReady) { msg.textContent = notReady; go.disabled = true; return; }
-      if (!this.token()) return;
       try {
         account = await this.call("GET", `/api/trade/account?symbol=${encodeURIComponent(sym)}`);
         if (account.busy) { msg.textContent = `Not now: ${account.busy}.`; go.disabled = true; }
         update();
-      } catch (e) { msg.textContent = e.message; if (e.status === 401) { store.set(TOKEN, null); tok.closest("label").hidden = false; } }
+      } catch (e) { msg.textContent = e.message; }
     }
   }
   window.ChartTrading = Trading;

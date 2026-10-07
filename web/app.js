@@ -124,6 +124,7 @@ function table(target, headers, data, rowFn, emptyText) {
 }
 async function api(path) {
   const r = await fetch(path, { headers: { Accept: "application/json" } });
+  if (r.status === 401) { location.href = "/login"; throw new Error("login required"); }
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
   return r.json();
 }

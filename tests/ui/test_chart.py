@@ -44,7 +44,7 @@ def _free_port() -> int:
 
 
 @contextmanager
-def serve(trading: dict | None = None, exchange=None) -> Iterator[str]:
+def serve(trading: dict | None = None, exchange=None, auth: dict | None = None) -> Iterator[str]:
     import uvicorn
 
     from sp2l.api.app import create_app
@@ -58,6 +58,7 @@ def serve(trading: dict | None = None, exchange=None) -> Iterator[str]:
             "costs": {"maker_fee": "0", "taker_fee": "0", "slippage_allowance": "0"},
             "smc": {"htf_grid": "utc"},
             "trading": trading or {},
+            "auth": auth or {},
         }
     )
     desk = None
@@ -304,22 +305,31 @@ def test_scrolling_back_loads_older_bars_from_tabdeal(data, browser):
 def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_path):  # noqa: F811
     from decimal import Decimal
 
-    from sp2l.trading.manager import new_token
+    from sp2l.api.auth import set_login
     from tests.trading.fake_exchange import FakeExchange
 
     with engine.begin() as c:
         c.execute(text("DELETE FROM manual_trades"))
     ex = FakeExchange(wallet="1000")
-    tok = tmp_path / "trade.token"
-    token = new_token(tok)
-    trading = {"enabled": True, "token_file": str(tok), "poll_s": 1, "max_leverage": 20}
-    with serve(trading, ex) as url:
-        pg, errors = _open(browser, url)
+    users = tmp_path / "auth" / "dashboard.auth"
+    set_login(users, "admin", "test password")
+    trading = {"enabled": True, "poll_s": 1, "max_leverage": 20}
+    with serve(trading, ex, {"enabled": True, "users_file": str(users)}) as url:
+        # the dashboard opens on the login page; a wrong password is refused
+        pg = browser.new_page(viewport={"width": 1500, "height": 950})
+        errors: list[str] = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
         pg.on("dialog", lambda d: d.accept())  # confirm() of Close
-        pg.evaluate("() => { localStorage.removeItem('ets-trade-token'); localStorage.removeItem('smc-drawings-v1'); }")
-        pg.reload()
-        pg.wait_for_function("() => state.ws && state.ws.bars.length > 0 && state.ws.trading && state.ws.trading.cfg", timeout=60000)
-        assert "trade token" in pg.inner_text(".ws-trades").lower()  # asked once for this browser
+        pg.goto(f"{url}/#/chart")
+        assert "/login" in pg.url
+        pg.fill("input[name=user]", "admin")
+        pg.fill("input[name=password]", "nope")
+        pg.click(".login-btn")
+        assert "Wrong user or password" in pg.inner_text(".login")
+        pg.fill("input[name=password]", "test password")
+        pg.click(".login-btn")
+        pg.wait_for_function("() => typeof state !== 'undefined' && state.ws && state.ws.bars.length > 0 && state.ws.trading && state.ws.trading.cfg && state.ws.trading.cfg.ready", timeout=60000)
+        pg.evaluate("() => localStorage.removeItem('smc-drawings-v1')")
 
         # a Long drawing that price has already traded through: shaded by its outcome
         d = pg.evaluate("""() => {
@@ -334,7 +344,6 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         pg.click(".ws-trade-btn")
         pg.wait_for_selector("dialog.ws-dialog[open]")
         assert "Long" in pg.inner_text("dialog.ws-dialog h2")
-        pg.fill("dialog.ws-dialog input[type=password]", token)
         pg.fill("dialog.ws-dialog input[type=number] >> nth=0", "5")
         pg.fill("dialog.ws-dialog input[type=number] >> nth=1", "20")
         pg.click("dialog.ws-dialog .ws-go")
@@ -357,5 +366,7 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         pg.click(".ws-trade-tabs button:has-text('History')")
         pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('Closed here')", timeout=15000)
         assert "BTC_USDT" not in ex.position
+        pg.click(".logout-form button")  # sign out: back to the login page
+        pg.wait_for_url("**/login")
         assert errors == []
         pg.close()

@@ -1,21 +1,32 @@
 """HTTP API + static WebUI (the browser renders backend truth only).
 
-- Every route is GET, except the trading routes under /api/trade/ (POST, only from the
-  dashboard's own origin, with the trade token; off unless `trading.enabled`; see
+- With `auth.enabled`, everything but the login page, /api/health and the static files needs a
+  login session (sp2l/api/auth.py): pages redirect to /login, API calls answer 401.
+- Every route is GET, except /login, /logout and the trading routes under /api/trade/ (POST,
+  only from the dashboard's own origin; trading only behind the login, see
   sp2l/trading/api.py). No route returns credentials.
 - Served on 127.0.0.1 by default (`--host 0.0.0.0` exposes it).
 """
 
 from __future__ import annotations
 
+import html
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine
 from starlette.requests import Request
@@ -23,6 +34,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from sp2l.api import queries as qx
 from sp2l.api import smc as smc_q
+from sp2l.api.auth import COOKIE, Auth, AuthConfig
 from sp2l.api.live import LiveHub, psycopg_dsn, sse
 from sp2l.api.smc import SmcView
 from sp2l.config import ConfigError, RuntimeConfig
@@ -34,31 +46,45 @@ TF_PATTERN = "^(" + "|".join(ORDER) + ")$"
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; "
-    "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
+OPEN_PATHS = ("/login", "/api/health")
+POST_PATHS = ("/login", "/logout")
 
 
 class SecurityHeaders:
-    """Pure ASGI (streams are never buffered): read-only methods (POST only for trading, from
-    the dashboard's own origin), security headers."""
+    """Pure ASGI (streams are never buffered): the login gate, read-only methods (POST only to
+    log in / out and for trading, from the dashboard's own origin), security headers."""
 
     HEADERS = (
         (b"content-security-policy", CSP.encode()),
         (b"x-content-type-options", b"nosniff"),
-        (b"referrer-policy", b"no-referrer"),
+        (b"referrer-policy", b"same-origin"),  # no-referrer would send `Origin: null` on forms
         (b"cache-control", b"no-store"),
     )
 
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
+    def __init__(self, app: ASGIApp, auth: Auth | None = None) -> None:
+        self.app, self.auth = app, auth
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        path = scope["path"]
+        if (self.auth is not None and self.auth.enabled and path not in OPEN_PATHS
+                and not path.startswith("/static/")
+                and self.auth.user(cookie(scope, COOKIE)) is None):
+            if path.startswith("/api/"):
+                resp: Any = JSONResponse({"detail": "login required"}, status_code=401)
+            else:
+                resp = RedirectResponse("/login", status_code=303)
+            await resp(scope, receive, send_headers(send, self.HEADERS))
+            return
         if scope["method"] not in ("GET", "HEAD"):
-            trade = scope["method"] == "POST" and scope["path"].startswith("/api/trade/")
-            if not trade:
+            allowed = scope["method"] == "POST" and (
+                path in POST_PATHS or path.startswith("/api/trade/")
+            )
+            if not allowed:
                 await JSONResponse({"detail": "read-only API"}, status_code=405)(
                     scope, receive, send
                 )
@@ -69,20 +95,37 @@ class SecurityHeaders:
                 )
                 return
 
-        async def send_with_headers(message: Message) -> None:
-            if message["type"] == "http.response.start":
-                names = {k for k, _ in self.HEADERS}
-                hdrs = [(k, v) for k, v in message.get("headers", []) if k.lower() not in names]
-                message["headers"] = hdrs + list(self.HEADERS)
-            await send(message)
+        await self.app(scope, receive, send_headers(send, self.HEADERS))
 
-        await self.app(scope, receive, send_with_headers)
+
+def send_headers(send: Send, headers: tuple[tuple[bytes, bytes], ...]) -> Send:
+    async def wrapped(message: Message) -> None:
+        if message["type"] == "http.response.start":
+            names = {k for k, _ in headers}
+            hdrs = [(k, v) for k, v in message.get("headers", []) if k.lower() not in names]
+            message["headers"] = hdrs + list(headers)
+        await send(message)
+
+    return wrapped
+
+
+def cookie(scope: Scope, name: str) -> str | None:
+    for k, v in scope.get("headers", []):
+        if k.lower() == b"cookie":
+            for part in v.decode("latin-1").split(";"):
+                key, _, val = part.strip().partition("=")
+                if key == name:
+                    return str(val)
+    return None
 
 
 def same_origin(scope: Scope) -> bool:
     """A POST must come from the dashboard itself: its Origin (sent by every browser on a POST)
-    names the host it was sent to."""
+    names the host it was sent to, or the browser marks it same-origin (Sec-Fetch-Site, which a
+    page cannot set)."""
     hdr: dict[str, str] = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+    if hdr.get("sec-fetch-site") == "same-origin":
+        return True
     origin, host = hdr.get("origin"), hdr.get("host")
     if not origin or not host:
         return False
@@ -102,7 +145,12 @@ def create_app(cfg: RuntimeConfig, trading: Any = None) -> FastAPI:
     display = {s: ws_market(s).replace("_", "/") for s in symbols}
     from sp2l.trading.api import TradingDesk
 
+    try:
+        auth = Auth(AuthConfig.from_mapping(dict(cfg.section("auth"))))
+    except ValueError as e:
+        raise ConfigError(str(e)) from e
     desk: TradingDesk = trading or TradingDesk(cfg, db)
+    desk.require_login(auth.enabled)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -113,7 +161,7 @@ def create_app(cfg: RuntimeConfig, trading: Any = None) -> FastAPI:
 
     app = FastAPI(title="Eiwaz Trading System API", docs_url=None, redoc_url=None,
                   openapi_url=None, lifespan=lifespan)
-    app.add_middleware(SecurityHeaders)
+    app.add_middleware(SecurityHeaders, auth=auth)
 
     def view(symbol: str | None) -> SmcView:
         if symbol is None:
@@ -319,6 +367,38 @@ def create_app(cfg: RuntimeConfig, trading: Any = None) -> FastAPI:
     # ---- trading from the chart (Tabdeal futures) --------------------------------------------
     desk.mount(app)
 
+    # ---- login ----------------------------------------------------------------------------
+    @app.get("/login")
+    def login_form(request: Request) -> Response:
+        if auth.enabled and auth.user(request.cookies.get(COOKIE)) is not None:
+            return RedirectResponse("/", status_code=303)
+        return HTMLResponse(login_page(None, auth.ready() if auth.enabled else None,
+                                       plain_http(request)))
+
+    @app.post("/login")
+    async def login_post(request: Request) -> Response:
+        if not auth.enabled:
+            return RedirectResponse("/", status_code=303)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"))
+        user = (form.get("user") or [""])[0].strip()[:64]
+        password = (form.get("password") or [""])[0][:256]
+        addr = request.client.host if request.client else "?"
+        token, error = auth.login(user, password, addr)
+        if token is None:
+            return HTMLResponse(login_page(error, auth.ready(), plain_http(request), user),
+                                status_code=401)
+        resp = RedirectResponse("/", status_code=303)
+        resp.set_cookie(COOKIE, token, max_age=int(auth.cfg.session_hours * 3600),
+                        httponly=True, samesite="strict", secure=request.url.scheme == "https",
+                        path="/")
+        return resp
+
+    @app.post("/logout")
+    def logout() -> Response:
+        resp = RedirectResponse("/login", status_code=303)
+        resp.delete_cookie(COOKIE, path="/")
+        return resp
+
     @app.get("/api/health")
     def health() -> Any:
         return {"ok": True}
@@ -329,3 +409,28 @@ def create_app(cfg: RuntimeConfig, trading: Any = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=WEB), name="static")
     return app
+
+
+def plain_http(request: Request) -> bool:
+    """Plain HTTP to anything but this machine (the SSH tunnel's localhost is fine)."""
+    host = (request.url.hostname or "").lower()
+    return request.url.scheme != "https" and host not in ("localhost", "127.0.0.1", "::1")
+
+
+def login_page(error: str | None, setup: str | None, insecure: bool, user: str = "") -> str:
+    def esc(v: str) -> str:
+        return html.escape(v, quote=True)
+
+    notes = []
+    if insecure:
+        notes.append(
+            '<p class="login-warn">This connection is not encrypted (plain HTTP): the password'
+            " can be read on the way. Open the dashboard through the SSH tunnel"
+            " (http://localhost:3000) or HTTPS.</p>"
+        )
+    if setup:
+        notes.append(f'<p class="login-err">{esc(setup)}</p>')
+    if error:
+        notes.append(f'<p class="login-err" role="alert">{esc(error)}</p>')
+    page = (WEB / "login.html").read_text()
+    return page.replace("{{notes}}", "".join(notes)).replace("{{user}}", esc(user))

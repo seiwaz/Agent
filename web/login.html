@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Eiwaz Trading System</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-body">
+  <main class="login card">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" class="logo-mark"><path d="M3 17 9 11l4 4 8-8"/><path d="M14 7h7v7"/></svg></span>
+      <span class="brand-name">Eiwaz Trading System</span>
+    </div>
+    <h1>Sign in</h1>
+    {{notes}}
+    <form method="post" action="/login" class="login-form">
+      <label>User <input name="user" autocomplete="username" required value="{{user}}" autofocus></label>
+      <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="btn login-btn" type="submit">Sign in</button>
+    </form>
+  </main>
+</body>
+</html>

@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from sp2l.trading.client import ExchangeError
-from sp2l.trading.manager import TradeError, TradeManager, TradingConfig, new_token
+from sp2l.trading.manager import TradeError, TradeManager, TradingConfig
 from tests.trading.fake_exchange import FakeExchange
 
 pytestmark = pytest.mark.db
@@ -188,53 +188,87 @@ def test_a_refused_stop_is_retried(tm, ex):
     assert tm.trades(None, "open")[0]["protected"]
 
 
-# ---- the API -------------------------------------------------------------------------------------
-def _client(engine, tmp_path: Path, tm: TradeManager | None, enabled: bool = True):
+# ---- the API (behind the dashboard login) ------------------------------------------------------
+ORIGIN = {"Origin": "http://dash.local"}
+
+
+def _client(engine, tmp_path: Path, tm: TradeManager | None, enabled: bool = True,
+            login: bool = True):
     from sp2l.api.app import create_app
+    from sp2l.api.auth import set_login
     from sp2l.config import RuntimeConfig
     from sp2l.trading.api import TradingDesk
     from tests.db.conftest import URL
 
-    tok = tmp_path / "trade.token"
+    users = tmp_path / "auth" / "dashboard.auth"
+    set_login(users, "admin", "correct horse")
     cfg = RuntimeConfig({
         "database_url": URL, "symbols": ["BTCUSDT", "XRPUSDT"],
-        "trading": {"enabled": enabled, "token_file": str(tok)},
+        "trading": {"enabled": enabled},
+        "auth": {"enabled": login, "users_file": str(users)},
     })
     desk = TradingDesk(cfg, engine, manager=tm)
-    return TestClient(create_app(cfg, trading=desk), base_url="http://dash.local"), tok
+    return TestClient(create_app(cfg, trading=desk), base_url="http://dash.local")
 
 
-def test_api_guards_and_a_trade_round_trip(engine, tm, ex, tmp_path):
-    c, tok = _client(engine, tmp_path, tm)
-    origin = {"Origin": "http://dash.local"}
-    assert c.get("/api/trade/config").json()["enabled"] is True
-    assert c.get("/api/trade/trades").status_code == 503  # no token on the server yet
-    token = new_token(tok)
-    assert tok.stat().st_mode & 0o777 == 0o600
-    assert c.get("/api/trade/trades", headers={"X-Trade-Token": "nope"}).status_code == 401
-    h = {"X-Trade-Token": token, **origin}
-    assert c.post("/api/trade/open", json=LONG, headers={"X-Trade-Token": token}).status_code == 403
-    assert c.post("/api/trade/open", json=LONG,
-                  headers={**h, "Origin": "http://evil.example"}).status_code == 403
-    assert c.post("/api/smc/signals", headers=origin).status_code == 405
-    r = c.post("/api/trade/open", json=LONG, headers=h)
+def _login(c, password: str = "correct horse"):
+    return c.post("/login", data={"user": "admin", "password": password}, headers=ORIGIN,
+                  follow_redirects=False)
+
+
+def test_api_needs_the_login_and_a_trade_round_trip(engine, tm, ex, tmp_path):
+    c = _client(engine, tmp_path, tm)
+    assert c.get("/api/trade/trades").status_code == 401  # no session
+    assert c.get("/api/overview").status_code == 401
+    r = c.get("/", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"
+    assert c.get("/login").status_code == 200 and c.get("/api/health").status_code == 200
+    assert _login(c, "wrong").status_code == 401
+    r = _login(c)
+    assert r.status_code == 303 and "ets_session" in r.cookies
+    sc = r.headers["set-cookie"].lower()
+    assert "httponly" in sc and "samesite=strict" in sc
+    assert c.post("/api/trade/open", json=LONG).status_code == 403  # no Origin: not the dashboard
+    assert c.post("/api/trade/open", json=LONG, headers={"Origin": "http://evil.example"}).status_code == 403
+    assert c.post("/api/smc/signals", headers=ORIGIN).status_code == 405
+    r = c.post("/api/trade/open", json=LONG, headers=ORIGIN)
     assert r.status_code == 200 and r.json()["status"] == "PENDING"
-    bad = c.post("/api/trade/open", json=LONG, headers=h)
+    bad = c.post("/api/trade/open", json=LONG, headers=ORIGIN)
     assert bad.status_code == 400 and "already open" in bad.json()["detail"]
-    acc: Any = c.get("/api/trade/account?symbol=BTCUSDT", headers=h).json()
+    acc: Any = c.get("/api/trade/account?symbol=BTCUSDT").json()
     assert acc["busy"] and acc["wallet_usdt"] == 200
     tid = r.json()["id"]
-    assert c.post(f"/api/trade/{tid}/close", headers=h).status_code == 400  # pending
-    assert c.post(f"/api/trade/{tid}/cancel", headers=h).json()["status"] == "CANCELED"
-    hist = c.get("/api/trade/trades?scope=history", headers=h).json()["items"]
+    assert c.post(f"/api/trade/{tid}/close", headers=ORIGIN).status_code == 400  # pending
+    assert c.post(f"/api/trade/{tid}/cancel", headers=ORIGIN).json()["status"] == "CANCELED"
+    hist = c.get("/api/trade/trades?scope=history").json()["items"]
     assert [x["id"] for x in hist] == [tid]
+    r = c.post("/logout", headers=ORIGIN, follow_redirects=False)
+    assert r.status_code == 303
+    assert c.get("/api/trade/trades").status_code == 401  # signed out
 
 
-def test_api_trading_off(engine, tmp_path):
-    c, tok = _client(engine, tmp_path, None, enabled=False)
-    new_token(tok)
-    r = c.get("/api/trade/trades", headers={"X-Trade-Token": tok.read_text().strip()})
+def test_wrong_passwords_are_throttled_and_a_forged_cookie_is_refused(engine, tmp_path):
+    c = _client(engine, tmp_path, None, enabled=False)
+    for _ in range(5):
+        assert _login(c, "nope").status_code == 401
+    r = _login(c)  # the right password, but too many wrong ones from this address
+    assert r.status_code == 401 and "Too many" in r.text
+    c2 = _client(engine, tmp_path / "b", None, enabled=False)
+    good = _login(c2).cookies["ets_session"]
+    user, exp, sig = good.split(".")
+    c3 = _client(engine, tmp_path / "c", None, enabled=False)
+    c3.cookies.set("ets_session", f"{user}.{int(exp) + 99999}.{sig}")  # a longer life: refused
+    assert c3.get("/api/overview").status_code == 401
+
+
+def test_trading_off_and_trading_without_login(engine, tmp_path):
+    c = _client(engine, tmp_path, None, enabled=False)
+    _login(c)
+    r = c.get("/api/trade/trades")
     assert r.status_code == 403 and "trading.enabled" in r.json()["detail"]
+    c = _client(engine, tmp_path / "b", None, enabled=True, login=False)
+    cfg = c.get("/api/trade/config").json()
+    assert not cfg["ready"] and "auth.enabled" in cfg["problem"]
 
 
 def test_an_unreadable_key_file_turns_trading_off_but_the_dashboard_runs(engine, tmp_path):

@@ -165,13 +165,19 @@ trend_live:
   account_usdt: 100
 
 # Trading from the dashboard chart on Tabdeal futures (Chart → Trade button, docs/CHART.md).
-# Real orders: off unless enabled. Needs the API key file below and a trade token
-# (`python -m sp2l trade-token`), entered once in the dashboard's trade dialog.
+# Real orders: off unless enabled, and only behind the dashboard login (`auth` below). Needs the
+# API key file below (mode 600; the key needs trading permission).
 trading:
   enabled: false
   max_leverage: 20          # the dialog's leverage is capped here
   max_margin_usdt: 50       # margin (USDT) of one trade is capped here
   working_type: MARK_PRICE  # stop / target trigger: MARK_PRICE or CONTRACT_PRICE
   poll_s: 3                 # Tabdeal has no futures user stream: fills and exits are polled
-  token_file: ~/.config/sp2l/trade.token
   credentials_file: ~/.config/sp2l/tabdeal.env
+
+# Dashboard login (src/sp2l/api/auth.py). Users and their password hashes live outside the repo
+# in users_file (mode 600), written by `python -m sp2l set-login admin` (asks for the password).
+auth:
+  enabled: false
+  users_file: ~/.config/sp2l/dashboard.auth
+  session_hours: 12

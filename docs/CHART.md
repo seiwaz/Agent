@@ -89,10 +89,10 @@ Safety:
   is more than the available balance.
 - An entry remainder still resting when the position ends is canceled (it would open a new,
   unprotected position).
-- `trading.enabled`, a trade token (`python -m sp2l trade-token`, file mode 600) entered once
-  per browser, POST only from the dashboard's own origin, and the API key file
-  `~/.config/sp2l/tabdeal.env` (mode 600; the key needs trading permission). The key never
-  leaves the server.
+- `trading.enabled`, and only behind the dashboard login (`auth.enabled`): every page and API
+  call needs a session (HttpOnly, SameSite=Strict cookie), POST only from the dashboard's own
+  origin, and the API key file `~/.config/sp2l/tabdeal.env` (mode 600; the key needs trading
+  permission). The key never leaves the server.
 
 The top bar shows the market-structure trend of each timeframe: green ▲ bullish, red ▼ bearish,
 grey – none. Full screen (⤢) keeps the toolbar, the trend strip and the options.

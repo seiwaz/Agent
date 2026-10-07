@@ -41,6 +41,15 @@ precedence where they exist. It runs without the collector too (chart then updat
   `smc-collector@BTCUSDT`, `smc-collector@XRPUSDT`), `deploy/smc-engine.service`,
   `deploy/smc-api.service` (WebUI on port 3000).
 
+## Login
+With `auth.enabled` (on in `config/server.yaml`) the dashboard and its API need a login. Users
+and their scrypt password hashes live outside the repo in `~/.config/sp2l/dashboard.auth`
+(mode 600): `uv run python -m sp2l --config config/server.yaml set-login admin` asks for the
+password (run it again to change it; that also ends the user's sessions). Five wrong passwords
+from one address lock it out for 15 minutes; sessions last `auth.session_hours`. Plain HTTP
+sends the password unencrypted: open the dashboard through the SSH tunnel
+(`ssh -p 2266 -L 3000:127.0.0.1:3000 root@<server>`, then http://localhost:3000) or HTTPS.
+
 ## Read-only exchange validation
 `uv run python -m sp2l validate-readonly` runs GET-only authenticated checks. Credentials live
 outside the repo in `~/.config/sp2l/tabdeal.env` (directory 700, file 600).
