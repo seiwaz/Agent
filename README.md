@@ -6,8 +6,8 @@ SMC-2.0 top-down model: 4h bias → 1h setup in strict order (liquidity sweep �
 structure by close → order block = last opposite candle with the FVG right after it) → limit
 at the order block, armed when price first trades into the FVG → stop one tick beyond the OB
 wick, one target at the previous HH / LL; fills and exits walked on M1, net of fees.
-The strategy is specified in `docs/SMC_STRATEGY.md`. **No orders are ever sent**: signals and
-their lifecycle are recorded.
+The strategy is specified in `docs/SMC_STRATEGY.md`. **The engine sends no orders**: signals and
+their lifecycle are recorded. Real orders are placed only from the chart's Trade button.
 
 ## Processes
 ```sh
@@ -25,7 +25,9 @@ precedence where they exist. It runs without the collector too (chart then updat
   FVG, BOS, CHoCH, HH / HL / LH / LL, Donchian, RSI and MACD (each with its settings), the trend
   of every timeframe in the top bar, drawing tools (trend line, horizontal line, long / short
   position, price range, path), full screen. Candles come from Tabdeal's chart; scrolling back
-  loads older bars down to the listing. Display only (`docs/CHART.md`).
+  loads older bars down to the listing. **Trade** (⚡) places the selected / last Long or Short
+  drawing on Tabdeal futures (leverage asked first; stop and target set once filled); the panel
+  under the chart shows open trades (Cancel / Close) and the history (`docs/CHART.md`).
 - **Signals** — full history with the lifecycle timeline of each signal; "Show on chart".
 - **Performance** — the shared wallet (balance, equity, fees, ledger, per-market results) and
   the backtest of the parameters in force per market (exit per trade).

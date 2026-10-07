@@ -1,5 +1,5 @@
 [Unit]
-Description=SMC read-only API and WebUI (GET only, port 3000)
+Description=Eiwaz Trading System API and WebUI (port 3000; trading only from the chart with the trade token)
 After=network-online.target postgresql.service
 Requires=postgresql.service
 

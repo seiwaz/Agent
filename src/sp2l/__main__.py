@@ -428,6 +428,9 @@ def main() -> None:
     bs.add_argument("--validate-minutes", type=int, default=60)
     bs.add_argument("--timeout-s", type=float, default=180)
     bs.add_argument("--apply", action="store_true", help="write (default: report only)")
+    sub.add_parser(
+        "trade-token", help="write a new token that lets the dashboard trade (trading.token_file)"
+    )
     ro = sub.add_parser("validate-readonly", help="authenticated READ-ONLY Tabdeal checks")
     ro.add_argument("--only", default=None, help="comma-separated items, e.g. CROSS_10X")
     args = p.parse_args()
@@ -534,6 +537,17 @@ def main() -> None:
 
             only = set(args.only.split(",")) if args.only else None
             run_readonly_checks(cfg, only=only)
+        elif args.cmd == "trade-token":
+            from sp2l.trading.manager import TradingConfig, new_token
+
+            try:
+                tc = TradingConfig.from_mapping(dict(cfg.section("trading")))
+            except ValueError as e:
+                raise ConfigError(str(e)) from e
+            path = Path(tc.token_file).expanduser()
+            print(new_token(path))
+            print(f"(saved in {path}; enter it once in the dashboard's trade dialog)",
+                  file=sys.stderr)
     except ConfigError as e:
         log.error("%s", e)
         sys.exit(2)

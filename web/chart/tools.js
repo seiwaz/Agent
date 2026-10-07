@@ -1,6 +1,9 @@
 /* Chart workspace — drawing tools (left toolbar): trend line, horizontal line, long / short
- * position, price range and path. Display only: a position drawing is a measurement, it never
- * creates an order.
+ * position, price range and path. A position drawing is a measurement: once price has traded
+ * through its entry, the part from the entry to the current price (or to the stop / target that
+ * was hit) is shaded darker green (in profit) or red (at a loss). The Trade button (⚡) sends the
+ * selected or last position drawing to the trade dialog (web/chart/trading.js); drawing alone
+ * never creates an order.
  *
  * Drawings are kept per market in localStorage, in time (UTC seconds) / price, so they appear on
  * every timeframe. Interaction: pick a tool and click on the price pane (trend line, range: two
@@ -26,6 +29,7 @@
       icon: '<path d="M3 18l6-8 5 5 7-10"/><path d="M17 5h4v4"/>' },
   ];
   const TRASH = '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/>';
+  const TRADE = '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>';
 
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   function svg(paths) {
@@ -72,6 +76,13 @@
         this.buttons[t.id] = b; bar.append(b);
       }
       const sep = document.createElement("span"); sep.className = "ws-draw-sep"; bar.append(sep);
+      const trade = document.createElement("button");
+      trade.type = "button"; trade.className = "ws-trade-btn";
+      trade.title = "Trade on Tabdeal: the selected (or last) Long / Short position";
+      trade.setAttribute("aria-label", trade.title);
+      trade.append(svg(TRADE));
+      trade.addEventListener("click", () => { if (this.ws.trading) this.ws.trading.openDialog(this.lastPosition()); });
+      bar.append(trade);
       const del = document.createElement("button");
       del.type = "button"; del.title = "Remove all drawings"; del.setAttribute("aria-label", "Remove all drawings");
       del.append(svg(TRASH));
@@ -99,6 +110,27 @@
       } catch { /* storage unavailable */ }
     }
     setSymbol(sym) { this.pick(null); this.items = this.load(sym); this.redraw(); }
+    /** The selected position drawing, else the last one placed. */
+    lastPosition() {
+      const isPos = (x) => x.type === "long" || x.type === "short";
+      const sel = this.items.find((x) => x.id === this.sel && isPos(x));
+      return sel || [...this.items].reverse().find(isPos) || null;
+    }
+    /** Where price took a position drawing: from the bar that traded through the entry to the
+     * stop / target hit (the stop first when one bar reaches both), else to the last bar inside
+     * the drawing. null while price has not reached the entry. */
+    outcome(it) {
+      const b = this.ws.bars, long = it.type === "long";
+      let i = b.findIndex((x) => x.t >= it.t1 && x.l <= it.entry && x.h >= it.entry);
+      if (i < 0 || b[i].t > it.t2) return null;
+      for (let j = i; j < b.length && b[j].t <= it.t2; j++) {
+        const x = b[j];
+        if (long ? x.l <= it.sl : x.h >= it.sl) return { t0: b[i].t, t1: x.t, price: it.sl, hit: "stop" };
+        if (long ? x.h >= it.tp : x.l <= it.tp) return { t0: b[i].t, t1: x.t, price: it.tp, hit: "target" };
+      }
+      const last = b.filter((x) => x.t <= it.t2).pop();
+      return { t0: b[i].t, t1: last.t, price: last.c, hit: null };
+    }
 
     /* ---- coordinates ------------------------------------------------------------------------- */
     step() { return { "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 }[this.ws.tf]; }
@@ -296,13 +328,25 @@
             ctx.fillStyle = `rgba(${col.bull},0.18)`; ctx.fillRect(rt[0], rt[1], rt[2] - rt[0], rt[3] - rt[1]);
             ctx.fillStyle = `rgba(${col.bear},0.18)`; ctx.fillRect(rs[0], rs[1], rs[2] - rs[0], rs[3] - rs[1]);
             const ye = T.y(it.entry), x1 = rt[0], x2 = rt[2];
+            const out = it === T.draft ? null : T.outcome(it);
+            let pnl = "";
+            if (out) {  // the part price has covered: darker green in profit, darker red at a loss
+              const up = long ? out.price >= it.entry : out.price <= it.entry;
+              const ox1 = Math.max(x1, T.x(out.t0)), ox2 = Math.min(x2, T.x(out.t1) + Math.max(2, T.x(out.t0 + T.step()) - T.x(out.t0))), yp = T.y(out.price);
+              if (yp !== null && ox2 > ox1) {
+                ctx.fillStyle = `rgba(${up ? col.bull : col.bear},0.42)`;
+                ctx.fillRect(ox1, Math.min(ye, yp), ox2 - ox1, Math.abs(yp - ye));
+              }
+              const pct = ((out.price - it.entry) / it.entry) * 100 * (long ? 1 : -1);
+              pnl = ` · ${out.hit ? (out.hit === "target" ? "Target hit " : "Stopped ") : ""}${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(2)}%`;
+            }
             ctx.strokeStyle = `rgba(${col.text},0.6)`; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x1, ye); ctx.lineTo(x2, ye); ctx.stroke();
             const reward = Math.abs(it.tp - it.entry), risk = Math.abs(it.entry - it.sl);
             const pct = (v) => `${((v / it.entry) * 100).toFixed(2)}%`;
             const cx = (x1 + x2) / 2;
             label(`Target ${fmt(it.tp)} (${long ? "+" : "−"}${pct(reward)})`, cx, T.y(it.tp) + (long ? -11 : 11), `rgba(${col.bull},0.95)`, "center");
             label(`Stop ${fmt(it.sl)} (${long ? "−" : "+"}${pct(risk)})`, cx, T.y(it.sl) + (long ? 11 : -11), `rgba(${col.bear},0.95)`, "center");
-            label(`${long ? "Long" : "Short"} ${fmt(it.entry)} · R:R ${risk ? (reward / risk).toFixed(2) : "—"}`, cx, ye, "rgba(90,98,110,0.95)", "center");
+            label(`${long ? "Long" : "Short"} ${fmt(it.entry)} · R:R ${risk ? (reward / risk).toFixed(2) : "—"}${pnl}`, cx, ye, "rgba(90,98,110,0.95)", "center");
           } else if (it.type === "range") {
             const r = g.rects[0];
             if (!r) continue;

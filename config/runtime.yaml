@@ -163,3 +163,15 @@ trend_live:
   symbol: BTCUSDT
   paper_start: "2026-10-08"   # first day a paper entry may fill (at its 00:00 UTC open)
   account_usdt: 100
+
+# Trading from the dashboard chart on Tabdeal futures (Chart → Trade button, docs/CHART.md).
+# Real orders: off unless enabled. Needs the API key file below and a trade token
+# (`python -m sp2l trade-token`), entered once in the dashboard's trade dialog.
+trading:
+  enabled: false
+  max_leverage: 20          # the dialog's leverage is capped here
+  max_margin_usdt: 50       # margin (USDT) of one trade is capped here
+  working_type: MARK_PRICE  # stop / target trigger: MARK_PRICE or CONTRACT_PRICE
+  poll_s: 3                 # Tabdeal has no futures user stream: fills and exits are polled
+  token_file: ~/.config/sp2l/trade.token
+  credentials_file: ~/.config/sp2l/tabdeal.env

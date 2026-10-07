@@ -1,12 +1,15 @@
-"""Read-only HTTP API + static WebUI (the browser renders backend truth only).
+"""HTTP API + static WebUI (the browser renders backend truth only).
 
-- Every route is GET; nothing here can place, cancel or modify anything, and no route
-  touches credentials (they are never persisted).
+- Every route is GET, except the trading routes under /api/trade/ (POST, only from the
+  dashboard's own origin, with the trade token; off unless `trading.enabled`; see
+  sp2l/trading/api.py). No route returns credentials.
 - Served on 127.0.0.1 by default (`--host 0.0.0.0` exposes it).
 """
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -36,7 +39,8 @@ CSP = (
 
 
 class SecurityHeaders:
-    """Pure ASGI (streams are never buffered): read-only methods, security headers."""
+    """Pure ASGI (streams are never buffered): read-only methods (POST only for trading, from
+    the dashboard's own origin), security headers."""
 
     HEADERS = (
         (b"content-security-policy", CSP.encode()),
@@ -53,8 +57,17 @@ class SecurityHeaders:
             await self.app(scope, receive, send)
             return
         if scope["method"] not in ("GET", "HEAD"):
-            await JSONResponse({"detail": "read-only API"}, status_code=405)(scope, receive, send)
-            return
+            trade = scope["method"] == "POST" and scope["path"].startswith("/api/trade/")
+            if not trade:
+                await JSONResponse({"detail": "read-only API"}, status_code=405)(
+                    scope, receive, send
+                )
+                return
+            if not same_origin(scope):
+                await JSONResponse({"detail": "cross-origin request"}, status_code=403)(
+                    scope, receive, send
+                )
+                return
 
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
@@ -66,7 +79,17 @@ class SecurityHeaders:
         await self.app(scope, receive, send_with_headers)
 
 
-def create_app(cfg: RuntimeConfig) -> FastAPI:
+def same_origin(scope: Scope) -> bool:
+    """A POST must come from the dashboard itself: its Origin (sent by every browser on a POST)
+    names the host it was sent to."""
+    hdr: dict[str, str] = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+    origin, host = hdr.get("origin"), hdr.get("host")
+    if not origin or not host:
+        return False
+    return origin.split("://", 1)[-1].rstrip("/") == host
+
+
+def create_app(cfg: RuntimeConfig, trading: Any = None) -> FastAPI:
     db = create_engine(cfg.database_url, pool_pre_ping=True)
     symbols = cfg.symbols
     try:
@@ -77,7 +100,19 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
     views = {s: SmcView(db, s, cfg.symbol_params(s), costs) for s in symbols}
     sparams = {s: v.params for s, v in views.items()}
     display = {s: ws_market(s).replace("_", "/") for s in symbols}
-    app = FastAPI(title="Eiwaz Trading System API", docs_url=None, redoc_url=None, openapi_url=None)
+    from sp2l.trading.api import TradingDesk
+
+    desk: TradingDesk = trading or TradingDesk(cfg, db)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        stop = desk.start()  # the trade poller, while trading is on
+        yield
+        if stop is not None:
+            stop.set()
+
+    app = FastAPI(title="Eiwaz Trading System API", docs_url=None, redoc_url=None,
+                  openapi_url=None, lifespan=lifespan)
     app.add_middleware(SecurityHeaders)
 
     def view(symbol: str | None) -> SmcView:
@@ -280,6 +315,9 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
         except Exception:  # table missing before `alembic upgrade head`
             out["journal"] = []
         return out
+
+    # ---- trading from the chart (Tabdeal futures) --------------------------------------------
+    desk.mount(app)
 
     @app.get("/api/health")
     def health() -> Any:

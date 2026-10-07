@@ -44,7 +44,7 @@ def _free_port() -> int:
 
 
 @contextmanager
-def serve() -> Iterator[str]:
+def serve(trading: dict | None = None, exchange=None) -> Iterator[str]:
     import uvicorn
 
     from sp2l.api.app import create_app
@@ -57,11 +57,23 @@ def serve() -> Iterator[str]:
             "instruments": {SYM: {"tick": "0.1", "step": "0.001"}},
             "costs": {"maker_fee": "0", "taker_fee": "0", "slippage_allowance": "0"},
             "smc": {"htf_grid": "utc"},
+            "trading": trading or {},
         }
     )
+    desk = None
+    if exchange is not None:  # trading against a simulated Tabdeal
+        from sqlalchemy import create_engine
+
+        from sp2l.trading.api import TradingDesk
+        from sp2l.trading.manager import TradeManager, TradingConfig
+
+        tc = TradingConfig.from_mapping(trading or {})
+        tm = TradeManager(create_engine(URL), exchange, tc, {SYM: cfg.instrument(SYM)})
+        desk = TradingDesk(cfg, tm.db, manager=tm)
     port = _free_port()
     srv = uvicorn.Server(
-        uvicorn.Config(create_app(cfg), host="127.0.0.1", port=port, log_level="warning")
+        uvicorn.Config(create_app(cfg, trading=desk), host="127.0.0.1", port=port,
+                       log_level="warning")
     )
     th = threading.Thread(target=srv.run, daemon=True)
     th.start()
@@ -201,7 +213,10 @@ def test_drawing_tools_create_edit_delete_and_persist(data, browser):
             pg.click(f".ws-draw button[aria-label='{name}']")
 
         assert pg.eval_on_selector_all(".ws-draw button", "bs => bs.map(b => b.getAttribute('aria-label'))") == [
-            "Trend line", "Horizontal line", "Long position", "Short position", "Price range", "Path", "Remove all drawings"]
+            "Trend line", "Horizontal line", "Long position", "Short position", "Price range", "Path",
+            "Trade on Tabdeal: the selected (or last) Long / Short position", "Remove all drawings"]
+        pg.evaluate("() => state.ws.trading.setCollapsed(true)")  # the whole height for the chart
+        pg.wait_for_timeout(300)
         tool("Trend line")
         click(200, 500)
         click(500, 300)
@@ -282,5 +297,65 @@ def test_scrolling_back_loads_older_bars_from_tabdeal(data, browser):
         assert ts[0] - data.listed < 14400
         # the overlays cover the loaded history
         pg.wait_for_function(f"() => state.ws.overlays.bars >= {len(ts) - 1}", timeout=30000)
+        assert errors == []
+        pg.close()
+
+
+def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_path):  # noqa: F811
+    from decimal import Decimal
+
+    from sp2l.trading.manager import new_token
+    from tests.trading.fake_exchange import FakeExchange
+
+    with engine.begin() as c:
+        c.execute(text("DELETE FROM manual_trades"))
+    ex = FakeExchange(wallet="1000")
+    tok = tmp_path / "trade.token"
+    token = new_token(tok)
+    trading = {"enabled": True, "token_file": str(tok), "poll_s": 1, "max_leverage": 20}
+    with serve(trading, ex) as url:
+        pg, errors = _open(browser, url)
+        pg.on("dialog", lambda d: d.accept())  # confirm() of Close
+        pg.evaluate("() => { localStorage.removeItem('ets-trade-token'); localStorage.removeItem('smc-drawings-v1'); }")
+        pg.reload()
+        pg.wait_for_function("() => state.ws && state.ws.bars.length > 0 && state.ws.trading && state.ws.trading.cfg", timeout=60000)
+        assert "trade token" in pg.inner_text(".ws-trades").lower()  # asked once for this browser
+
+        # a Long drawing that price has already traded through: shaded by its outcome
+        d = pg.evaluate("""() => {
+            const b = state.ws.bars, k = b.length - 40, e = b[k].c;
+            const it = { id: "L1", type: "long", t1: b[k].t, t2: b[b.length - 1].t + 3600 * 10, entry: e, sl: +(e * 0.9).toFixed(1), tp: +(e * 1.2).toFixed(1) };
+            state.ws.tools.items.push(it); state.ws.tools.save(); state.ws.tools.redraw();
+            return { it, out: state.ws.tools.outcome(it) };
+        }""")
+        assert d["out"] is not None and d["out"]["t0"] >= d["it"]["t1"]
+
+        # Trade: the dialog asks for the leverage (and the margin), then places the order
+        pg.click(".ws-trade-btn")
+        pg.wait_for_selector("dialog.ws-dialog[open]")
+        assert "Long" in pg.inner_text("dialog.ws-dialog h2")
+        pg.fill("dialog.ws-dialog input[type=password]", token)
+        pg.fill("dialog.ws-dialog input[type=number] >> nth=0", "5")
+        pg.fill("dialog.ws-dialog input[type=number] >> nth=1", "20")
+        pg.click("dialog.ws-dialog .ws-go")
+        pg.wait_for_function("() => !document.querySelector('dialog.ws-dialog')", timeout=15000)
+        pg.wait_for_selector(".ws-trade-table .b-pending", timeout=15000)
+        (_, side, qty, price, _cid) = next(a for n, a in ex.calls if n == "limit_order")
+        assert side == "BUY" and ex.leverage["BTC_USDT"] == 5
+        assert Decimal(price) == Decimal(str(d["it"]["entry"])).quantize(Decimal("0.1"))
+
+        # filled on Tabdeal: active, protected, live PnL, then closed from the panel
+        oid = next(iter(ex.orders))
+        ex.fill(oid)
+        ex.mark["BTC_USDT"] = Decimal(price) * Decimal("1.01")
+        pg.wait_for_selector(".ws-trade-table .b-active", timeout=15000)
+        pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('✓')", timeout=15000)
+        assert "+" in pg.inner_text(".ws-trade-table tbody tr >> nth=0")
+        assert ex.position["BTC_USDT"]["sl"] == Decimal(str(d["it"]["sl"])).quantize(Decimal("0.1"))
+        pg.click(".ws-trade-table button:has-text('Close')")
+        pg.wait_for_function("() => document.querySelector('.ws-trade-table td.empty')", timeout=15000)
+        pg.click(".ws-trade-tabs button:has-text('History')")
+        pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('Closed here')", timeout=15000)
+        assert "BTC_USDT" not in ex.position
         assert errors == []
         pg.close()

@@ -1,4 +1,5 @@
-/* Chart workspace — the chart, its toolbar and its options (display only, no orders).
+/* Chart workspace — the chart, its toolbar and its options; trading from position drawings is in
+ * web/chart/trading.js (the panel under the chart).
  *
  *   const ws = new ChartWorkspace(rootElement, { api, symbol, display });
  *   ws.setSymbol("XRPUSDT"); ws.setTrends(list); ws.applyMinute(m); ws.restyle(); ws.focusTime(iso)
@@ -51,6 +52,7 @@
       this.chart.subscribeCrosshairMove((p) => this.readout(p));
       this.tools = new ChartDrawingTools(this);
       this.el.slot.prepend(this.tools.bar);
+      this.trading = window.ChartTrading ? new ChartTrading(this) : null;
       document.addEventListener("fullscreenchange", () => this.renderFullBtn());
       this.timer = setInterval(() => this.refreshOverlays(), OVERLAY_EVERY_MS);
       this.tailTimer = setInterval(() => this.refreshTail(), TAIL_EVERY_MS);

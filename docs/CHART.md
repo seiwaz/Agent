@@ -1,7 +1,8 @@
 # Chart workspace
 
 The dashboard's **Chart** tab: price, market structure, levels and indicators for one market on
-5m / 15m / 1h / 4h / 1d. Display only: it opens no position and sends no order.
+5m / 15m / 1h / 4h / 1d, and trading on Tabdeal futures from a Long / Short position drawing
+(the Trade button, below). Nothing else on the chart sends an order.
 
 ## Data: Tabdeal's chart
 
@@ -51,6 +52,48 @@ Delete removes it, the trash button removes every drawing of the market. Drawing
 market in the browser, in time / price, so they appear on every timeframe. A position drawing is a
 measurement only: nothing is ever ordered.
 
+A position drawing is shaded by what price did: once a bar has traded through its entry, the part
+from the entry to the current price — or to the stop / target that was hit (the stop first when
+one bar reaches both) — is filled darker green in profit or darker red at a loss, and the entry
+label adds the result ("+1.20 %", "Target hit +3.00 %", "Stopped −1.50 %").
+
+## Trading from the chart (Tabdeal futures)
+
+1. Place a **Long position** or **Short position** and drag its entry, stop and target.
+2. Press **Trade** (⚡, left toolbar). It takes the selected position drawing, or the last one
+   placed, and asks for the **leverage** (1 … `trading.max_leverage`) and the **margin** in USDT
+   (≤ `trading.max_margin_usdt`); it shows the size, the loss at the stop, the gain at the
+   target, R:R and the futures wallet.
+3. **Place** sends: the leverage, then a LIMIT GTC order at the entry. When (part of) it fills,
+   the server sets the position's stop and target on Tabdeal (`positionSlTp`,
+   `trading.working_type`), again whenever more of it fills.
+
+The panel under the chart (▾ / ▴ hides it) has two tabs:
+
+- **Open trades** — pending (order resting) and active (position open) trades with entry, size
+  (filled / ordered), leverage, stop, target, mark price, unrealized PnL, ROE, liquidation price
+  and ✓ once the stop / target are set on Tabdeal (⚠ while they are not). **Cancel** cancels a
+  pending order (a part already filled stays as an active trade); **Close** closes the position
+  at market (and cancels any unfilled rest of the entry). Click a row for the trade's log.
+- **History** — closed (target, stop, closed here, closed on Tabdeal), canceled and rejected
+  trades with entry, exit and realized PnL.
+
+Tabdeal has no futures user stream, so the API server polls it every `trading.poll_s` seconds
+while a trade is open — with or without a browser — and the table follows the exchange: a fill,
+a stop or target, a cancel or a close made in Tabdeal's own app all show up here.
+
+Safety:
+- One open trade per market. Refused while the market already has a position or open orders on
+  Tabdeal (position-level stop / target would cover them too).
+- Refused when the loss at the stop would liquidate the cross-margin wallet first, or the margin
+  is more than the available balance.
+- An entry remainder still resting when the position ends is canceled (it would open a new,
+  unprotected position).
+- `trading.enabled`, a trade token (`python -m sp2l trade-token`, file mode 600) entered once
+  per browser, POST only from the dashboard's own origin, and the API key file
+  `~/.config/sp2l/tabdeal.env` (mode 600; the key needs trading permission). The key never
+  leaves the server.
+
 The top bar shows the market-structure trend of each timeframe: green ▲ bullish, red ▼ bearish,
 grey – none. Full screen (⤢) keeps the toolbar, the trend strip and the options.
 
@@ -66,6 +109,9 @@ grey – none. Full screen (⤢) keeps the toolbar, the trend strip and the opti
 | `web/chart/indicators.js` | indicator math (pure) |
 | `web/chart/draw.js` | the drawing layer (bounded boxes, segments, labels) |
 | `web/chart/tools.js` | drawing tools: toolbar, placing, selecting, dragging, storage, rendering |
+| `web/chart/trading.js` | the Trade dialog and the open / history panel |
+| `src/sp2l/trading/` | Tabdeal client (allow-listed signed endpoints), trade manager, `/api/trade/*` |
+| `tests/db/test_trading.py` | trading against a simulated Tabdeal (`tests/trading/fake_exchange.py`) |
 | `web/chart/workspace.js` | toolbar, options panel, panes, data, scroll-back, live candles, full screen |
 | `tests/chart/fake_tabdeal.py` | a deterministic stand-in for the feed (tests) |
 | `tests/db/test_chart_history.py` | paging to the listing, cache, overlays over loaded bars |
