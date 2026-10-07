@@ -46,8 +46,8 @@ class TrendParams:
             raise ValueError("regime_ma must be >= 0 and max_units >= 1")
         if self.sizing not in SIZINGS:
             raise ValueError(f"sizing must be one of {SIZINGS}")
-        if not 0 < self.risk_pct < 1 or not 0 < self.max_exposure <= 10:
-            raise ValueError("risk_pct must be in (0, 1) and max_exposure in (0, 10]")
+        if not 0 < self.risk_pct < 1 or not 0 < self.max_exposure <= 125:
+            raise ValueError("risk_pct must be in (0, 1) and max_exposure in (0, 125]")
         if not 0 <= self.maint_margin < 1:
             raise ValueError("maint_margin must be in [0, 1)")
 
