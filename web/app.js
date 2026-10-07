@@ -1,4 +1,4 @@
-/* SMC Console — render-only client.
+/* Eiwaz Trading System — render-only client.
  * Every zone, structure break, position, state, reason and number shown here comes from the
  * backend API. This file holds no strategy logic: it fetches JSON, maps prices and times to
  * pixels, formats values for people and renders them. The only aggregation it does is folding
@@ -486,7 +486,7 @@ function applyOverview(o) {
   fp.style.setProperty("--tone", css(feedUp ? "--ok" : "--warn"));
   fp.replaceChildren(el("span", { class: "dot" }), feedUp ? "Live feed" : "History only");
   fp.title = feedUp ? `Live trades for ${m.display}` : "No live collector: candles come from Tabdeal history, refreshed every minute";
-  $("foot-ver").textContent = `SMC · ${o.symbols.map(symName).join(" + ")} · shared wallet`;
+  $("foot-ver").textContent = `Eiwaz Trading System · ${o.symbols.map(symName).join(" + ")}`;
 }
 function route() {
   const v = (location.hash.replace("#/", "") || "chart").split("?")[0];

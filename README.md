@@ -1,4 +1,4 @@
-# SMC Console
+# Eiwaz Trading System
 
 Smart Money Concepts engine for Tabdeal futures — **BTC/USDT and XRP/USDT on one shared
 simulated 100 USDT wallet** — with a live dashboard.
@@ -24,7 +24,8 @@ precedence where they exist. It runs without the collector too (chart then updat
 - **Chart** — 5m / 15m / 1h / 4h / 1d with switchable support / resistance, trendlines, OB,
   FVG, BOS, CHoCH, HH / HL / LH / LL, Donchian, RSI and MACD (each with its settings), the trend
   of every timeframe in the top bar, drawing tools (trend line, horizontal line, long / short
-  position, price range, path), full screen. Display only (`docs/CHART.md`).
+  position, price range, path), full screen. Candles come from Tabdeal's chart; scrolling back
+  loads older bars down to the listing. Display only (`docs/CHART.md`).
 - **Signals** — full history with the lifecycle timeline of each signal; "Show on chart".
 - **Performance** — the shared wallet (balance, equity, fees, ledger, per-market results) and
   the backtest of the parameters in force per market (exit per trade).

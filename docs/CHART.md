@@ -3,6 +3,19 @@
 The dashboard's **Chart** tab: price, market structure, levels and indicators for one market on
 5m / 15m / 1h / 4h / 1d. Display only: it opens no position and sends no order.
 
+## Data: Tabdeal's chart
+
+Candles come from Tabdeal's own chart feed (`special-margin/plots/history`), so the chart matches
+the one on tabdeal.org bar for bar: 5m / 15m on UTC boundaries, 1h / 4h / 1d on Tehran boundaries
+(1h and 4h open at hh:30 UTC, 1d at 20:30 UTC). The chart opens on the newest 500 bars and polls
+the last bars every 10 s (the last bar is the forming one).
+
+**Scrolling back** past the left edge loads the previous 500 bars, page after page, down to the
+market's listing on Tabdeal; the overlays (S/R, trendlines, OB, FVG, structure) are recomputed
+over everything loaded. Closed bars are cached in the `chart_bars` table, so a page already seen
+is read from the database and not fetched again; the forming bar is never cached. If Tabdeal is
+unreachable the API answers 502 and the chart keeps what it has.
+
 ## What it shows
 
 Every item has its own switch in **Indicators & layers**, and its settings (⚙). Switches and
@@ -46,14 +59,17 @@ grey – none. Full screen (⤢) keeps the toolbar, the trend strip and the opti
 | file | role |
 |---|---|
 | `src/sp2l/chart/overlays.py` | S/R zones, trendlines, labelled swings, events, zones, trend (pure, tested in `tests/chart`) |
-| `src/sp2l/chart/service.py` | loads the stored bars, caches per closed bar and parameters |
+| `src/sp2l/chart/history.py` | Tabdeal's chart feed: newest bars, older pages, `chart_bars` cache |
+| `src/sp2l/chart/service.py` | candles, overlays over the loaded bars (cached per closed bar and parameters), trends |
 | `src/sp2l/api/app.py` | `/api/chart/candles`, `/api/chart/overlays`, `/api/chart/trends` |
 | `web/chart/features.js` | **the feature registry: one entry per switch** |
 | `web/chart/indicators.js` | indicator math (pure) |
 | `web/chart/draw.js` | the drawing layer (bounded boxes, segments, labels) |
 | `web/chart/tools.js` | drawing tools: toolbar, placing, selecting, dragging, storage, rendering |
-| `web/chart/workspace.js` | toolbar, options panel, panes, data, live candles, full screen |
-| `tests/ui/test_chart.py` | the workspace in a real browser |
+| `web/chart/workspace.js` | toolbar, options panel, panes, data, scroll-back, live candles, full screen |
+| `tests/chart/fake_tabdeal.py` | a deterministic stand-in for the feed (tests) |
+| `tests/db/test_chart_history.py` | paging to the listing, cache, overlays over loaded bars |
+| `tests/ui/test_chart.py` | the workspace in a real browser, scroll-back included |
 
 ### Adding or removing an item
 

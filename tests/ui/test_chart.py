@@ -1,56 +1,40 @@
 # ruff: noqa: E501  (selectors and in-page scripts are clearer on one line)
-"""The chart workspace in a real browser, served by the real API from a test database with 20
-days of 1-minute history: timeframes, the per-timeframe trend strip, every feature switched on
+"""The chart workspace in a real browser, served by the real API with a stand-in for Tabdeal's
+chart feed (tests/chart/fake_tabdeal.py): scrolling back loads older pages, timeframes, the per-timeframe trend strip, every feature switched on
 and off on its own, indicators in their own panes, settings applied and kept, a timeframe change
 re-applying the active features, full screen, and no page errors (Playwright)."""
 
 from __future__ import annotations
 
-import io
-import math
-import random
 import socket
 import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy import text
 
+from tests.chart.fake_tabdeal import FakeTabdeal
 from tests.db.conftest import URL, engine  # noqa: F401  (module-scoped fresh schema)
 
 pytestmark = [pytest.mark.db, pytest.mark.browser]
 SYM = "BTCUSDT"
-END = datetime(2026, 3, 1, tzinfo=UTC)
 
 
 @pytest.fixture(scope="module")
-def data(engine) -> None:  # noqa: F811
-    """20 days of a trending random walk, one bar per minute."""
-    r, px, t, rows = random.Random(5), 50_000.0, END - timedelta(days=20), io.StringIO()
-    drift = 0.0
-    for n in range(20 * 1440):
-        if n % 720 == 0:
-            drift = r.gauss(0, 0.0001)
-        o = px
-        c = o * math.exp(drift + r.gauss(0, 0.0009))
-        h, lo = max(o, c) * 1.0003, min(o, c) * 0.9997
-        rows.write(f"{SYM}\t{t.isoformat()}\t{o:.1f}\t{h:.1f}\t{lo:.1f}\t{c:.1f}\t1\n")
-        px, t = c, t + timedelta(minutes=1)
-    raw = engine.raw_connection()
-    try:
-        with raw.cursor() as cur, cur.copy(
-            "COPY exchange_m1 (symbol, open_time, open, high, low, close, volume) FROM STDIN"
-        ) as cp:
-            cp.write(rows.getvalue())
-        raw.commit()
-    finally:
-        raw.close()
-    with engine.connect() as c:
-        assert c.execute(text("SELECT COUNT(*) FROM exchange_m1")).scalar_one() == 20 * 1440
+def data(engine) -> Iterator[FakeTabdeal]:  # noqa: F811
+    """The chart reads Tabdeal's chart feed: a deterministic stand-in, listed 200 days ago."""
+    import sp2l.chart.history as hist
+
+    with engine.begin() as c:
+        c.execute(text("DELETE FROM chart_bars"))
+    fake = FakeTabdeal()
+    mp = pytest.MonkeyPatch()
+    mp.setattr(hist, "plots", fake)
+    yield fake
+    mp.undo()
 
 
 def _free_port() -> int:
@@ -274,5 +258,29 @@ def test_drawing_tools_create_edit_delete_and_persist(data, browser):
         pg.mouse.move(X + 600, Y + 120, steps=8)
         pg.mouse.up()
         assert pg.evaluate("() => state.ws.chart.timeScale().getVisibleLogicalRange().from") != r0
+        assert errors == []
+        pg.close()
+
+
+def test_scrolling_back_loads_older_bars_from_tabdeal(data, browser):
+    with serve() as url:
+        pg, errors = _open(browser, url)
+        pg.click(".ws-tfs button:has-text('4h')")
+        pg.wait_for_function("() => state.ws.tf === '4h' && state.ws.bars.length > 0 && state.ws.overlays && state.ws.overlays.tf === '4h'", timeout=30000)
+        n0 = pg.evaluate("() => state.ws.bars.length")
+        first0 = pg.evaluate("() => state.ws.bars[0].t")
+        # scroll to the left edge, page after page, until the listing
+        for _ in range(12):
+            pg.evaluate("() => state.ws.chart.timeScale().setVisibleLogicalRange({ from: 0, to: 120 })")
+            pg.wait_for_timeout(700)
+            if not pg.evaluate("() => state.ws.more"):
+                break
+        ts = pg.evaluate("() => state.ws.bars.map(b => b.t)")
+        assert len(ts) > n0 and ts[0] < first0
+        assert ts == sorted(set(ts)) and all(b - a == 14400 for a, b in zip(ts, ts[1:], strict=False))
+        assert not pg.evaluate("() => state.ws.more")  # stopped at the listing
+        assert ts[0] - data.listed < 14400
+        # the overlays cover the loaded history
+        pg.wait_for_function(f"() => state.ws.overlays.bars >= {len(ts) - 1}", timeout=30000)
         assert errors == []
         pg.close()

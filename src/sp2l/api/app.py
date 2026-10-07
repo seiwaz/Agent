@@ -77,7 +77,7 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
     views = {s: SmcView(db, s, cfg.symbol_params(s), costs) for s in symbols}
     sparams = {s: v.params for s, v in views.items()}
     display = {s: ws_market(s).replace("_", "/") for s in symbols}
-    app = FastAPI(title="SMC Console API", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Eiwaz Trading System API", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(SecurityHeaders)
 
     def view(symbol: str | None) -> SmcView:
@@ -229,19 +229,29 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
     def chart(symbol: str | None) -> ChartService:
         return charts[sym(symbol)]
 
+    def from_tabdeal(f: Any) -> Any:
+        """Chart data comes from Tabdeal's chart feed: an unreachable feed is a 502, not a 500."""
+        try:
+            return f()
+        except (OSError, ValueError) as exc:
+            detail = f"Tabdeal chart feed unavailable: {exc}"
+            return JSONResponse({"detail": detail}, status_code=502)
+
     @app.get("/api/chart/candles")
     def chart_candles(
         symbol: str | None = None,
         tf: str = Query("1h", pattern=chart_tf),
-        limit: int = Query(500, ge=50, le=1500),
+        limit: int = Query(500, ge=1, le=1500),
+        before: int | None = Query(None, ge=0, description="epoch s: bars opening before it"),
     ) -> Any:
-        return chart(symbol).candles(tf, limit)
+        return from_tabdeal(lambda: chart(symbol).candles(tf, limit, before))
 
     @app.get("/api/chart/overlays")
     def chart_overlays(
         symbol: str | None = None,
         tf: str = Query("1h", pattern=chart_tf),
         bars: int = Query(500, ge=50, le=1500),
+        since: int | None = Query(None, alias="from", ge=0, description="epoch s: first bar"),
         swing_len: int = Query(5, ge=2, le=20),
         sr_tol_atr: float = Query(0.25, gt=0, le=2),
         sr_touches: int = Query(2, ge=2, le=10),
@@ -249,7 +259,7 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
         tl_max: int = Query(3, ge=1, le=10),
     ) -> Any:
         cp = ChartParams(swing_len, sr_tol_atr, sr_touches, sr_max, tl_max)
-        return chart(symbol).overlays(tf, bars, cp)
+        return from_tabdeal(lambda: chart(symbol).overlays(tf, since, bars, cp))
 
     @app.get("/api/chart/trends")
     def chart_trends(symbol: str | None = None, swing_len: int = Query(5, ge=2, le=20)) -> Any:

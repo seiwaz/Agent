@@ -3,9 +3,11 @@
  *   const ws = new ChartWorkspace(rootElement, { api, symbol, display });
  *   ws.setSymbol("XRPUSDT"); ws.setTrends(list); ws.applyMinute(m); ws.restyle(); ws.focusTime(iso)
  *
- * Everything the user can switch on or off comes from window.ChartFeatures (one entry per
- * feature). Structure and level features are computed by the server for the shown timeframe
- * (/api/chart/overlays) from closed bars; indicators are computed here from the shown candles.
+ * Candles come from Tabdeal's own chart feed (through /api/chart/candles): the newest page on
+ * load, the forming bar every TAIL_EVERY_MS, and older pages as the view is scrolled left, back
+ * to the market's listing. Everything the user can switch on or off comes from
+ * window.ChartFeatures (one entry per feature). Structure and level features are computed by the
+ * server over every loaded closed bar (/api/chart/overlays); indicators are computed here.
  * Switching the timeframe re-applies every active feature to the new timeframe. The options and
  * their settings are kept in localStorage. */
 "use strict";
@@ -17,6 +19,8 @@
   const BARS = 500;
   const STORE = "smc-chart-v1";
   const OVERLAY_EVERY_MS = 60000;
+  const TAIL_EVERY_MS = 10000;  // the forming bar from Tabdeal when no live stream feeds it
+  const OLDER_AT = 30;  // load older bars once fewer than this many are left of the view
 
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const h = (tag, attrs, ...kids) => {
@@ -28,6 +32,7 @@
     for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) e.append(k);
     return e;
   };
+  const bar = (b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c });
   const defaults = (settings) => Object.fromEntries((settings || []).map((x) => [x.key, x.def]));
 
   class ChartWorkspace {
@@ -48,6 +53,8 @@
       this.el.slot.prepend(this.tools.bar);
       document.addEventListener("fullscreenchange", () => this.renderFullBtn());
       this.timer = setInterval(() => this.refreshOverlays(), OVERLAY_EVERY_MS);
+      this.tailTimer = setInterval(() => this.refreshTail(), TAIL_EVERY_MS);
+      this.chart.timeScale().subscribeVisibleLogicalRangeChange((r) => { if (r && r.from < OLDER_AT) this.loadOlder(); });
       this.reload(false);
     }
 
@@ -149,10 +156,10 @@
     featureForm(x) {
       const st = this.cfg.features[x.id];
       // structure settings only change the drawing; level settings are computed by the server
-      const onChange = !x.server ? () => this.rebuildIndicators() : x.query ? () => this.refreshOverlays(true) : () => this.redraw();
+      const onChange = !x.server ? () => this.rebuildIndicators() : x.query ? () => this.refreshOverlays() : () => this.redraw();
       return this.fields(x.settings, st.s, onChange);
     }
-    structureForm() { return this.fields(STRUCTURE.settings, this.cfg.structure, () => this.refreshOverlays(true)); }
+    structureForm() { return this.fields(STRUCTURE.settings, this.cfg.structure, () => this.refreshOverlays()); }
     togglePanel() {
       const open = this.el.panel.hidden;
       this.el.panel.hidden = !open;
@@ -169,35 +176,70 @@
     async reload(keepView) {
       const tf = this.tf, sym = this.symbol;
       this.note("");
+      this.more = true;
       try {
-        const [c, o] = await Promise.all([
-          this.api(this.q(`/api/chart/candles?tf=${tf}&limit=${BARS}`)),
-          this.api(this.q(`/api/chart/overlays?tf=${tf}&bars=${BARS}&${this.overlayQuery()}`)),
-        ]);
+        const c = await this.api(this.q(`/api/chart/candles?tf=${tf}&limit=${BARS}`));
         if (tf !== this.tf || sym !== this.symbol) return;
-        this.setBars(c.items.map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c })), keepView);
-        this.overlays = o;
-        if (!c.items.length) this.note("No market history for this timeframe yet.");
-        else if (!o.ready) this.note(`Structure not ready: ${o.reason || "too few bars"}.`);
+        this.setBars(c.items.map(bar), keepView);
+        if (!c.items.length) { this.note("No market history from Tabdeal for this timeframe yet."); return; }
         this.rebuildIndicators();
-        this.redraw();
+        await this.refreshOverlays();
       } catch {
-        this.note("Chart data unavailable — retrying.");
+        this.note("Tabdeal chart data unavailable — retrying.");
       }
     }
-    async refreshOverlays(now) {
+    async refreshOverlays() {
       if (!this.bars.length) return this.reload(false);
       const tf = this.tf, sym = this.symbol;
       try {
-        const o = await this.api(this.q(`/api/chart/overlays?tf=${tf}&bars=${BARS}&${this.overlayQuery()}`));
+        const o = await this.api(this.q(`/api/chart/overlays?tf=${tf}&from=${this.bars[0].t}&${this.overlayQuery()}`));
         if (tf !== this.tf || sym !== this.symbol) return;
         this.overlays = o;
+        this.note(o.ready ? "" : `Structure not ready: ${o.reason || "too few bars"}.`);
         this.redraw();
-        if (!now) {  // the periodic refresh also re-syncs the candles with the server
-          const c = await this.api(this.q(`/api/chart/candles?tf=${tf}&limit=${BARS}`));
-          if (tf === this.tf && sym === this.symbol) { this.setBars(c.items.map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c })), true); this.updateIndicators(); }
-        }
       } catch { /* the next tick retries */ }
+    }
+    /** The newest bars from Tabdeal: the forming bar updates, a new bar is appended. */
+    async refreshTail() {
+      if (!this.bars.length || this.loadingTail) return;
+      const tf = this.tf, sym = this.symbol;
+      this.loadingTail = true;
+      try {
+        const c = await this.api(this.q(`/api/chart/candles?tf=${tf}&limit=3`));
+        if (tf !== this.tf || sym !== this.symbol) return;
+        let added = false;
+        for (const b of c.items.map(bar)) {
+          const last = this.bars[this.bars.length - 1];
+          if (b.t < last.t) continue;
+          if (b.t === last.t) Object.assign(last, b);
+          else { this.bars.push(b); added = true; }
+          this.candles.update({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c });
+        }
+        this.el.price.textContent = fmt(this.bars[this.bars.length - 1].c);
+        if (added) { this.layer.set(this.layer.items, this.bars.map((x) => x.t)); this.refreshOverlays(); }
+        this.updateIndicators();
+      } catch { /* the next tick retries */ } finally { this.loadingTail = false; }
+    }
+    /** Scrolled near the left edge: the previous page of bars from Tabdeal. */
+    async loadOlder() {
+      if (this.loadingOlder || !this.more || !this.bars.length) return;
+      const tf = this.tf, sym = this.symbol, first = this.bars[0].t;
+      this.loadingOlder = true;
+      try {
+        const c = await this.api(this.q(`/api/chart/candles?tf=${tf}&limit=${BARS}&before=${first}`));
+        if (tf !== this.tf || sym !== this.symbol || this.bars[0].t !== first) return;
+        this.more = !!c.more;
+        const older = c.items.map(bar).filter((b) => b.t < first);
+        if (!older.length) return;
+        const ts = this.chart.timeScale(), r = ts.getVisibleLogicalRange();
+        this.bars = [...older, ...this.bars];
+        this.candles.setData(this.bars.map((b) => ({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c })));
+        if (r) ts.setVisibleLogicalRange({ from: r.from + older.length, to: r.to + older.length });
+        this.layer.set(this.layer.items, this.bars.map((b) => b.t));
+        this.updateIndicators();
+        if (this.tools) this.tools.redraw();
+        this.refreshOverlays();
+      } catch { /* scrolling again retries */ } finally { this.loadingOlder = false; }
     }
     setBars(bars, keepView) {
       const ts = this.chart.timeScale();
@@ -222,7 +264,7 @@
       const x = this.bars[this.bars.length - 1];
       this.candles.update({ time: x.t, open: x.o, high: x.h, low: x.l, close: x.c });
       this.el.price.textContent = fmt(x.c);
-      if (b > last.t) this.refreshOverlays(true);  // a bar closed: its structure is now known
+      if (b > last.t) this.refreshOverlays();  // a bar closed: its structure is now known
       clearTimeout(this.indTimer);
       this.indTimer = setTimeout(() => this.updateIndicators(), 1500);
     }

@@ -1,4 +1,4 @@
-/* SMC Console — calm charcoal/slate, off-white text, muted teal / coral / amber / blue.
+/* Eiwaz Trading System — calm charcoal/slate, off-white text, muted teal / coral / amber / blue.
  * Status color is always paired with text. Chart colors come from the same tokens. */
 :root, :root[data-theme="dark"] {
   --bg: #0f1216; --surface: #161a20; --surface-2: #1d232b; --border: #283039; --border-strong: #38424e;

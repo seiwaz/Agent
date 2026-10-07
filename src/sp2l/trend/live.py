@@ -27,7 +27,7 @@ from sp2l.trend.model import VERSION, TrendParams
 
 log = logging.getLogger("sp2l.trend")
 DAY = timedelta(days=1)
-RETENTION_DAYS = 290  # Tabdeal keeps ~296 days of 1-minute chart history (2026-10-05); kept current
+RETENTION_DAYS = 290  # Tabdeal keeps ~296 days of 1-minute chart history (2026-10-05)
 ACTIONS = {"entry": "BUY", "exit": "SELL", "add": "ADD"}
 
 
@@ -253,9 +253,7 @@ async def run_trend(
     while not stop.is_set():
         try:
             now = datetime.now(UTC)
-            # the whole retention: the paper replay needs bars_needed() days, and the dashboard
-            # chart's 1d / 4h timeframes use the same stored history
-            days = max(RETENTION_DAYS, bars_needed(cfg, p, now) + 1)
+            days = min(RETENTION_DAYS, bars_needed(cfg, p, now) + 1)
             try:
                 await asyncio.to_thread(ensure_history, db, cfg.symbol, fetch, days)
             except Exception:  # exchange unreachable: decide on what is stored
