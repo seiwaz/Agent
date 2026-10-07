@@ -23,6 +23,21 @@ The structure pivot length (⚙ next to *Structure*) applies to every structure 
 Server items use closed bars only (a pivot is known *pivot length* bars after it); the forming bar
 is drawn and feeds the indicators live.
 
+## Drawing tools (left toolbar)
+
+| tool | place it | edit it |
+|---|---|---|
+| Trend line | two clicks | drag either end, or the line |
+| Horizontal line | one click (its price is labelled at the right edge) | drag the line |
+| Long position / Short position | one click at the entry: stop 1.5 × the average bar range away, target at 2R, 20 bars wide | drag the target, the stop, the entry (left) or the width (right); shows the percentages and R:R |
+| Price range | two clicks | drag either corner; shows the change, % and bars |
+| Path | a click per point, double-click or Enter to finish | drag any point, or the path |
+
+Pick the same tool again or press Esc to cancel. Click a drawing to select it (handles appear),
+Delete removes it, the trash button removes every drawing of the market. Drawings are stored per
+market in the browser, in time / price, so they appear on every timeframe. A position drawing is a
+measurement only: nothing is ever ordered.
+
 The top bar shows the market-structure trend of each timeframe: green ▲ bullish, red ▼ bearish,
 grey – none. Full screen (⤢) keeps the toolbar, the trend strip and the options.
 
@@ -36,6 +51,7 @@ grey – none. Full screen (⤢) keeps the toolbar, the trend strip and the opti
 | `web/chart/features.js` | **the feature registry: one entry per switch** |
 | `web/chart/indicators.js` | indicator math (pure) |
 | `web/chart/draw.js` | the drawing layer (bounded boxes, segments, labels) |
+| `web/chart/tools.js` | drawing tools: toolbar, placing, selecting, dragging, storage, rendering |
 | `web/chart/workspace.js` | toolbar, options panel, panes, data, live candles, full screen |
 | `tests/ui/test_chart.py` | the workspace in a real browser |
 

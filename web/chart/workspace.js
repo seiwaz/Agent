@@ -44,6 +44,8 @@
       this.layer = new OverlayLayer();
       this.candles.attachPrimitive(this.layer);
       this.chart.subscribeCrosshairMove((p) => this.readout(p));
+      this.tools = new ChartDrawingTools(this);
+      this.el.slot.prepend(this.tools.bar);
       document.addEventListener("fullscreenchange", () => this.renderFullBtn());
       this.timer = setInterval(() => this.refreshOverlays(), OVERLAY_EVERY_MS);
       this.reload(false);
@@ -206,6 +208,7 @@
       if (r) ts.setVisibleLogicalRange(r);
       if (bars.length) this.el.price.textContent = fmt(bars[bars.length - 1].c);
       this.layer.set(this.layer.items, bars.map((b) => b.t));
+      if (this.tools) this.tools.redraw();
     }
     /** Fold a live 1-minute candle into the shown timeframe's forming bar. */
     applyMinute(m) {
@@ -272,6 +275,7 @@
     setSymbol(sym) {
       if (sym === this.symbol) return;
       this.symbol = sym; this.renderTitle(); this.applyFormat();
+      this.tools.setSymbol(sym);
       this.overlays = null; this.layer.set({ boxes: [], lines: [], marks: [] }, []);
       this.reload(false);
     }

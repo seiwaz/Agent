@@ -23,7 +23,8 @@ precedence where they exist. It runs without the collector too (chart then updat
 ## Dashboard
 - **Chart** — 5m / 15m / 1h / 4h / 1d with switchable support / resistance, trendlines, OB,
   FVG, BOS, CHoCH, HH / HL / LH / LL, Donchian, RSI and MACD (each with its settings), the trend
-  of every timeframe in the top bar, full screen. Display only (`docs/CHART.md`).
+  of every timeframe in the top bar, drawing tools (trend line, horizontal line, long / short
+  position, price range, path), full screen. Display only (`docs/CHART.md`).
 - **Signals** — full history with the lifecycle timeline of each signal; "Show on chart".
 - **Performance** — the shared wallet (balance, equity, fees, ledger, per-market results) and
   the backtest of the parameters in force per market (exit per trade).

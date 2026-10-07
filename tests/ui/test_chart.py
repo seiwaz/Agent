@@ -198,3 +198,81 @@ def test_workspace_features_panes_settings_and_full_screen(data, browser):
         assert not pg.evaluate("() => state.ws.isFull()")
         assert errors == []
         pg.close()
+
+
+def test_drawing_tools_create_edit_delete_and_persist(data, browser):
+    with serve() as url:
+        pg, errors = _open(browser, url)
+        pg.evaluate("() => localStorage.removeItem('smc-drawings-v1')")
+        pg.reload()
+        pg.wait_for_function("() => state.ws && state.ws.bars.length > 0", timeout=60000)
+        box = pg.locator(".ws-chart").bounding_box()
+        X, Y = box["x"], box["y"]
+
+        def click(x, y, n=1):
+            pg.mouse.move(X + x, Y + y)
+            pg.mouse.click(X + x, Y + y, click_count=n)
+
+        def tool(name):
+            pg.click(f".ws-draw button[aria-label='{name}']")
+
+        assert pg.eval_on_selector_all(".ws-draw button", "bs => bs.map(b => b.getAttribute('aria-label'))") == [
+            "Trend line", "Horizontal line", "Long position", "Short position", "Price range", "Path", "Remove all drawings"]
+        tool("Trend line")
+        click(200, 500)
+        click(500, 300)
+        tool("Horizontal line")
+        click(700, 250)
+        tool("Long position")
+        click(1000, 420)
+        tool("Short position")
+        click(1150, 300)
+        tool("Price range")
+        click(300, 200)
+        click(420, 120)
+        tool("Path")
+        click(600, 600)
+        click(700, 520)
+        click(800, 580)
+        click(800, 580, 2)
+        types = pg.evaluate("() => state.ws.tools.items.map(i => i.type + (i.a ? i.a.length : ''))")
+        assert types == ["trend2", "hline", "long", "short", "range2", "path3"]
+        assert pg.evaluate("() => state.ws.tools.tool") is None  # a finished drawing ends the tool
+
+        # the long position: entry below the target, stop below the entry; its target drags alone
+        lp = pg.evaluate("() => state.ws.tools.items.find(i => i.type === 'long')")
+        assert lp["sl"] < lp["entry"] < lp["tp"] and lp["t2"] > lp["t1"]
+        sp = pg.evaluate("() => state.ws.tools.items.find(i => i.type === 'short')")
+        assert sp["tp"] < sp["entry"] < sp["sl"]
+        click(1010, 410)  # select it (inside its target zone)
+        x1, ytp = pg.evaluate("() => { const t = state.ws.tools, it = t.items.find(i => i.type === 'long'); return [t.x(it.t1), t.y(it.tp)]; }")
+        pg.mouse.move(X + x1, Y + ytp)
+        pg.mouse.down()
+        pg.mouse.move(X + x1, Y + ytp - 50, steps=5)
+        pg.mouse.up()
+        lp2 = pg.evaluate("() => state.ws.tools.items.find(i => i.type === 'long')")
+        assert lp2["tp"] > lp["tp"] and lp2["entry"] == lp["entry"] and lp2["sl"] == lp["sl"]
+
+        # select the horizontal line, delete it
+        yh = pg.evaluate("() => state.ws.tools.y(state.ws.tools.items.find(i => i.type === 'hline').p)")
+        click(900, yh)
+        pg.keyboard.press("Delete")
+        assert "hline" not in pg.evaluate("() => state.ws.tools.items.map(i => i.type)")
+
+        # kept per market across a reload and on every timeframe
+        pg.reload()
+        pg.wait_for_function("() => state.ws && state.ws.bars.length > 0", timeout=60000)
+        assert pg.evaluate("() => state.ws.tools.items.length") == 5
+        pg.click(".ws-tfs button:has-text('15m')")
+        pg.wait_for_function("() => state.ws.overlays && state.ws.overlays.tf === '15m'", timeout=30000)
+        assert pg.evaluate("() => state.ws.tools.items.length") == 5
+
+        # without a tool the chart still pans
+        r0 = pg.evaluate("() => state.ws.chart.timeScale().getVisibleLogicalRange().from")
+        pg.mouse.move(X + 900, Y + 120)
+        pg.mouse.down()
+        pg.mouse.move(X + 600, Y + 120, steps=8)
+        pg.mouse.up()
+        assert pg.evaluate("() => state.ws.chart.timeScale().getVisibleLogicalRange().from") != r0
+        assert errors == []
+        pg.close()
