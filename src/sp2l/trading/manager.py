@@ -509,8 +509,11 @@ class TradeManager:
 
         at = datetime.fromtimestamp(opened, UTC) if opened is not None else _now()
         protected = qty if (sl is not None or tp is not None) else Decimal(0)
-        ev = f"adopted from Tabdeal: {side} {qty.normalize()} @ {entry} x{lev}" + (
-            f", stop {sl} / target {tp}" if protected else ", no stop / target reported"
+        def n(v: Decimal | None) -> str:
+            return "—" if v is None else f"{v.normalize():f}"
+
+        ev = f"adopted from Tabdeal: {side} {n(qty)} @ {n(entry)} x{lev}" + (
+            f", stop {n(sl)} / target {n(tp)}" if protected else ", no stop / target reported"
         )
         with self.db.begin() as c:
             tid = int(

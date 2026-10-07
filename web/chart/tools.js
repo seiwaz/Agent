@@ -1,7 +1,7 @@
 /* Chart workspace — drawing tools (left toolbar): trend line, horizontal line, long / short
  * position, price range and path. A position drawing is a measurement: once price has traded
  * through its entry, the part from the entry to the current price (or to the stop / target that
- * was hit) is shaded darker green (in profit) or red (at a loss). The Trade button (⚡) sends the
+ * was hit) is shaded darker green (in profit) or red (at a loss) across the drawing's width. The Trade button (⚡) sends the
  * selected or last position drawing to the trade dialog (web/chart/trading.js); drawing alone
  * never creates an order. Every open trade — placed here or directly on Tabdeal — has a position
  * drawing linked to it (`trade`), kept in line with the exchange; dragging its stop / target
@@ -117,7 +117,7 @@
      * opened on Tabdeal), with the exchange's entry, stop and target unless the user moved them. */
     syncTrades(trades) {
       const b = this.ws.bars, step = this.step();
-      if (!b.length) return;
+      if (!b.length || this.ws.barsFor !== this.ws.symbol) return;  // right after a market switch
       const open = new Set();
       let changed = false;
       for (const t of trades) {
@@ -365,7 +365,8 @@
     draw(target) {
       const T = this.tools;
       const col = { line: `rgb(${css("--c-fvg-bull")})`, bull: css("--c-bull"), bear: css("--c-bear"), text: css("--c-text"), surface: css("--surface") };
-      const fmt = (v) => (Math.abs(v) >= 1000 ? v.toFixed(1) : Math.abs(v) >= 1 ? v.toFixed(4) : v.toPrecision(5));
+      const mf = T.ws.format && T.ws.format(T.ws.symbol);  // the market's precision (BTC 1, XRP 5)
+      const fmt = (v) => (mf ? v.toFixed(mf.precision) : Math.abs(v) >= 1000 ? v.toFixed(1) : Math.abs(v) >= 1 ? v.toFixed(4) : v.toPrecision(5));
       target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
         ctx.font = '500 11px "IBM Plex Sans", sans-serif'; ctx.textBaseline = "middle";
         const label = (text, x, y, color, align) => {
@@ -388,7 +389,7 @@
             let pnl = "";
             if (out) {  // the part price has covered: darker green in profit, darker red at a loss
               const up = long ? out.price >= it.entry : out.price <= it.entry;
-              const ox1 = Math.max(x1, T.x(out.t0)), ox2 = Math.min(x2, T.x(out.t1) + Math.max(2, T.x(out.t0 + T.step()) - T.x(out.t0))), yp = T.y(out.price);
+              const ox1 = x1, ox2 = x2, yp = T.y(out.price);  // the whole width, entry → price line
               if (yp !== null && ox2 > ox1) {
                 ctx.fillStyle = `rgba(${up ? col.bull : col.bear},0.42)`;
                 ctx.fillRect(ox1, Math.min(ye, yp), ox2 - ox1, Math.abs(yp - ye));

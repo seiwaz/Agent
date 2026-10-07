@@ -306,3 +306,5 @@ body[data-view="chart"] main { max-width: none; padding: 8px 12px 12px; }
 .ws-trade-acts { display: flex; gap: 6px; }
 .ws-attn { border-color: var(--warn); color: var(--warn); }
 .ws-raw { margin-top: 6px; color: var(--text-2); word-break: break-word; }
+.ws-link { border: 0; background: none; padding: 0; color: var(--info); font: inherit; cursor: pointer; text-decoration: underline dotted; }
+.ws-link:hover { text-decoration: underline; }

@@ -40,6 +40,12 @@
   const when = (iso) => (iso ? LOCAL.format(new Date(iso)) : "—");
   const tone = (v) => (v === null || v === undefined || +v === 0 ? "" : +v > 0 ? "pos" : "neg");
 
+  /** A price at its market's precision (tick), e.g. BTC 1 decimal, XRP 5. */
+  function pxOf(ws, sym) {
+    const f = ws.format && ws.format(sym);
+    return (v) => num(v, f ? f.precision : undefined);
+  }
+
   class Trading {
     constructor(ws) {
       this.ws = ws; this.cfg = null; this.open = []; this.history = null; this.tab = "open";
@@ -77,6 +83,7 @@
         const before = new Set(this.open.map((t) => t.id));
         this.open = d.items; this.problem = d.poll_error ? `Tabdeal: ${d.poll_error}` : "";
         if (this.ws.tools) this.ws.tools.syncTrades(this.open);
+        this.focusIfReady();
         if ([...before].some((id) => !this.open.find((t) => t.id === id))) this.loadHistory();
       } catch (e) {
         this.problem = e.message;
@@ -118,18 +125,35 @@
       for (const t of this.open) {
         const c = this.cells[t.id];
         if (!c || t.status !== "ACTIVE") continue;
-        const v = this.live(t);
-        c.price.textContent = v.price ? num(v.price) : "—";
+        const v = this.live(t), px = pxOf(this.ws, t.symbol);
+        c.price.textContent = v.price ? px(v.price) : "—";
         c.price.title = v.live ? "Last traded price on Tabdeal (live)" : "Tabdeal's mark price";
         c.pnl.textContent = usd(v.pnl); c.pnl.className = `num ${tone(v.pnl)}`;
         c.roe.textContent = v.roe === null || v.roe === undefined ? "—" : `${num(v.roe, 2)}%`; c.roe.className = `num ${tone(v.roe)}`;
-        c.liq.textContent = v.liq ? num(v.liq) : "—";
+        c.liq.textContent = v.liq ? px(v.liq) : "—";
       }
     }
     async loadHistory() {
       if (!this.ready()) return;
       try { this.history = (await this.call("GET", "/api/trade/trades?scope=history&limit=200")).items; } catch (e) { this.problem = e.message; }
       this.render();
+    }
+    /** Show a trade on the chart: its market, its linked drawing selected and in view. */
+    show(t) {
+      this.focus = t;
+      if (t.symbol !== this.ws.symbol && typeof selectSymbol === "function") selectSymbol(t.symbol);  // eslint-disable-line no-undef
+      this.focusIfReady();
+    }
+    focusIfReady() {
+      const t = this.focus, tools = this.ws.tools;
+      if (!t || !tools || t.symbol !== this.ws.symbol || this.ws.barsFor !== t.symbol) return;
+      tools.syncTrades(this.open);
+      const d = tools.linked(t.id);
+      if (!d) return;
+      this.focus = null;
+      tools.sel = d.id; tools.redraw();
+      const b = this.ws.bars, i = Math.max(0, b.findIndex((x) => x.t + tools.step() > d.t1));
+      this.ws.chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, i - 60), to: b.length + 8 });
     }
     /** Send the linked drawing's stop / target to Tabdeal. */
     async setSlTp(t) {
@@ -207,7 +231,7 @@
       const head = ["#", "Market", "Side", "Status", "Entry", "Size", "Lev.", "Stop", "Target", "Price", "PnL (USDT)", "ROE", "Liq.", "Opened", ""];
       const rows = [];
       for (const t of this.open) {
-        const active = t.status === "ACTIVE";
+        const active = t.status === "ACTIVE", px = pxOf(this.ws, t.symbol);
         const prot = active ? (t.protected ? h("span", { class: "pos", title: "Stop / target set on the position" }, " ✓") : h("span", { class: "neg", title: t.last_error || "No stop / target on Tabdeal" }, " ⚠ no stop / target")) : null;
         const src = t.origin === "TABDEAL" ? h("span", { class: "ws-badge b-origin", title: "Opened directly on Tabdeal; followed here" }, "Tabdeal") : null;
         const moved = active && this.ws.tools && (this.ws.tools.linked(t.id) || {}).dirty;
@@ -216,14 +240,14 @@
         if (active) this.cells[t.id] = c;  // updated in place every second (updateLive)
         rows.push(h("tr", { class: "ws-trade-row", onclick: this.rowToggle(t) },
           h("td", { class: "num" }, String(t.id)),
-          h("td", {}, this.ws.display(t.symbol)),
+          h("td", {}, h("button", { class: "ws-link", type: "button", title: "Show this trade on the chart", onclick: (e) => { e.stopPropagation(); this.show(t); } }, this.ws.display(t.symbol))),
           h("td", { class: t.side === "LONG" ? "pos" : "neg" }, t.side),
           h("td", {}, h("span", { class: `ws-badge b-${t.status.toLowerCase()}` }, t.status), " ", src, prot),
-          h("td", { class: "num" }, active && t.avg_entry ? num(t.avg_entry) : num(t.entry)),
+          h("td", { class: "num" }, active && t.avg_entry ? px(t.avg_entry) : px(t.entry)),
           h("td", { class: "num" }, active && t.filled_qty < t.qty ? `${num(t.filled_qty, 5)} / ${num(t.qty, 5)}` : num(t.qty, 5)),
           h("td", { class: "num" }, `${t.leverage}×`),
-          h("td", { class: "num" }, num(t.sl)),
-          h("td", { class: "num" }, num(t.tp)),
+          h("td", { class: "num" }, px(t.sl)),
+          h("td", { class: "num" }, px(t.tp)),
           c.price, c.pnl, c.roe, c.liq,
           h("td", { class: "num" }, when(t.created_at)),
           h("td", { class: "ws-trade-acts" },
@@ -237,14 +261,15 @@
       const head = ["#", "Market", "Side", "Result", "Entry", "Exit", "Size", "Lev.", "PnL (USDT)", "Opened", "Closed"];
       const rows = [];
       for (const t of this.history || []) {
+        const px = pxOf(this.ws, t.symbol);
         const result = t.status === "CLOSED" ? { TP: "Target", SL: "Stop", MANUAL: "Closed here", CLOSED_ON_TABDEAL: "Closed on Tabdeal" }[t.close_reason] || "Closed" : t.status === "CANCELED" ? "Canceled" : t.status === "REJECTED" ? "Rejected" : t.status;
         rows.push(h("tr", { class: "ws-trade-row", onclick: this.rowToggle(t) },
           h("td", { class: "num" }, String(t.id)),
           h("td", {}, this.ws.display(t.symbol)),
           h("td", { class: t.side === "LONG" ? "pos" : "neg" }, t.side),
           h("td", {}, h("span", { class: `ws-badge b-${t.status.toLowerCase()}`, title: t.last_error || "" }, result), t.origin === "TABDEAL" ? h("span", { class: "ws-badge b-origin" }, " Tabdeal") : null),
-          h("td", { class: "num" }, num(t.avg_entry || t.entry)),
-          h("td", { class: "num" }, t.exit_price ? num(t.exit_price) : "—"),
+          h("td", { class: "num" }, px(t.avg_entry || t.entry)),
+          h("td", { class: "num" }, t.exit_price ? px(t.exit_price) : "—"),
           h("td", { class: "num" }, num(t.filled_qty || t.qty, 5)),
           h("td", { class: "num" }, `${t.leverage}×`),
           h("td", { class: `num ${tone(t.realized_pnl)}` }, t.realized_pnl === null ? "—" : usd(t.realized_pnl)),

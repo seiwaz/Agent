@@ -190,6 +190,7 @@
         const c = await this.api(this.q(`/api/chart/candles?tf=${tf}&limit=${BARS}`));
         if (tf !== this.tf || sym !== this.symbol) return;
         this.setBars(c.items.map(bar), keepView);
+        this.barsFor = sym;  // the bars now belong to this market (drawings of its trades may use them)
         if (!c.items.length) { this.note("No market history from Tabdeal for this timeframe yet."); return; }
         this.rebuildIndicators();
         await this.refreshOverlays();

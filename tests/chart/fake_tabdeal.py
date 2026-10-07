@@ -34,8 +34,11 @@ class FakeTabdeal:
         out = []
         k = k0
         while (t := k * step + off) < min(end, now + 1):
-            o, c = self.price(tf, k - 1), self.price(tf, k)
+            scale = 1.0 if market.startswith("BTC") else 1.45 / 50_000  # XRP trades near 1.45
+            o, c = self.price(tf, k - 1) * scale, self.price(tf, k) * scale
             hi, lo_ = max(o, c) * 1.002, min(o, c) * 0.998
+            if scale != 1.0:
+                o, c, hi, lo_ = (round(v, 5) for v in (o, c, hi, lo_))
             out.append({"t": t, "o": o, "h": hi, "l": lo_, "c": c, "v": 1.0})
             k += 1
         return out
