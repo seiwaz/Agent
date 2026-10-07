@@ -305,10 +305,16 @@ def trend_backtest(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
         upto = series_end(db, cfg.symbol) or datetime.now(UTC)
         bars = load_bars(db, cfg.symbol, "1d", int(args.days), upto, grid="utc")
         q = quality(bars, source=f"database {cfg.symbol} (1m -> UTC days)")
-    res = tb.run(bars, params, fees)
-    out: dict[str, Any] = {"version": "TREND-1.0", "data": q, **tb.summary(res, fees)}
+    funding = None
+    if args.funding:
+        from sp2l.trend.data import load_funding_csv
+
+        funding = load_funding_csv(args.funding)
+        q["funding_days"] = len(funding)
+    res = tb.run(bars, params, fees, funding)
+    out: dict[str, Any] = {"version": "TREND-1.0", "data": q, **tb.summary(res, fees, funding)}
     if args.grid:
-        out["grid"] = tb.grid(bars, params, fees, GRID_AXES)
+        out["grid"] = tb.grid(bars, params, fees, GRID_AXES, funding)
     print(_json.dumps(out, indent=1))
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
@@ -347,6 +353,7 @@ def main() -> None:
     tr.add_argument("--set", action="append", help="override a parameter: key=value")
     tr.add_argument("--fee", type=float, default=None, help="per fill (default: costs.taker_fee)")
     tr.add_argument("--slippage", type=float, default=None, help="per fill (default: costs)")
+    tr.add_argument("--funding", type=Path, default=None, help="futures funding rates CSV")
     tr.add_argument("--grid", action="store_true", help="add the sensitivity table")
     tr.add_argument("--out", type=Path, default=None, help="write summary/trades/equity here")
     api = sub.add_parser("api", help="serve the read-only API and WebUI")

@@ -8,6 +8,10 @@ checked before the close-based exit, and it also applies on the day of the fill.
 
 Costs: the taker fee on every fill (entries and exits are market orders) and `slippage` as a
 fraction of the price, against us, on every fill. Equity is marked at each daily close.
+
+Futures (`allow_short`, `max_exposure` > 1, `funding`): shorts mirror the long rules; funding
+is charged on the notional held at each close; cross-margin liquidation is checked against
+the day's adverse extreme before the stop when it lies nearer (see `liquidation_price`).
 """
 
 from __future__ import annotations
@@ -43,8 +47,11 @@ class Trade:
     exit_price: float | None = None
     reason: str = "OPEN"  # STOP / CHANNEL / OPEN (still held on the last bar)
     pnl: float = 0.0  # net of fees and slippage
-    fees: float = 0.0
+    fees: float = 0.0  # fees, and the maintenance margin lost in a liquidation
     bars: int = 0
+    side: str = "LONG"
+    funding: float = 0.0  # paid (negative: received); included in pnl
+    capped: bool = False  # the exposure cap cut a unit below its risk size
 
     @property
     def r(self) -> float:
@@ -59,6 +66,7 @@ class Trade:
         return {
             "entry_time": self.entry_time.date().isoformat(),
             "exit_time": None if self.exit_time is None else self.exit_time.date().isoformat(),
+            "side": self.side,
             "reason": self.reason,
             "units": self.units,
             "entry_price": round(self.entry_price, 2),
@@ -67,6 +75,8 @@ class Trade:
             "qty": round(self.qty, 6),
             "pnl": round(self.pnl, 2),
             "fees": round(self.fees, 2),
+            "funding": round(self.funding, 2),
+            "capped": self.capped,
             "r": round(self.r, 2),
             "return_pct": round(100 * self.return_pct, 2),
             "bars": self.bars,
@@ -82,6 +92,7 @@ class Result:
     in_market: list[bool]  # a position held at that close
     start: int  # first bar on which a signal could be decided
     trades: list[Trade] = field(default_factory=list)
+    liquidations: int = 0
 
 
 def wilder_atr(h: Sequence[float], lo: Sequence[float], c: Sequence[float], n: int) -> list[float]:
@@ -121,7 +132,29 @@ def sma(x: Sequence[float], n: int) -> list[float]:
     return out
 
 
-def run(bars: Sequence[Candle], p: TrendParams, fees: Fees) -> Result:
+def _reached(x: float, level: float, side: int) -> bool:
+    """Price x is at or beyond `level` in the direction adverse to a position of `side`."""
+    return x <= level if side > 0 else x >= level
+
+
+def liquidation_price(cash: float, side: int, qty: float, mmr: float) -> float | None:
+    """Cross margin on the whole equity: the price where equity = maintenance margin
+    (cash + side x qty x P = mmr x qty x P). None when no positive price reaches it (an
+    unlevered long)."""
+    if qty <= 0:
+        return None
+    px = -cash / (qty * (side - mmr))
+    return px if px > 0 else None
+
+
+def run(
+    bars: Sequence[Candle],
+    p: TrendParams,
+    fees: Fees,
+    funding: Mapping[datetime, float] | None = None,
+) -> Result:
+    """`funding`: the sum of the day's funding rates per UTC day (open time); a position held
+    at the day's close pays side x rate x notional (longs pay a positive rate)."""
     if len(bars) <= p.warmup + 1:
         raise ValueError(f"{len(bars)} daily bars; System B needs more than {p.warmup + 1}")
     t = [b.open_time for b in bars]
@@ -130,31 +163,39 @@ def run(bars: Sequence[Candle], p: TrendParams, fees: Fees) -> Result:
     lo = [float(b.low) for b in bars]
     c = [float(b.close) for b in bars]
     atr = wilder_atr(h, lo, c, p.atr_len)
-    upper = prior_max(h, p.entry_len)
-    lower = prior_min(lo, p.exit_len)
+    entry_hi, entry_lo = prior_max(h, p.entry_len), prior_min(lo, p.entry_len)
+    exit_lo, exit_hi = prior_min(lo, p.exit_len), prior_max(h, p.exit_len)
     ma = sma(c, p.regime_ma) if p.regime_ma else [math.nan] * len(c)
+    funding = funding or {}
 
-    cash, qty = p.initial_equity, 0.0
+    cash, qty, side = (
+        p.initial_equity,
+        0.0,
+        0,
+    )  # side +1 long / -1 short; equity = cash + side*qty*px
     units, n_atr, last_fill, stop = 0, 0.0, 0.0, 0.0
     pending: str | None = None  # "entry" / "add" / "exit", filled at the next open
-    pending_n = 0.0
+    pending_n, pending_side = 0.0, 0
     trade: Trade | None = None
     trade_cash_before = 0.0  # cash before the trade's first fill: pnl = cash after - this
+    broke = False  # equity gone after a liquidation: no further trades
     res = Result(p, t, c, [], [], p.warmup)
 
-    def close_out(i: int, px: float, reason: str) -> None:
-        nonlocal cash, qty, units
+    def close_out(i: int, px: float, reason: str, penalty: float = 0.0) -> None:
+        nonlocal cash, qty, units, side
         assert trade is not None
-        fill = px * (1 - fees.slippage)
+        fill = px * (
+            1 - side * fees.slippage
+        )  # selling a long gets less, covering a short pays more
         fee = qty * fill * fees.fee
-        cash += qty * fill - fee
-        trade.fees += fee
+        cash += side * qty * fill - fee - penalty
+        trade.fees += fee + penalty
         trade.exit_time, trade.exit_price, trade.reason = t[i], fill, reason
         trade.pnl = cash - trade_cash_before
         trade.bars = i - trade.entry_i
         trade.stop = stop
         res.trades.append(trade)
-        qty, units = 0.0, 0
+        qty, units, side = 0.0, 0, 0
 
     for i in range(len(bars)):
         # 1. orders decided at yesterday's close fill at today's open
@@ -162,8 +203,9 @@ def run(bars: Sequence[Candle], p: TrendParams, fees: Fees) -> Result:
             close_out(i, o[i], "CHANNEL")
             trade = None
         elif pending in ("entry", "add"):
-            fill = o[i] * (1 + fees.slippage)
-            equity = cash + qty * o[i]
+            s = pending_side if pending == "entry" else side
+            fill = o[i] * (1 + s * fees.slippage)
+            equity = cash + side * qty * o[i]
             if pending == "entry":
                 n_atr = pending_n
             room = max(0.0, p.max_exposure * equity - qty * fill)
@@ -174,38 +216,69 @@ def run(bars: Sequence[Candle], p: TrendParams, fees: Fees) -> Result:
                 fee = add * fill * fees.fee
                 if trade is None:
                     trade_cash_before = cash
-                    trade = Trade(i, t[i], fill, 0.0, 0, 0.0, 0.0)
+                    trade = Trade(
+                        i, t[i], fill, 0.0, 0, 0.0, 0.0, side="LONG" if s > 0 else "SHORT"
+                    )
+                trade.capped = trade.capped or add < want
                 trade.entry_price = (trade.entry_price * trade.qty + fill * add) / (trade.qty + add)
                 trade.qty += add
                 trade.units += 1
                 trade.risk += add * p.stop_atr * n_atr
                 trade.fees += fee
-                cash -= add * fill + fee
+                cash -= s * add * fill + fee
                 qty += add
+                side = s
                 units += 1
                 last_fill = fill
-                stop = fill - p.stop_atr * n_atr
+                stop = fill - s * p.stop_atr * n_atr
         pending = None
 
-        # 2. the resting stop, intraday (also on the day of the fill)
-        if qty > 0 and lo[i] <= stop:
-            close_out(i, min(o[i], stop), "STOP")
-            trade = None
+        # 2. intraday, in the adverse direction: liquidation and the resting stop, whichever
+        #    the price reaches first (also on the day of the fill)
+        if qty > 0:
+            adverse = lo[i] if side > 0 else h[i]
 
-        # 3. mark to market at the close
-        res.equity.append(cash + qty * c[i])
+            liq = liquidation_price(cash, side, qty, p.maint_margin)
+            if liq is not None and _reached(o[i], liq, side):
+                kind, px = "LIQUIDATION", o[i]
+            else:
+                hit = [(stop, "STOP")] if _reached(adverse, stop, side) else []
+                if liq is not None and _reached(adverse, liq, side):
+                    hit.append((liq, "LIQUIDATION"))
+                kind, px = "", 0.0
+                if hit:  # the level nearest the open is reached first
+                    level, kind = max(hit) if side > 0 else min(hit)
+                    px = o[i] if _reached(o[i], level, side) else level
+            if kind == "LIQUIDATION":
+                close_out(i, px, kind, penalty=p.maint_margin * qty * px)
+                trade = None
+                res.liquidations += 1
+                broke = cash <= 0
+            elif kind == "STOP":
+                close_out(i, px, kind)
+                trade = None
+
+        # 3. funding on the position held through the day, then mark to market at the close
+        if qty > 0 and trade is not None:
+            cost = side * qty * c[i] * funding.get(t[i], 0.0)
+            cash -= cost
+            trade.funding += cost
+        res.equity.append(max(cash + side * qty * c[i], 1e-9))
         res.in_market.append(qty > 0)
 
         # 4. signals on this close, for tomorrow's open
-        if i < p.warmup or i == len(bars) - 1:
+        if i < p.warmup or i == len(bars) - 1 or broke:
             continue
         if qty > 0:
-            if c[i] < lower[i]:
+            if (side > 0 and c[i] < exit_lo[i]) or (side < 0 and c[i] > exit_hi[i]):
                 pending = "exit"
-            elif units < p.max_units and c[i] >= last_fill + p.add_atr * n_atr:
+            elif units < p.max_units and side * (c[i] - last_fill) >= p.add_atr * n_atr:
                 pending = "add"
-        elif c[i] > upper[i] and atr[i] > 0 and (not p.regime_ma or c[i] > ma[i]):
-            pending, pending_n = "entry", atr[i]
+        elif atr[i] > 0:
+            if c[i] > entry_hi[i] and (not p.regime_ma or c[i] > ma[i]):
+                pending, pending_n, pending_side = "entry", atr[i], 1
+            elif p.allow_short and c[i] < entry_lo[i] and (not p.regime_ma or c[i] < ma[i]):
+                pending, pending_n, pending_side = "entry", atr[i], -1
 
     if trade is not None:  # still held: marked at the last close, not closed
         trade.exit_price = c[-1]
@@ -286,8 +359,29 @@ def trade_stats(trades: Sequence[Trade]) -> dict[str, Any]:
         else None,
         "avg_bars_win": round(sum(x.bars for x in wins) / len(wins), 1) if wins else None,
         "avg_bars_loss": round(sum(x.bars for x in losses) / len(losses), 1) if losses else None,
-        "exits": {k: sum(1 for x in closed if x.reason == k) for k in ("STOP", "CHANNEL")},
+        "exits": {
+            k: sum(1 for x in closed if x.reason == k) for k in ("STOP", "CHANNEL", "LIQUIDATION")
+        },
         "fees_paid": round(sum(x.fees for x in trades), 2),
+        "funding_paid": round(sum(x.funding for x in trades), 2),
+        "capped_pct": round(100 * sum(x.capped for x in trades) / len(trades), 1)
+        if trades
+        else None,
+        "by_side": {
+            sd: {
+                "trades": sum(1 for x in closed if x.side == sd),
+                "net_pnl": round(sum(x.pnl for x in closed if x.side == sd), 2),
+                "win_rate_pct": round(
+                    100
+                    * sum(1 for x in closed if x.side == sd and x.pnl > 0)
+                    / sum(1 for x in closed if x.side == sd),
+                    1,
+                )
+                if any(x.side == sd for x in closed)
+                else None,
+            }
+            for sd in ("LONG", "SHORT")
+        },
         "max_losing_streak": _streak([x.pnl <= 0 for x in closed]),
     }
 
@@ -322,7 +416,9 @@ def yearly(res: Result, bh: Sequence[float]) -> list[dict[str, Any]]:
     return out
 
 
-def summary(res: Result, fees: Fees) -> dict[str, Any]:
+def summary(
+    res: Result, fees: Fees, funding: Mapping[datetime, float] | None = None
+) -> dict[str, Any]:
     """Whole period, the first 2/3 and the last 1/3, each against buy & hold."""
     s, e = res.start, len(res.equity) - 1
     bh = buy_hold(res, fees, s, e)
@@ -341,8 +437,9 @@ def summary(res: Result, fees: Fees) -> dict[str, Any]:
     return {
         "params": res.params.as_dict(),
         "params_hash": res.params.digest(),
-        "fees": {"fee": fees.fee, "slippage": fees.slippage},
+        "fees": {"fee": fees.fee, "slippage": fees.slippage, "funding": bool(funding)},
         "bars": len(res.times),
+        "liquidations": res.liquidations,
         "first_signal_bar": res.times[s].date().isoformat(),
         "full": part(s, e),
         "first_two_thirds": part(s, split),
@@ -352,7 +449,11 @@ def summary(res: Result, fees: Fees) -> dict[str, Any]:
 
 
 def grid(
-    bars: Sequence[Candle], base: TrendParams, fees: Fees, axes: Mapping[str, Sequence[Any]]
+    bars: Sequence[Candle],
+    base: TrendParams,
+    fees: Fees,
+    axes: Mapping[str, Sequence[Any]],
+    funding: Mapping[datetime, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Sensitivity table over parameter axes (for robustness, not for picking the best)."""
     rows: list[dict[str, Any]] = []
@@ -363,7 +464,7 @@ def grid(
     start = max(TrendParams.from_mapping({**base.as_dict(), **cmb}).warmup for cmb in combos)
     for cmb in combos:
         p = TrendParams.from_mapping({**base.as_dict(), **cmb})
-        r = run(bars, p, fees)
+        r = run(bars, p, fees, funding)
         st = curve_stats(r.times[start:], r.equity[start:])
         ts = trade_stats([x for x in r.trades if x.entry_time >= r.times[start]])
         rows.append(

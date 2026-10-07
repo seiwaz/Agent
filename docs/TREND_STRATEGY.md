@@ -25,7 +25,9 @@ bars up to *t*; the order fills at the **open of day *t* + 1** (market order).
 | Sizing: `full` | all equity in (spot timing: in the market or in USDT) | |
 | Exposure cap | notional ≤ `max_exposure` × equity (1 = spot, no leverage) | `max_exposure` (1) |
 | Pyramiding (off) | add a unit when close ≥ last fill + `add_atr` × N (N = ATR at the first entry), up to `max_units`; every unit's stop moves to last fill − `stop_atr` × N | `max_units` (1), `add_atr` (1) |
-| Short side | none (spot, long only) | |
+| Short side (futures, off) | mirror: close < lowest low of the previous `entry_len` days; stop `stop_atr` × ATR above; exit on a close > highest high of the previous `exit_len` days | `allow_short` (false) |
+| Funding (futures) | `--funding CSV`: the day's summed rate × notional at the close; longs pay a positive rate | |
+| Liquidation (futures) | cross margin on the whole equity; checked against the day's adverse extreme, before the stop when nearer | `maint_margin` (0.005) |
 
 Costs: every fill pays `fee` (default `costs.taker_fee`) and `slippage` (default
 `costs.slippage_allowance`), as fractions of the notional / price, against the trade. These
@@ -67,7 +69,8 @@ Output (JSON, and with `--out`: `summary.json`, `trades.csv`, `equity.csv`):
 
 ## Evaluation rules (fixed before the first run on real data)
 
-Results: [`docs/trend/report.md`](trend/report.md).
+Results: [`docs/trend/report.md`](trend/report.md); higher risk and futures:
+[`docs/trend/report2.md`](trend/report2.md) (plan: `docs/trend/plan2.md`).
 
 The defaults above (20 / 10 / 2 × ATR(20), filter off) are the ones under test. They come from
 the literature (Donchian / Turtle rules), not from this data. Judged on BTC daily data from

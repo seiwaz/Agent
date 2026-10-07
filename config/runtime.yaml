@@ -152,3 +152,5 @@ trend:
   max_units: 1      # pyramiding off
   add_atr: 1
   initial_equity: 10000
+  allow_short: false  # futures: the mirrored short side (report 2: it loses on BTC)
+  maint_margin: 0.005 # futures: cross-margin maintenance rate for the liquidation check

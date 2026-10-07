@@ -3,6 +3,8 @@
     uv run python scripts/fetch_daily.py --source binance --symbol BTCUSDT   # from 2017-08
     uv run python scripts/fetch_daily.py --source bitstamp --symbol btcusd   # from 2011-08
     uv run python scripts/fetch_daily.py --source binance_vision --symbol BTCUSDT  # bulk archive
+    uv run python scripts/fetch_daily.py --source binance_futures --symbol BTCUSDT  # USDT-M perp
+    uv run python scripts/fetch_daily.py --source binance_funding --symbol BTCUSDT  # its funding
 
 Public endpoints only (no API key), GET requests only. Days are UTC; today's still-forming
 day is dropped. Output: data/<SOURCE>_<SYMBOL>_1d.csv (columns date, open, high, low, close,
@@ -83,15 +85,16 @@ def bitstamp(symbol: str, since: datetime) -> list[Candle]:
         time.sleep(0.3)
 
 
-def binance_vision(symbol: str, since: datetime) -> list[Candle]:
+def binance_vision(symbol: str, since: datetime, market: str = "spot") -> list[Candle]:
     """Binance's bulk archive (data.binance.vision): monthly files, then daily files for the
-    current month. Reachable where the REST API answers 451 (restricted locations)."""
+    current month. Reachable where the REST API answers 451 (restricted locations).
+    market: spot / futures/um (USDT-M perpetuals, from 2020-01)."""
     import csv
     import io
     import urllib.error
     import zipfile
 
-    base = "https://data.binance.vision/data/spot"
+    base = f"https://data.binance.vision/data/{market}"
     out: list[Candle] = []
 
     def read(url: str) -> bool:
@@ -127,17 +130,78 @@ def binance_vision(symbol: str, since: datetime) -> list[Candle]:
     return out
 
 
-SOURCES = {"binance": binance, "binance_vision": binance_vision, "bitstamp": bitstamp}
+def binance_futures(symbol: str, since: datetime) -> list[Candle]:
+    return binance_vision(symbol, since, market="futures/um")
+
+
+def binance_funding(symbol: str, since: datetime) -> list[tuple[int, str]]:
+    """USDT-M funding events (epoch ms, rate) from the bulk archive, monthly files."""
+    import csv
+    import io
+    import urllib.error
+    import zipfile
+
+    out: list[tuple[int, str]] = []
+    now = datetime.now(UTC)
+    y, m = (2020, 1) if since < datetime(2020, 1, 1, tzinfo=UTC) else (since.year, since.month)
+    while (y, m) <= (now.year, now.month):
+        url = (
+            "https://data.binance.vision/data/futures/um/monthly/fundingRate/"
+            f"{symbol}/{symbol}-fundingRate-{y}-{m:02d}.zip"
+        )
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r:
+                blob = r.read()
+        except urllib.error.HTTPError as e:
+            if e.code != 404:  # the current month is published after it ends
+                raise
+        else:
+            with zipfile.ZipFile(io.BytesIO(blob)) as z:
+                text = z.read(z.namelist()[0]).decode()
+            out += [
+                (int(row[0]), row[2])
+                for row in csv.reader(io.StringIO(text))
+                if row and row[0].isdigit()
+            ]
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
+
+SOURCES = {
+    "binance": binance,
+    "binance_vision": binance_vision,
+    "binance_futures": binance_futures,
+    "bitstamp": bitstamp,
+}
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", choices=sorted(SOURCES), default="binance")
+    ap.add_argument("--source", choices=[*sorted(SOURCES), "binance_funding"], default="binance")
     ap.add_argument("--symbol", default="BTCUSDT")
     ap.add_argument("--since", default="2010-01-01")
     ap.add_argument("--out", type=Path, default=None)
     a = ap.parse_args()
     since = datetime.fromisoformat(a.since).replace(tzinfo=UTC)
+    if a.source == "binance_funding":
+        import csv
+
+        rows = sorted(set(binance_funding(a.symbol.upper(), since)))
+        out = a.out or Path(f"data/binance_futures_{a.symbol.upper()}_funding.csv")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with out.open("w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["time", "rate"])
+            w.writerows(rows)
+        first = datetime.fromtimestamp(rows[0][0] / 1000, UTC) if rows else None
+        last = datetime.fromtimestamp(rows[-1][0] / 1000, UTC) if rows else None
+        print(
+            json.dumps(
+                {"out": str(out), "events": len(rows), "first": str(first), "last": str(last)},
+                indent=1,
+            )
+        )
+        return
     bars = drop_forming(SOURCES[a.source](a.symbol, since))
     uniq = {b.open_time: b for b in bars}
     bars = [uniq[k] for k in sorted(uniq)]

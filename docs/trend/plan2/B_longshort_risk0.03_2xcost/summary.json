@@ -1,0 +1,280 @@
+{
+ "version": "TREND-1.0",
+ "data": {
+  "repaired": 0,
+  "unreadable": 0,
+  "source": "data/binance_futures_BTCUSDT_1d.csv",
+  "bars": 2470,
+  "first": "2020-01-01",
+  "last": "2026-10-05",
+  "missing_days": 0,
+  "largest_gaps": [],
+  "funding_days": 2465
+ },
+ "params": {
+  "entry_len": 20,
+  "exit_len": 10,
+  "atr_len": 20,
+  "stop_atr": 2.0,
+  "regime_ma": 0,
+  "sizing": "risk",
+  "risk_pct": 0.03,
+  "max_exposure": 3.0,
+  "max_units": 1,
+  "add_atr": 1.0,
+  "initial_equity": 10000.0,
+  "allow_short": true,
+  "maint_margin": 0.005
+ },
+ "params_hash": "cec4791ea6f6732e",
+ "fees": {
+  "fee": 0.0019,
+  "slippage": 0.000652,
+  "funding": true
+ },
+ "bars": 2470,
+ "liquidations": 0,
+ "first_signal_bar": "2020-01-21",
+ "full": {
+  "strategy": {
+   "from": "2020-01-21",
+   "to": "2026-10-05",
+   "days": 2449,
+   "total_return_pct": 205.2,
+   "cagr_pct": 18.1,
+   "vol_pct": 23.9,
+   "sharpe": 0.81,
+   "sortino": 1.32,
+   "max_drawdown_pct": 24.9,
+   "max_drawdown_peak": "2024-03-13",
+   "max_drawdown_trough": "2025-11-10",
+   "calmar": 0.73
+  },
+  "buy_hold": {
+   "from": "2020-01-21",
+   "to": "2026-10-05",
+   "days": 2449,
+   "total_return_pct": 880.5,
+   "cagr_pct": 40.5,
+   "vol_pct": 60.4,
+   "sharpe": 0.87,
+   "sortino": 1.27,
+   "max_drawdown_pct": 76.7,
+   "max_drawdown_peak": "2021-11-08",
+   "max_drawdown_trough": "2022-11-21",
+   "calmar": 0.53
+  },
+  "exposure_pct": 63.7,
+  "trades": {
+   "trades": 65,
+   "open_trade": true,
+   "win_rate_pct": 40.0,
+   "avg_r": 0.9,
+   "median_r": -0.68,
+   "best_r": 47.99,
+   "worst_r": -1.68,
+   "profit_factor": 1.74,
+   "avg_win_pct": 24.4,
+   "avg_loss_pct": -7.5,
+   "avg_bars_win": 44.2,
+   "avg_bars_loss": 10.2,
+   "exits": {
+    "STOP": 26,
+    "CHANNEL": 39,
+    "LIQUIDATION": 0
+   },
+   "fees_paid": 2593.82,
+   "funding_paid": 6945.34,
+   "capped_pct": 0.0,
+   "by_side": {
+    "LONG": {
+     "trades": 35,
+     "net_pnl": 24355.24,
+     "win_rate_pct": 42.9
+    },
+    "SHORT": {
+     "trades": 30,
+     "net_pnl": -3621.36,
+     "win_rate_pct": 36.7
+    }
+   },
+   "max_losing_streak": 8
+  }
+ },
+ "first_two_thirds": {
+  "strategy": {
+   "from": "2020-01-21",
+   "to": "2024-07-10",
+   "days": 1632,
+   "total_return_pct": 187.9,
+   "cagr_pct": 26.7,
+   "vol_pct": 26.6,
+   "sharpe": 1.02,
+   "sortino": 1.69,
+   "max_drawdown_pct": 22.4,
+   "max_drawdown_peak": "2021-01-08",
+   "max_drawdown_trough": "2021-01-27",
+   "calmar": 1.19
+  },
+  "buy_hold": {
+   "from": "2020-01-21",
+   "to": "2024-07-10",
+   "days": 1632,
+   "total_return_pct": 560.1,
+   "cagr_pct": 52.5,
+   "vol_pct": 66.6,
+   "sharpe": 0.98,
+   "sortino": 1.41,
+   "max_drawdown_pct": 76.7,
+   "max_drawdown_peak": "2021-11-08",
+   "max_drawdown_trough": "2022-11-21",
+   "calmar": 0.68
+  },
+  "exposure_pct": 63.9,
+  "trades": {
+   "trades": 42,
+   "open_trade": false,
+   "win_rate_pct": 40.5,
+   "avg_r": 1.3,
+   "median_r": -0.58,
+   "best_r": 47.99,
+   "worst_r": -1.68,
+   "profit_factor": 2.06,
+   "avg_win_pct": 30.8,
+   "avg_loss_pct": -8.0,
+   "avg_bars_win": 45.3,
+   "avg_bars_loss": 11.1,
+   "exits": {
+    "STOP": 16,
+    "CHANNEL": 26,
+    "LIQUIDATION": 0
+   },
+   "fees_paid": 1439.43,
+   "funding_paid": 6084.87,
+   "capped_pct": 0.0,
+   "by_side": {
+    "LONG": {
+     "trades": 23,
+     "net_pnl": 21051.26,
+     "win_rate_pct": 43.5
+    },
+    "SHORT": {
+     "trades": 19,
+     "net_pnl": -2879.62,
+     "win_rate_pct": 36.8
+    }
+   },
+   "max_losing_streak": 4
+  }
+ },
+ "last_third": {
+  "strategy": {
+   "from": "2024-07-10",
+   "to": "2026-10-05",
+   "days": 817,
+   "total_return_pct": 6.0,
+   "cagr_pct": 2.6,
+   "vol_pct": 17.3,
+   "sharpe": 0.24,
+   "sortino": 0.35,
+   "max_drawdown_pct": 20.8,
+   "max_drawdown_peak": "2025-05-22",
+   "max_drawdown_trough": "2025-11-10",
+   "calmar": 0.13
+  },
+  "buy_hold": {
+   "from": "2024-07-10",
+   "to": "2026-10-05",
+   "days": 817,
+   "total_return_pct": 48.5,
+   "cagr_pct": 19.3,
+   "vol_pct": 45.3,
+   "sharpe": 0.62,
+   "sortino": 0.93,
+   "max_drawdown_pct": 53.0,
+   "max_drawdown_peak": "2025-10-06",
+   "max_drawdown_trough": "2026-06-30",
+   "calmar": 0.36
+  },
+  "exposure_pct": 63.4,
+  "trades": {
+   "trades": 23,
+   "open_trade": true,
+   "win_rate_pct": 39.1,
+   "avg_r": 0.17,
+   "median_r": -0.69,
+   "best_r": 6.04,
+   "worst_r": -1.14,
+   "profit_factor": 1.24,
+   "avg_win_pct": 12.3,
+   "avg_loss_pct": -6.5,
+   "avg_bars_win": 42.2,
+   "avg_bars_loss": 8.6,
+   "exits": {
+    "STOP": 10,
+    "CHANNEL": 13,
+    "LIQUIDATION": 0
+   },
+   "fees_paid": 1154.38,
+   "funding_paid": 860.47,
+   "capped_pct": 0.0,
+   "by_side": {
+    "LONG": {
+     "trades": 12,
+     "net_pnl": 3303.98,
+     "win_rate_pct": 41.7
+    },
+    "SHORT": {
+     "trades": 11,
+     "net_pnl": -741.75,
+     "win_rate_pct": 36.4
+    }
+   },
+   "max_losing_streak": 5
+  }
+ },
+ "yearly": [
+  {
+   "year": 2020,
+   "strategy_pct": 84.6,
+   "buy_hold_pct": 231.2,
+   "exposure_pct": 68.0
+  },
+  {
+   "year": 2021,
+   "strategy_pct": 40.7,
+   "buy_hold_pct": 59.6,
+   "exposure_pct": 68.0
+  },
+  {
+   "year": 2022,
+   "strategy_pct": -4.4,
+   "buy_hold_pct": -64.2,
+   "exposure_pct": 57.0
+  },
+  {
+   "year": 2023,
+   "strategy_pct": 9.4,
+   "buy_hold_pct": 155.9,
+   "exposure_pct": 62.0
+  },
+  {
+   "year": 2024,
+   "strategy_pct": 5.9,
+   "buy_hold_pct": 121.1,
+   "exposure_pct": 72.0
+  },
+  {
+   "year": 2025,
+   "strategy_pct": -10.2,
+   "buy_hold_pct": -6.4,
+   "exposure_pct": 52.0
+  },
+  {
+   "year": 2026,
+   "strategy_pct": 18.1,
+   "buy_hold_pct": -2.2,
+   "exposure_pct": 69.0
+  }
+ ]
+}

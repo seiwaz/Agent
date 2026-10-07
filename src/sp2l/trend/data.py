@@ -97,3 +97,14 @@ def write_csv(path: Path, bars: Iterable[Candle]) -> None:
         w.writerow(["date", "open", "high", "low", "close", "volume"])
         for b in bars:
             w.writerow([b.open_time.date().isoformat(), b.open, b.high, b.low, b.close, b.volume])
+
+
+def load_funding_csv(path: Path) -> dict[datetime, float]:
+    """Funding rates (columns time, rate; one row per funding event, time in ISO or epoch
+    s / ms) -> the sum of the rates per UTC day, keyed by the day's open time."""
+    out: dict[datetime, float] = {}
+    with path.open(newline="") as f:
+        for r in csv.DictReader(f):
+            d = _day(_when(r["time"]))
+            out[d] = out.get(d, 0.0) + float(r["rate"])
+    return out

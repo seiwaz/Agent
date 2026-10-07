@@ -30,6 +30,10 @@ class TrendParams:
     max_units: int = 1
     add_atr: float = 1.0
     initial_equity: float = 10_000.0
+    # futures: shorts mirror the long rules (close below the entry_len low, stop above, exit on
+    # a close above the exit_len high); cross-margin maintenance rate for the liquidation check
+    allow_short: bool = False
+    maint_margin: float = 0.005
 
     def __post_init__(self) -> None:
         if self.entry_len < 1 or self.exit_len < 1 or self.atr_len < 1:
@@ -42,6 +46,8 @@ class TrendParams:
             raise ValueError(f"sizing must be one of {SIZINGS}")
         if not 0 < self.risk_pct < 1 or not 0 < self.max_exposure <= 10:
             raise ValueError("risk_pct must be in (0, 1) and max_exposure in (0, 10]")
+        if not 0 <= self.maint_margin < 1:
+            raise ValueError("maint_margin must be in [0, 1)")
 
     @property
     def warmup(self) -> int:
@@ -64,5 +70,12 @@ class TrendParams:
         kw: dict[str, Any] = {}
         for k, v in m.items():
             cur = getattr(base, k)
-            kw[k] = type(cur)(v) if not isinstance(cur, str) else str(v)
+            if isinstance(cur, bool):  # before int: a bool is an int in Python
+                kw[k] = (
+                    v.strip().lower() in ("1", "true", "yes", "on")
+                    if isinstance(v, str)
+                    else bool(v)
+                )
+            else:
+                kw[k] = type(cur)(v) if not isinstance(cur, str) else str(v)
         return cls(**kw)
