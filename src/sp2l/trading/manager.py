@@ -155,6 +155,22 @@ def _price(rows: list[dict[str, Any] | None], keys: tuple[str, ...]) -> Decimal 
     return None
 
 
+EARLIEST = 1_483_228_800  # 2017-01-01: no Tabdeal position opened before this
+
+
+def epoch(v: Any, now: float) -> float | None:
+    """Epoch seconds from a Tabdeal time in s, ms or µs (the unit varies by endpoint), or None
+    if it is missing or not a plausible time (before 2017, or more than a day ahead)."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    for scale in (1.0, 1e3, 1e6, 1e9):
+        if EARLIEST <= x / scale <= now + 86400:
+            return x / scale
+    return None
+
+
 def _rows(rows: Any) -> list[dict[str, Any]]:
     if isinstance(rows, dict):
         rows = rows.get("data") or rows.get("orders") or rows.get("result") or []
@@ -484,13 +500,14 @@ class TradeManager:
         entry = D(pos.get("entryPrice") or p.get("entryPrice") or 0)
         lev = int(D(pos.get("leverage") or 1)) or 1
         sl, tp = _price([pos, p], SL_KEYS), _price([pos, p], TP_KEYS)
-        opened = p.get("createdTime")
+        opened = epoch(p.get("createdTime") or p.get("updateTime") or pos.get("updateTime"),
+                       self.clock())
         side = "LONG" if amt > 0 else "SHORT"
         qty = abs(amt)
         pid = p.get("id")
         from datetime import UTC, datetime
 
-        at = datetime.fromtimestamp(int(opened) / 1000, UTC) if opened else _now()
+        at = datetime.fromtimestamp(opened, UTC) if opened is not None else _now()
         protected = qty if (sl is not None or tp is not None) else Decimal(0)
         ev = f"adopted from Tabdeal: {side} {qty.normalize()} @ {entry} x{lev}" + (
             f", stop {sl} / target {tp}" if protected else ", no stop / target reported"
@@ -574,6 +591,19 @@ class TradeManager:
         amt = D(pos.get("positionAmt", 0)) if pos else Decimal(0)
         if amt == 0 or (amt > 0) != (t["side"] == "LONG"):  # closed (or flipped on Tabdeal)
             return self._ended(t, market, order_status)
+        if t["origin"] == "TABDEAL" and t["filled_at"] is not None and (
+            t["filled_at"].timestamp() < EARLIEST
+        ):  # adopted before times in seconds were understood (stored as 1970)
+            prow = self._position(market) or {}
+            opened = epoch(prow.get("createdTime") or prow.get("updateTime"), self.clock())
+            from datetime import UTC, datetime
+
+            at = datetime.fromtimestamp(opened, UTC) if opened is not None else t["created_at"]
+            if at.timestamp() < EARLIEST:
+                at = _now()
+            self._set(t["id"], f"opening time corrected to {at.isoformat()}", filled_at=at,
+                      created_at=at)
+            t = self._get(t["id"])
         if t["origin"] == "TABDEAL" and abs(amt) != Decimal(t["filled_qty"]):
             entry = D(pos.get("entryPrice") or t["avg_entry"]) if pos else Decimal(t["entry"])
             self._set(t["id"], f"size on Tabdeal now {abs(amt).normalize()} @ {entry}",

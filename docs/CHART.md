@@ -43,7 +43,7 @@ is drawn and feeds the indicators live.
 |---|---|---|
 | Trend line | two clicks | drag either end, or the line |
 | Horizontal line | one click (its price is labelled at the right edge) | drag the line |
-| Long position / Short position | one click at the entry: stop 1.5 × the average bar range away, target at 2R, 20 bars wide | drag the target, the stop, the entry (left) or the width (right); shows the percentages and R:R |
+| Long position / Short position | one click at the entry: stop 1.5 × the average bar range away, target at 2R, 20 bars wide | drag the target, the stop, the entry (left) or the width (right); while selected it shows the prices, percentages and R:R (unselected: no labels) |
 | Price range | two clicks | drag either corner; shows the change, % and bars |
 | Path | a click per point, double-click or Enter to finish | drag any point, or the path |
 

@@ -5,7 +5,8 @@
  * selected or last position drawing to the trade dialog (web/chart/trading.js); drawing alone
  * never creates an order. Every open trade — placed here or directly on Tabdeal — has a position
  * drawing linked to it (`trade`), kept in line with the exchange; dragging its stop / target
- * marks it moved until the panel's SL/TP button sends them to Tabdeal.
+ * marks it moved until the panel's SL/TP button sends them to Tabdeal. A position drawing shows
+ * its labels (entry, stop, target, R:R, result) only while it is selected.
  *
  * Drawings are kept per market in localStorage, in time (UTC seconds) / price, so they appear on
  * every timeframe. Interaction: pick a tool and click on the price pane (trend line, range: two
@@ -127,7 +128,9 @@
         let it = this.items.find((x) => x.trade === t.id) || (t.drawing_id && this.items.find((x) => x.id === t.drawing_id && !x.trade));
         if (!it) {
           const r = b.slice(-14), atr = r.reduce((s, x) => s + (x.h - x.l), 0) / r.length, risk = 1.5 * atr;
-          const t1 = Math.floor(Date.parse(t.filled_at || t.created_at) / 1000);
+          let t1 = Math.floor(Date.parse(t.filled_at || t.created_at) / 1000);
+          const now = b[b.length - 1].t;
+          if (!Number.isFinite(t1) || t1 > now + step || t1 < now - 400 * 86400) t1 = now;  // implausible time: start at the current bar
           it = { id: `trade-${t.id}`, type, t1, t2: Math.max(t1 + 20 * step, b[b.length - 1].t + 10 * step), entry,
             sl: t.sl !== null ? +t.sl : entry - dir * risk, tp: t.tp !== null ? +t.tp : entry + dir * 2 * risk };
           this.items.push(it); changed = true;
@@ -135,6 +138,8 @@
         const unset = t.sl === null && t.tp === null;
         const was = JSON.stringify([it.trade, it.status, it.unset, it.entry, it.sl, it.tp, it.t2]);
         Object.assign(it, { trade: t.id, status: t.status, origin: t.origin, unset });
+        if (!Number.isFinite(it.t1) || it.t1 < b[b.length - 1].t - 400 * 86400) it.t1 = Math.floor(Date.parse(t.filled_at || t.created_at) / 1000) || b[b.length - 1].t;
+        if (!(it.t1 > b[b.length - 1].t - 400 * 86400)) it.t1 = b[b.length - 1].t;
         if (!it.dirty) {
           if (t.origin === "TABDEAL" || t.status === "ACTIVE") it.entry = entry;
           if (t.sl !== null) it.sl = +t.sl;
@@ -188,7 +193,13 @@
         while (hi - lo > 1) { const m = (lo + hi) >> 1; if (b[m].t <= t) lo = m; else hi = m; }
         lg = lo + (t - b[lo].t) / (b[hi].t - b[lo].t);
       }
-      return ts.logicalToCoordinate(lg);
+      // between two bars (e.g. a fill at 15:20 on 1h bars opening at :30): the library takes
+      // whole bar indexes only, so interpolate between the two neighbours
+      const i = Math.floor(lg), f = lg - i;
+      const a = ts.logicalToCoordinate(i);
+      if (a === null || f === 0) return a;
+      const c = ts.logicalToCoordinate(i + 1);
+      return c === null ? a : a + f * (c - a);
     }
     /** x -> UTC seconds of the nearest bar (past the last bar: whole steps after it). */
     t(x) {
@@ -388,9 +399,11 @@
             ctx.strokeStyle = `rgba(${col.text},0.6)`; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x1, ye); ctx.lineTo(x2, ye); ctx.stroke();
             const reward = Math.abs(it.tp - it.entry), risk = Math.abs(it.entry - it.sl);
             const pct = (v) => `${((v / it.entry) * 100).toFixed(2)}%`;
-            const cx = (x1 + x2) / 2;
-            label(`Target ${fmt(it.tp)} (${long ? "+" : "−"}${pct(reward)})`, cx, T.y(it.tp) + (long ? -11 : 11), `rgba(${col.bull},0.95)`, "center");
-            label(`Stop ${fmt(it.sl)} (${long ? "−" : "+"}${pct(risk)})`, cx, T.y(it.sl) + (long ? 11 : -11), `rgba(${col.bear},0.95)`, "center");
+            const vx1 = Math.max(x1, 0), vx2 = Math.min(x2, T.ws.chart.timeScale().width());
+            const cx = vx2 > vx1 ? (vx1 + vx2) / 2 : (x1 + x2) / 2;  // labels on the visible part
+            // labels only while the drawing is selected (clicked) or being placed
+            if (selected) label(`Target ${fmt(it.tp)} (${long ? "+" : "−"}${pct(reward)})`, cx, T.y(it.tp) + (long ? -11 : 11), `rgba(${col.bull},0.95)`, "center");
+            if (selected) label(`Stop ${fmt(it.sl)} (${long ? "−" : "+"}${pct(risk)})`, cx, T.y(it.sl) + (long ? 11 : -11), `rgba(${col.bear},0.95)`, "center");
             if (it.trade && it.status && (it.unset || it.dirty)) {  // not (yet) the stop / target on Tabdeal
               ctx.save(); ctx.setLineDash([5, 4]); ctx.lineWidth = 1.2;
               ctx.strokeStyle = `rgba(${col.bull},0.9)`; ctx.strokeRect(rt[0], rt[1], rt[2] - rt[0], rt[3] - rt[1]);
@@ -398,9 +411,9 @@
               ctx.restore();
             }
             const tag = it.trade && it.status ? `#${it.trade} ${it.status === "ACTIVE" ? "open" : "pending"}${it.origin === "TABDEAL" ? " (Tabdeal)" : ""} · ` : "";
-            label(`${tag}${long ? "Long" : "Short"} ${fmt(it.entry)} · R:R ${risk ? (reward / risk).toFixed(2) : "—"}${pnl}`, cx, ye, it.trade && it.status ? "rgba(70,90,150,0.95)" : "rgba(90,98,110,0.95)", "center");
-            if (it.trade && it.status && (it.unset || it.dirty)) {
-              label(it.dirty ? "Moved: press SL/TP below to apply on Tabdeal" : "No stop / target on Tabdeal: drag them, then SL/TP", x1, Math.min(rt[1], rs[1]) - 24, "rgba(196,118,0,0.95)", "left");
+            if (selected) label(`${tag}${long ? "Long" : "Short"} ${fmt(it.entry)} · R:R ${risk ? (reward / risk).toFixed(2) : "—"}${pnl}`, cx, ye, it.trade && it.status ? "rgba(70,90,150,0.95)" : "rgba(90,98,110,0.95)", "center");
+            if (selected && it.trade && it.status && (it.unset || it.dirty)) {
+              label(it.dirty ? "Moved: press SL/TP below to apply on Tabdeal" : "No stop / target on Tabdeal: drag them, then SL/TP", Math.max(x1, 0) + 4, Math.min(rt[1], rs[1]) - 34, "rgba(196,118,0,0.95)", "left");
             }
           } else if (it.type === "range") {
             const r = g.rects[0];

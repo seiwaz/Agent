@@ -345,3 +345,21 @@ def test_a_refused_stop_change_keeps_the_previous_one(tm, ex):
     with pytest.raises(TradeError, match="refused"):
         tm.set_sltp(tid, 59500, 61000)
     assert (tm.trades(None, "open")[0]["sl"], tm.trades(None, "open")[0]["tp"]) == (59000, 62000)
+
+
+@pytest.mark.parametrize("created", [1_791_300_000, 1_791_300_000_000, 1_791_300_000_000_000])
+def test_the_opening_time_of_an_adopted_position_in_s_ms_or_us(tm, ex, created):
+    p = ex.manual(M, "0.002", "60000")
+    p["created"] = created
+    tm.reconcile()
+    assert tm.trades(None, "open")[0]["filled_at"].startswith("2026-10-06T15:20")
+
+
+def test_an_adoption_stored_as_1970_is_corrected(tm, ex):
+    p = ex.manual(M, "0.002", "60000")
+    p["created"] = 1_791_300_000
+    tm.reconcile()
+    with tm.db.begin() as c:
+        c.execute(text("UPDATE manual_trades SET filled_at = to_timestamp(1791300), created_at = to_timestamp(1791300)"))
+    tm.reconcile()
+    assert tm.trades(None, "open")[0]["filled_at"].startswith("2026-10-06T15:20")
