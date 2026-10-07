@@ -258,7 +258,10 @@ def run(
                 close_out(i, px, kind)
                 trade = None
 
-        # 3. funding on the position held through the day, then mark to market at the close
+        # 3. idle-cash yield and funding on the position held through the day, then mark to
+        #    market at the close
+        if p.cash_yield and cash > 0:
+            cash += cash * p.cash_yield / YEAR_DAYS
         if qty > 0 and trade is not None:
             cost = side * qty * c[i] * funding.get(t[i], 0.0)
             cash -= cost

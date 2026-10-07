@@ -34,6 +34,8 @@ class TrendParams:
     # a close above the exit_len high); cross-margin maintenance rate for the liquidation check
     allow_short: bool = False
     maint_margin: float = 0.005
+    # yield per year on positive idle cash (e.g. a stablecoin savings rate); 0 = none
+    cash_yield: float = 0.0
 
     def __post_init__(self) -> None:
         if self.entry_len < 1 or self.exit_len < 1 or self.atr_len < 1:
