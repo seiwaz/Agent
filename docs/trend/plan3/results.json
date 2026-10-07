@@ -1,0 +1,242 @@
+{
+ "buy_hold": {
+  "discovery": {
+   "from": "2017-09-06",
+   "to": "2022-12-31",
+   "days": 1942,
+   "total_return_pct": 258.1,
+   "cagr_pct": 27.1,
+   "vol_pct": 78.0,
+   "sharpe": 0.7,
+   "sortino": 1.02,
+   "max_drawdown_pct": 83.2,
+   "max_drawdown_peak": "2017-12-16",
+   "max_drawdown_trough": "2018-12-15",
+   "calmar": 0.33
+  }
+ },
+ "variants": {
+  "V0": {
+   "discovery": {
+    "from": "2017-09-06",
+    "to": "2022-12-31",
+    "days": 1942,
+    "total_return_pct": 411.2,
+    "cagr_pct": 35.9,
+    "vol_pct": 23.4,
+    "sharpe": 1.43,
+    "sortino": 2.45,
+    "max_drawdown_pct": 22.5,
+    "max_drawdown_peak": "2021-03-13",
+    "max_drawdown_trough": "2022-12-16",
+    "calmar": 1.6,
+    "exposure_pct": 16.9
+   },
+   "trades": 46
+  },
+  "V1": {
+   "discovery": {
+    "from": "2017-09-06",
+    "to": "2022-12-31",
+    "days": 1942,
+    "total_return_pct": 871.3,
+    "cagr_pct": 53.3,
+    "vol_pct": 40.2,
+    "sharpe": 1.26,
+    "sortino": 2.08,
+    "max_drawdown_pct": 37.9,
+    "max_drawdown_peak": "2017-12-16",
+    "max_drawdown_trough": "2019-03-31",
+    "calmar": 1.41,
+    "exposure_pct": 29.1
+   },
+   "trades": 51
+  },
+  "V2": {
+   "discovery": {
+    "from": "2017-09-06",
+    "to": "2022-12-31",
+    "days": 1942,
+    "total_return_pct": 146.5,
+    "cagr_pct": 18.5,
+    "vol_pct": 14.2,
+    "sharpe": 1.26,
+    "sortino": 2.26,
+    "max_drawdown_pct": 23.1,
+    "max_drawdown_peak": "2021-04-13",
+    "max_drawdown_trough": "2022-12-29",
+    "calmar": 0.8,
+    "exposure_pct": 12.8
+   },
+   "trades": 632,
+   "costs": 2320.97,
+   "traded": 1818945.81,
+   "forced_exits": []
+  },
+  "V3": {
+   "discovery": {
+    "from": "2017-09-06",
+    "to": "2022-12-31",
+    "days": 1942,
+    "total_return_pct": 332.8,
+    "cagr_pct": 31.7,
+    "vol_pct": 25.1,
+    "sharpe": 1.22,
+    "sortino": 2.03,
+    "max_drawdown_pct": 38.7,
+    "max_drawdown_peak": "2021-04-13",
+    "max_drawdown_trough": "2022-12-29",
+    "calmar": 0.82,
+    "exposure_pct": 24.0
+   },
+   "trades": 870,
+   "costs": 8097.93,
+   "traded": 6346340.21,
+   "forced_exits": []
+  },
+  "P1": {
+   "discovery": {
+    "from": "2017-09-06",
+    "to": "2022-12-31",
+    "days": 1942,
+    "total_return_pct": 112.8,
+    "cagr_pct": 15.3,
+    "vol_pct": 15.6,
+    "sharpe": 0.99,
+    "sortino": 1.44,
+    "max_drawdown_pct": 22.6,
+    "max_drawdown_peak": "2021-11-08",
+    "max_drawdown_trough": "2022-12-30",
+    "calmar": 0.67,
+    "exposure_pct": 12.9
+   },
+   "trades": 3766,
+   "costs": 1795.21,
+   "traded": 1406901.15,
+   "forced_exits": []
+  },
+  "P2": {
+   "discovery": {
+    "from": "2017-09-06",
+    "to": "2022-12-31",
+    "days": 1942,
+    "total_return_pct": 206.1,
+    "cagr_pct": 23.4,
+    "vol_pct": 26.0,
+    "sharpe": 0.94,
+    "sortino": 1.35,
+    "max_drawdown_pct": 36.2,
+    "max_drawdown_peak": "2021-11-08",
+    "max_drawdown_trough": "2022-12-30",
+    "calmar": 0.65,
+    "exposure_pct": 21.3
+   },
+   "trades": 6110,
+   "costs": 4394.06,
+   "traded": 3443619.66,
+   "forced_exits": [
+    [
+     "BCHABCUSDT",
+     "2019-11-29"
+    ],
+    [
+     "TONUSDT",
+     "2026-07-01"
+    ]
+   ]
+  }
+ },
+ "candidates": [],
+ "cash_yield_4pct_discovery": {
+  "V0": {
+   "from": "2017-09-06",
+   "to": "2022-12-31",
+   "days": 1942,
+   "total_return_pct": 508.3,
+   "cagr_pct": 40.4,
+   "vol_pct": 23.4,
+   "sharpe": 1.57,
+   "sortino": 2.7,
+   "max_drawdown_pct": 19.6,
+   "max_drawdown_peak": "2021-01-08",
+   "max_drawdown_trough": "2021-01-27",
+   "calmar": 2.06,
+   "exposure_pct": 16.9
+  },
+  "V1": {
+   "from": "2017-09-06",
+   "to": "2022-12-31",
+   "days": 1942,
+   "total_return_pct": 1036.3,
+   "cagr_pct": 57.9,
+   "vol_pct": 40.2,
+   "sharpe": 1.33,
+   "sortino": 2.2,
+   "max_drawdown_pct": 35.1,
+   "max_drawdown_peak": "2017-12-16",
+   "max_drawdown_trough": "2019-02-24",
+   "calmar": 1.65,
+   "exposure_pct": 29.1
+  },
+  "V2": {
+   "from": "2017-09-06",
+   "to": "2022-12-31",
+   "days": 1942,
+   "total_return_pct": 195.2,
+   "cagr_pct": 22.6,
+   "vol_pct": 14.2,
+   "sharpe": 1.5,
+   "sortino": 2.71,
+   "max_drawdown_pct": 18.2,
+   "max_drawdown_peak": "2021-04-13",
+   "max_drawdown_trough": "2022-12-28",
+   "calmar": 1.24,
+   "exposure_pct": 12.8
+  },
+  "V3": {
+   "from": "2017-09-06",
+   "to": "2022-12-31",
+   "days": 1942,
+   "total_return_pct": 408.8,
+   "cagr_pct": 35.8,
+   "vol_pct": 25.1,
+   "sharpe": 1.34,
+   "sortino": 2.24,
+   "max_drawdown_pct": 35.1,
+   "max_drawdown_peak": "2021-04-13",
+   "max_drawdown_trough": "2022-12-29",
+   "calmar": 1.02,
+   "exposure_pct": 24.0
+  },
+  "P1": {
+   "from": "2017-09-06",
+   "to": "2022-12-31",
+   "days": 1942,
+   "total_return_pct": 157.2,
+   "cagr_pct": 19.4,
+   "vol_pct": 15.6,
+   "sharpe": 1.22,
+   "sortino": 1.78,
+   "max_drawdown_pct": 19.2,
+   "max_drawdown_peak": "2021-11-08",
+   "max_drawdown_trough": "2022-12-29",
+   "calmar": 1.01,
+   "exposure_pct": 12.8
+  },
+  "P2": {
+   "from": "2017-09-06",
+   "to": "2022-12-31",
+   "days": 1942,
+   "total_return_pct": 261.9,
+   "cagr_pct": 27.3,
+   "vol_pct": 26.0,
+   "sharpe": 1.06,
+   "sortino": 1.53,
+   "max_drawdown_pct": 33.7,
+   "max_drawdown_peak": "2021-11-08",
+   "max_drawdown_trough": "2022-12-29",
+   "calmar": 0.81,
+   "exposure_pct": 21.3
+  }
+ }
+}
