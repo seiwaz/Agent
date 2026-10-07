@@ -4,6 +4,8 @@
     python -m sp2l [--config PATH] smc [--duration S] [--log-file PATH]
     python -m sp2l [--config PATH] [--symbol S] backtest [--days N] [--set key=value ...]
     python -m sp2l [--config PATH] [--symbol S] trend-backtest (--csv PATH | --days N) [--grid]
+    python -m sp2l [--config PATH] trend [--duration S] [--log-file PATH]
+    python -m sp2l [--config PATH] trend-status
     python -m sp2l [--config PATH] api [--host 127.0.0.1] [--port 8765]
     python -m sp2l [--config PATH] validate-readonly [--only ITEM,ITEM]
     python -m sp2l [--config PATH] reconcile-history [--apply]
@@ -18,6 +20,8 @@ It requires validated maker_fee / taker_fee / slippage_allowance.
 `backtest` replays the same engine over the stored history and prints the statistics.
 `trend-backtest` runs System B (daily Donchian trend following, docs/TREND_STRATEGY.md) over a
 daily CSV or the stored history aggregated to UTC days, against buy & hold.
+`trend` runs System B on paper (`trend_live`): it keeps the Tabdeal history current and journals
+the engine's decision after each closed UTC day; `trend-status` prints that state once.
 `validate-readonly` performs authenticated READ-ONLY account checks and records the
 evidence in runtime_validation_runs. It never places, cancels or modifies anything.
 """
@@ -332,6 +336,45 @@ def trend_backtest(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
                 w2.writerow([t.date().isoformat(), px, round(eq, 2), int(m)])
 
 
+async def trend(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
+    """System B paper service: keep the history current and journal each closed UTC day."""
+    from sp2l.marketdata.tabdeal_public import chart_history
+    from sp2l.marketdata.tabdeal_ws import ws_market
+    from sp2l.trend import live as tl
+
+    try:
+        params, lc = tl.from_runtime(cfg)
+    except ValueError as e:
+        raise ConfigError(str(e)) from e
+    db = create_engine(cfg.database_url, pool_pre_ping=True)
+    market = ws_market(lc.symbol)
+
+    def fetch(a: Any, b: Any) -> Any:
+        return chart_history(market, "1", a, b, timeout=180)
+
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGINT, stop.set)
+    loop.add_signal_handler(signal.SIGTERM, stop.set)
+    if args.duration:
+        loop.call_later(args.duration, stop.set)
+    await tl.run_trend(db, params, lc, fetch, stop)
+
+
+def trend_status(cfg: RuntimeConfig) -> None:
+    import json as _json
+
+    from sp2l.trend import live as tl
+
+    try:
+        params, lc = tl.from_runtime(cfg)
+    except ValueError as e:
+        raise ConfigError(str(e)) from e
+    s = tl.current(create_engine(cfg.database_url), params, lc)
+    s.pop("curve", None)
+    print(_json.dumps(s, indent=1, default=str))
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="sp2l", description="SMC trading-signal system")
     p.add_argument("--config", default="config/runtime.yaml")
@@ -346,6 +389,10 @@ def main() -> None:
     bt = sub.add_parser("backtest", help="backtest the SMC engine on Tabdeal history")
     bt.add_argument("--days", type=float, default=30.0)
     bt.add_argument("--set", action="append", help="override a parameter: key=value")
+    tl_ = sub.add_parser("trend", help="run System B on paper (journal each closed UTC day)")
+    tl_.add_argument("--duration", type=float, default=None, help="stop after N seconds")
+    tl_.add_argument("--log-file", type=Path, default=None)
+    sub.add_parser("trend-status", help="print System B's paper state from the stored history")
     tr = sub.add_parser("trend-backtest", help="backtest System B (daily trend following)")
     src = tr.add_mutually_exclusive_group(required=True)
     src.add_argument("--csv", type=Path, help="daily OHLC CSV (scripts/fetch_daily.py)")
@@ -400,6 +447,10 @@ def main() -> None:
             backtest(args, cfg)
         elif args.cmd == "trend-backtest":
             trend_backtest(args, cfg)
+        elif args.cmd == "trend":
+            asyncio.run(trend(args, cfg))
+        elif args.cmd == "trend-status":
+            trend_status(cfg)
         elif args.cmd == "api":
             import uvicorn
 

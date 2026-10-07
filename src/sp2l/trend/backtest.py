@@ -19,13 +19,14 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sp2l.core.types import Candle
 from sp2l.trend.model import TrendParams
 
 YEAR_DAYS = 365  # crypto trades every day
+DAY = timedelta(days=1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +94,14 @@ class Result:
     start: int  # first bar on which a signal could be decided
     trades: list[Trade] = field(default_factory=list)
     liquidations: int = 0
+    # after the last close: the order for the next open, and the position held
+    pending: str | None = None  # "entry" / "add" / "exit"
+    pending_side: int = 0
+    pending_atr: float = 0.0  # ATR of the entry signal (sizes the order and its stop)
+    side: int = 0
+    qty: float = 0.0
+    stop: float = 0.0
+    units: int = 0
 
 
 def wilder_atr(h: Sequence[float], lo: Sequence[float], c: Sequence[float], n: int) -> list[float]:
@@ -152,9 +161,14 @@ def run(
     p: TrendParams,
     fees: Fees,
     funding: Mapping[datetime, float] | None = None,
+    trade_from: datetime | None = None,
 ) -> Result:
     """`funding`: the sum of the day's funding rates per UTC day (open time); a position held
-    at the day's close pays side x rate x notional (longs pay a positive rate)."""
+    at the day's close pays side x rate x notional (longs pay a positive rate).
+    `trade_from`: no entry fills before this day (the paper wallet's start); the bars before
+    it only warm the indicators up.
+    The order decided on the last close (for the next, not yet existing open) is returned in
+    `Result.pending`; it never changes the trades or the equity."""
     if len(bars) <= p.warmup + 1:
         raise ValueError(f"{len(bars)} daily bars; System B needs more than {p.warmup + 1}")
     t = [b.open_time for b in bars]
@@ -270,19 +284,21 @@ def run(
         res.in_market.append(qty > 0)
 
         # 4. signals on this close, for tomorrow's open
-        if i < p.warmup or i == len(bars) - 1 or broke:
+        if i < p.warmup or broke:
             continue
         if qty > 0:
             if (side > 0 and c[i] < exit_lo[i]) or (side < 0 and c[i] > exit_hi[i]):
                 pending = "exit"
             elif units < p.max_units and side * (c[i] - last_fill) >= p.add_atr * n_atr:
                 pending = "add"
-        elif atr[i] > 0:
+        elif atr[i] > 0 and (trade_from is None or t[i] + DAY >= trade_from):
             if c[i] > entry_hi[i] and (not p.regime_ma or c[i] > ma[i]):
                 pending, pending_n, pending_side = "entry", atr[i], 1
             elif p.allow_short and c[i] < entry_lo[i] and (not p.regime_ma or c[i] < ma[i]):
                 pending, pending_n, pending_side = "entry", atr[i], -1
 
+    res.pending, res.pending_side, res.pending_atr = pending, pending_side, pending_n
+    res.side, res.qty, res.stop, res.units = side, qty, stop, units
     if trade is not None:  # still held: marked at the last close, not closed
         trade.exit_price = c[-1]
         trade.pnl = res.equity[-1] - trade_cash_before

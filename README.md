@@ -51,6 +51,13 @@ uv run python scripts/fetch_daily.py --source binance --symbol BTCUSDT   # daily
 uv run python -m sp2l trend-backtest --csv data/binance_BTCUSDT_1d.csv --grid --out docs/trend/btc
 ```
 
+### Live (paper)
+The `trend` / `trend_live` sections of the config (spot, long only, 20 / 10, stop 2 × ATR,
+risk 5 %): `uv run python -m sp2l trend` keeps the Tabdeal history current and journals the
+engine's decision after each closed UTC day in `trend_journal` (`alembic upgrade head` first);
+`uv run python -m sp2l trend-status` prints the state; the dashboard's **Trend** tab shows it.
+Services: `scripts/trend-service.sh` (macOS), `deploy/smc-trend.service` (Linux). No orders.
+
 ## Development
 ```sh
 uv sync

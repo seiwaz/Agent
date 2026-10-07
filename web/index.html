@@ -22,6 +22,7 @@
       <a href="#/signals" data-view="signals">Signals</a>
       <a href="#/performance" data-view="performance">Performance</a>
       <a href="#/strategy" data-view="strategy">Strategy</a>
+      <a href="#/trend" data-view="trend">Trend</a>
       <a href="#/system" data-view="system">System</a>
     </nav>
     <div class="top-meta">
@@ -119,6 +120,22 @@
         <section class="card"><h2>Setup rules</h2><dl class="kv glossary" id="factor-list"></dl></section>
         <section class="card"><h2>Rejection reasons</h2><dl class="kv glossary" id="reason-list"></dl></section>
       </div>
+    </section>
+
+    <!-- TREND: System B on paper (daily Donchian, long only, spot) -->
+    <section class="view" id="view-trend" aria-labelledby="trend-h" hidden>
+      <div class="view-head"><h1 class="view-title" id="trend-h">Trend · System B</h1><span class="muted small" id="trend-meta"></span></div>
+      <p class="note" id="trend-note"></p>
+      <div class="two-col">
+        <section class="card"><div class="card-head"><h2>Decision at the last daily close</h2><span class="muted small" id="trend-asof"></span></div>
+          <div id="trend-action"></div><dl class="kv" id="trend-levels"></dl></section>
+        <section class="card"><h2>Position</h2><dl class="kv" id="trend-position"></dl></section>
+      </div>
+      <section class="card"><div class="card-head"><h2>Paper wallet</h2><span class="muted small" id="trend-wallet-meta"></span></div>
+        <div class="stat-grid" id="trend-stats"></div><div class="equity" id="trend-curve" role="img" aria-label="Paper wallet equity in USDT"></div>
+        <h3>Closed trades</h3><div class="table-wrap"><table id="trend-trades"></table></div></section>
+      <section class="card"><h2>Journal · one row per closed UTC day, as recorded at the time</h2><div class="table-wrap tall"><table id="trend-journal"></table></div></section>
+      <section class="card"><h2>Rules</h2><dl class="kv glossary" id="trend-rules"></dl></section>
     </section>
 
     <!-- SYSTEM: is the data complete and the engine alive? -->

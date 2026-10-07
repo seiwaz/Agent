@@ -87,6 +87,17 @@ most of the long-run gain while avoiding most of the 75–85 % drawdowns. If rul
 next step is the live wiring (signals at the daily close, paper only, as the SMC engine does).
 If they do not, the result is reported as it is, and nothing is built on it.
 
+## Live (paper)
+
+`python -m sp2l trend` (service) and the dashboard's **Trend** tab. The paper wallet is the
+backtest of the `trend` parameters (`config/*.yaml`: risk 5 %) from `trend_live.paper_start` on,
+with `trend_live.account_usdt`, on Tabdeal's BTCUSDT chart aggregated to UTC days. Bars before
+the start only warm the indicators up. Live and backtest share `sp2l.trend.backtest.run`.
+After each closed UTC day the service records the decision on that close in `trend_journal`
+(BUY / SELL / ADD at the next 00:00 UTC open, HOLD, WAIT) with the levels and the equity. The first
+record of a day is never rewritten. No order is ever sent. The price feed is Tabdeal's futures
+chart, simulated as spot (no funding).
+
 ## Not modelled
 
 Spot borrowing (only with `max_exposure` > 1, unused), funding (spot has none), the exchange

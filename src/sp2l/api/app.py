@@ -219,6 +219,22 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
             headers={"X-Accel-Buffering": "no"},
         )
 
+    @app.get("/api/trend")
+    def trend(journal_days: int = Query(60, ge=1, le=400)) -> Any:
+        """System B paper wallet: state after the last closed UTC day, and the journal."""
+        from sp2l.trend import live as tl
+
+        try:
+            p, lc = tl.from_runtime(cfg)
+        except (ConfigError, ValueError) as exc:
+            return {"ready": False, "reason": str(exc)}
+        out = tl.current(db, p, lc)
+        try:
+            out["journal"] = tl.journal(db, lc.symbol, journal_days)
+        except Exception:  # table missing before `alembic upgrade head`
+            out["journal"] = []
+        return out
+
     @app.get("/api/health")
     def health() -> Any:
         return {"ok": True}

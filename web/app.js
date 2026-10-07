@@ -1000,6 +1000,62 @@ async function renderPerformance() {
     el("td", {}, stateTag(t.state)), el("td", {}, rEl(t.result_r))));
 }
 
+/* ---- trend view (System B, paper) --------------------------------------------------------------- */
+const TREND_ACTION = { BUY: ["ok", "up", "Buy at the next open"], SELL: ["bad", "down", "Sell at the next open"],
+  ADD: ["ok", "up", "Add a unit at the next open"], HOLD: ["info", "flat", "Hold the position"], WAIT: ["neutral", "flat", "No position · waiting for a breakout"] };
+const kvRows = (target, rows, text) => $(target).replaceChildren(...rows.flatMap(([k, v]) => [el("dt", {}, k), el("dd", text ? {} : { class: "num" }, v)]));
+const px2 = (v) => (v === null || v === undefined ? "—" : usd(v, 2));
+async function renderTrend() {
+  const t = await api("/api/trend?journal_days=120");
+  if (!t.ready) {
+    $("trend-note").textContent = `System B is not ready: ${t.reason || "no data"}.`;
+    return;
+  }
+  $("trend-note").textContent = "";
+  const p = t.params;
+  $("trend-meta").textContent = `${t.symbol} · ${t.version} · params ${t.params_hash} · paper since ${t.paper_start} · signals only, no orders`;
+  $("trend-asof").textContent = `UTC day ${t.as_of}`;
+  const [tone, ic, label] = TREND_ACTION[t.action] || ["neutral", "dot", t.action];
+  const nx = t.next || {};
+  $("trend-action").replaceChildren(el("p", {}, tag(tone, label, ic),
+    nx.at ? el("span", { class: "muted small" }, ` · ${when(nx.at)}`) : ""));
+  kvRows("trend-levels", [
+    ["Last close", px2(t.close)],
+    [`Buy trigger · close above the ${p.entry_len}-day high`, px2(t.entry_level)],
+    [`Exit trigger · close below the ${p.exit_len}-day low`, px2(t.exit_level)],
+    [`ATR(${p.atr_len})`, px2(t.atr)],
+    ...(nx.action === "BUY" ? [["Planned size (est.)", `${(+nx.est_qty).toFixed(6)} BTC · ${usd(nx.est_notional)} $`],
+      ["Planned stop (est.)", px2(nx.est_stop)], ["Risk at the stop", `${usd(nx.risk_usdt)} $`]] : []),
+  ]);
+  const pos = t.position;
+  if (pos) kvRows("trend-position", [["Since", pos.entry_day], ["Entry", px2(pos.entry_price)], ["Size", `${(+pos.qty).toFixed(6)} BTC`],
+    ["Value", `${usd(pos.notional)} $`], ["Stop", px2(pos.stop)], ["Unrealized", el("span", { class: toneOf(pos.unrealized_usdt) }, `${usdSigned(pos.unrealized_usdt)} $ · ${rText(pos.r)}`)],
+    ["Days held", show(pos.days)]]);
+  else $("trend-position").replaceChildren(el("dt", {}, "Flat"), el("dd", {}, "No open position"));
+  $("trend-wallet-meta").textContent = `fee ${(t.fees.fee * 100).toFixed(3)} % + slippage ${(t.fees.slippage * 100).toFixed(4)} % per fill`;
+  const ts = t.trade_stats || {};
+  $("trend-stats").replaceChildren(statBox("Initial", `${usd(t.account_usdt)} $`), statBox("Equity", `${usd(t.equity)} $`, toneOf(t.return_pct)),
+    statBox("Return", pct(t.return_pct / 100, 2), toneOf(t.return_pct)), statBox("Max drawdown", t.stats.max_drawdown_pct !== undefined ? pct(t.stats.max_drawdown_pct / 100, 1) : "—"),
+    statBox("Closed trades", show(ts.trades)), statBox("Win rate", ts.win_rate_pct === null || ts.win_rate_pct === undefined ? "—" : pct(ts.win_rate_pct / 100)));
+  drawLine("trend-curve", t.curve.map((c) => +c.equity), { base: +t.account_usdt });
+  table("trend-trades", ["Entry", "Exit", "Exit kind", "Entry price", "Exit price", "PnL $", "Result"], [...t.trades].reverse(), (x) => el("tr", {},
+    el("td", {}, x.entry_time), el("td", {}, show(x.exit_time)), el("td", {}, x.reason === "STOP" ? tag("bad", "Stop") : tag("neutral", "Channel exit")),
+    el("td", { class: "num" }, px2(x.entry_price)), el("td", { class: "num" }, px2(x.exit_price)),
+    el("td", { class: `num ${toneOf(x.pnl)}` }, usdSigned(x.pnl)), el("td", {}, rEl(x.r))), "No closed trade yet");
+  table("trend-journal", ["UTC day", "Decision", "Close", "Buy trigger", "Exit trigger", "Stop", "BTC held", "Equity $", "Recorded"], t.journal || [], (j) => el("tr", {},
+    el("td", {}, j.day), el("td", {}, tag(...(TREND_ACTION[j.action] || ["neutral", "dot"]).slice(0, 1), j.action)),
+    el("td", { class: "num" }, px2(j.close)), el("td", { class: "num" }, px2(j.entry_level)), el("td", { class: "num" }, px2(j.exit_level)),
+    el("td", { class: "num" }, px2(j.stop)), el("td", { class: "num" }, (+j.position_qty).toFixed(6)), el("td", { class: "num" }, usd(j.equity)),
+    el("td", { class: "muted small" }, when(j.recorded_at))), "The journal starts with the first closed UTC day after the trend service starts");
+  kvRows("trend-rules", [
+    ["Entry", `daily close above the highest high of the previous ${p.entry_len} days, filled at the next 00:00 UTC open`],
+    ["Initial stop", `${p.stop_atr} × ATR(${p.atr_len}) below the fill, active from the fill`],
+    ["Exit", `daily close below the lowest low of the previous ${p.exit_len} days, at the next open; or the stop`],
+    ["Size", `${(p.risk_pct * 100).toFixed(1)} % of equity lost at the stop; at most ${p.max_exposure}× equity (spot, long only)`],
+    ["Evidence", "docs/trend/report.md, report2.md, report3.md"],
+  ], true);
+}
+
 /* ---- strategy view ----------------------------------------------------------------------------- */
 async function loadParams(sym) {
   if (!state.params[sym]) state.params[sym] = await api(`/api/smc/params?symbol=${encodeURIComponent(sym)}`);
@@ -1091,7 +1147,7 @@ function applyOverview(o) {
 }
 function route() {
   const v = (location.hash.replace("#/", "") || "chart").split("?")[0];
-  state.view = ["chart", "signals", "performance", "strategy", "system"].includes(v) ? v : "chart";
+  state.view = ["chart", "signals", "performance", "strategy", "trend", "system"].includes(v) ? v : "chart";
   for (const s of document.querySelectorAll(".view")) s.hidden = s.id !== `view-${state.view}`;
   for (const a of document.querySelectorAll("#nav a")) {
     if (a.dataset.view === state.view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
@@ -1127,6 +1183,7 @@ async function refreshView() {
   else if (state.view === "signals") await renderSignals();
   else if (state.view === "performance") { await Promise.all(state.symbols.map(loadParams)).catch(() => {}); await renderPerformance(); }
   else if (state.view === "strategy") await renderStrategy();
+  else if (state.view === "trend") await renderTrend();
   else if (state.view === "system") await renderSystem();
 }
 function setTheme(t) {
