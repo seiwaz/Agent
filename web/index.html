@@ -25,6 +25,7 @@
       <a href="#/trend" data-view="trend">Trend</a>
       <a href="#/system" data-view="system">System</a>
     </nav>
+    <div class="tf-trends" id="tf-trends" aria-label="Market structure trend per timeframe"></div>
     <div class="top-meta">
       <span class="pill" id="runner-pill" title="SMC engine status"></span>
       <span class="pill" id="feed-pill" title="Live market feed"></span>
@@ -34,50 +35,10 @@
   </header>
 
   <main id="main">
-    <!-- CHART: where is price inside the structure, and is there a trade? -->
-    <section class="view" id="view-chart" aria-labelledby="chart-h">
+    <!-- CHART: price, structure, levels and indicators (display only, no orders) -->
+    <section class="view view-chart" id="view-chart" aria-labelledby="chart-h">
       <h1 class="sr-only" id="chart-h">Chart</h1>
-      <div class="kpi-strip" id="kpis" aria-label="Summary"></div>
-      <div class="main-row">
-        <section class="card chart-card" id="chart-card" aria-label="Price chart with Smart Money structure">
-          <div class="chart-head">
-            <div class="chart-title">
-              <h2><span id="chart-symbol">—</span></h2>
-              <span class="price num" id="chart-price" aria-live="off">—</span>
-              <span class="live-dot" id="chart-live" hidden title="Live candles from the canonical trade stream">Live</span>
-            </div>
-            <div class="chart-tools">
-              <div class="seg tf-seg" role="tablist" id="tf-seg" aria-label="Timeframe"></div>
-              <button class="icon-btn" id="full-btn" type="button" aria-pressed="false" aria-label="Full screen chart" title="Full screen (Esc to leave)"></button>
-            </div>
-          </div>
-          <div class="chips" id="layer-chips" aria-label="Chart layers"></div>
-          <div class="chart-slot"><div id="chart" class="chart" role="img" aria-label="Candlestick chart with zone setups (sweep, order block, fair value gap), targets and positions"></div>
-            <button class="go-live" id="go-live" type="button" hidden>Go to live</button>
-            <div class="chart-note" id="chart-note" hidden></div>
-          </div>
-          <div class="ohlc num small" id="chart-ohlc" aria-live="off"></div>
-          <ul class="legend" id="chart-legend" aria-label="Legend"></ul>
-        </section>
-        <aside class="side-col">
-          <section class="card ticket" id="ticket" aria-labelledby="ticket-h">
-            <div class="card-head"><h2 id="ticket-h">Positions</h2><span id="ticket-state"></span></div>
-            <div id="ticket-body"></div>
-          </section>
-          <section class="card" aria-labelledby="ladder-h">
-            <div class="card-head"><h2 id="ladder-h">Top-down</h2><span class="muted small" id="ladder-bias"></span></div>
-            <ol class="ladder" id="ladder"></ol>
-          </section>
-          <section class="card" aria-labelledby="poi-h">
-            <div class="card-head"><h2 id="poi-h">Setups</h2><span class="muted small">fresh, with the bias</span></div>
-            <ul class="poi-list" id="poi-list"></ul>
-          </section>
-        </aside>
-      </div>
-      <section class="card" aria-labelledby="trig-h">
-        <div class="card-head"><h2 id="trig-h">Setup log</h2><span class="muted small">Every complete zone setup (sweep → break → OB + FVG) and its state</span></div>
-        <ul class="trig-list" id="trig-list"></ul>
-      </section>
+      <section class="chart-ws card" id="chart-ws" aria-label="Chart workspace"></section>
     </section>
 
     <!-- SIGNALS: everything the engine traded, with its full lifecycle -->
@@ -155,8 +116,12 @@
     </section>
   </main>
   <div class="toasts" id="toasts" aria-live="polite"></div>
-  <footer class="foot"><span id="foot-ver">—</span> · Signals only, no orders are sent · <span id="tz-label"></span></footer>
-  <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
+  <footer class="foot"><span id="foot-ver">—</span> · Signals only, no orders are sent · <span id="tz-label"></span> · Charts: <a href="https://www.tradingview.com/lightweight-charts/" rel="noopener">TradingView Lightweight Charts™</a></footer>
+  <script src="/static/vendor/lightweight-charts.v5.standalone.production.js"></script>
+  <script src="/static/chart/indicators.js"></script>
+  <script src="/static/chart/draw.js"></script>
+  <script src="/static/chart/features.js"></script>
+  <script src="/static/chart/workspace.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

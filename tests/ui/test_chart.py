@@ -1,31 +1,56 @@
-"""The chart in a real browser: the default view draws only the tradable setups, the debug
-switch draws every zone, and a setup rejected by a filter only shows up in debug, with its
-reason. Served by the real API from a test database holding the hand-built setup of
-tests/smc/fixtures.py (WebKit, Playwright)."""
+# ruff: noqa: E501  (selectors and in-page scripts are clearer on one line)
+"""The chart workspace in a real browser, served by the real API from a test database with 20
+days of 1-minute history: timeframes, the per-timeframe trend strip, every feature switched on
+and off on its own, indicators in their own panes, settings applied and kept, a timeframe change
+re-applying the active features, full screen, and no page errors (Playwright)."""
 
 from __future__ import annotations
 
-import os
+import io
+import math
+import random
 import socket
 import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import pytest
+from sqlalchemy import text
 
-from sp2l.smc.history import ensure_history
 from tests.db.conftest import URL, engine  # noqa: F401  (module-scoped fresh schema)
-from tests.smc.fixtures import ARMING_BAR, SETUP, T0, expand
 
-pytestmark = pytest.mark.db
+pytestmark = [pytest.mark.db, pytest.mark.browser]
 SYM = "BTCUSDT"
-KEY = "1h:OB:LONG:1767616200"
-SHOTS = os.environ.get("SMC_UI_SHOTS")  # optional folder for screenshots
-SMC = {"swing_len": 2, "atr_len": 3, "fvg_min_atr": 0, "bias_tf": "1h", "history_days": 2}
+END = datetime(2026, 3, 1, tzinfo=UTC)
+
+
+@pytest.fixture(scope="module")
+def data(engine) -> None:  # noqa: F811
+    """20 days of a trending random walk, one bar per minute."""
+    r, px, t, rows = random.Random(5), 50_000.0, END - timedelta(days=20), io.StringIO()
+    drift = 0.0
+    for n in range(20 * 1440):
+        if n % 720 == 0:
+            drift = r.gauss(0, 0.0001)
+        o = px
+        c = o * math.exp(drift + r.gauss(0, 0.0009))
+        h, lo = max(o, c) * 1.0003, min(o, c) * 0.9997
+        rows.write(f"{SYM}\t{t.isoformat()}\t{o:.1f}\t{h:.1f}\t{lo:.1f}\t{c:.1f}\t1\n")
+        px, t = c, t + timedelta(minutes=1)
+    raw = engine.raw_connection()
+    try:
+        with raw.cursor() as cur, cur.copy(
+            "COPY exchange_m1 (symbol, open_time, open, high, low, close, volume) FROM STDIN"
+        ) as cp:
+            cp.write(rows.getvalue())
+        raw.commit()
+    finally:
+        raw.close()
+    with engine.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM exchange_m1")).scalar_one() == 20 * 1440
 
 
 def _free_port() -> int:
@@ -34,29 +59,8 @@ def _free_port() -> int:
         return int(s.getsockname()[1])
 
 
-@pytest.fixture(scope="module")
-def data(engine) -> None:  # noqa: F811
-    m1 = expand(SETUP)[: ARMING_BAR * 60]  # up to the bar before price comes back
-
-    def fetch(a, b):
-        return [
-            {
-                "time": int(c.open_time.timestamp()),
-                "open": float(c.open),
-                "high": float(c.high),
-                "low": float(c.low),
-                "close": float(c.close),
-                "volume": 1.0,
-            }
-            for c in m1
-            if a <= c.open_time < b
-        ]
-
-    ensure_history(engine, SYM, fetch, days=2, now=T0 + timedelta(hours=ARMING_BAR, seconds=20))
-
-
 @contextmanager
-def serve(smc: dict[str, Any]) -> Iterator[str]:
+def serve() -> Iterator[str]:
     import uvicorn
 
     from sp2l.api.app import create_app
@@ -66,9 +70,9 @@ def serve(smc: dict[str, Any]) -> Iterator[str]:
         {
             "database_url": URL,
             "symbols": [SYM],
-            "instruments": {SYM: {"tick": "0.01", "step": "0.001"}},
+            "instruments": {SYM: {"tick": "0.1", "step": "0.001"}},
             "costs": {"maker_fee": "0", "taker_fee": "0", "slippage_allowance": "0"},
-            "smc": smc,
+            "smc": {"htf_grid": "utc"},
         }
     )
     port = _free_port()
@@ -92,106 +96,105 @@ def serve(smc: dict[str, Any]) -> Iterator[str]:
 def browser():
     sync_api = pytest.importorskip("playwright.sync_api")
     with sync_api.sync_playwright() as pw:
+        tries = [
+            lambda: pw.chromium.launch(),
+            *[
+                (lambda exe=exe: pw.chromium.launch(executable_path=exe))
+                for exe in sorted(str(x) for x in Path("/opt/pw-browsers").glob("chromium-*/chrome-linux/chrome"))
+            ],
+            lambda: pw.webkit.launch(),
+        ]
         b = None
-        cache = Path.home() / "Library" / "Caches" / "ms-playwright"
-        tries = [None, *sorted(str(x) for x in cache.glob("webkit-*/pw_run.sh"))]
-        for exe in tries:  # the bundled build, else any installed WebKit build
+        for launch in tries:
             try:
-                b = pw.webkit.launch(executable_path=exe)
+                b = launch()
                 break
             except Exception:  # pragma: no cover
                 continue
         if b is None:  # pragma: no cover
-            pytest.skip("no Playwright WebKit installed (uv run playwright install webkit)")
+            pytest.skip("no Playwright browser installed (uv run playwright install chromium)")
         yield b
         b.close()
 
 
 def _open(browser, url: str):
     pg = browser.new_page(viewport={"width": 1500, "height": 950})
+    errors: list[str] = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
     pg.goto(f"{url}/#/chart")
-    pg.wait_for_function(
-        "() => state.analysis && state.analysis.ready && state.data.length > 0", timeout=60000
-    )
-    pg.evaluate("() => { state.tf = '1h'; renderControls(); return loadChart(false); }")
-    pg.wait_for_function("() => state.analysis.tf === '1h'")
-    return pg
+    pg.wait_for_function("() => state.ws && state.ws.bars.length > 0 && state.ws.overlays", timeout=60000)
+    return pg, errors
 
 
-def _drawn(pg) -> dict:
+def _items(pg) -> dict:
     return pg.evaluate(
-        """() => { const a = shown(); return {
-            mode: state.mode, zones: a.zones.length, htf: a.htf_zones.length,
-            liquidity: a.liquidity.length, setups: a.setups.map((s) => [s.key, s.state]),
-            reasons: a.setups.map((s) => s.plan ? s.plan.reasons.map((r) => r.code) : []),
-            all: (state.analysis.setups_all || []).length }; }"""
+        "() => { const i = state.ws.layer.items; return { boxes: i.boxes.length, lines: i.lines.length, marks: i.marks.length }; }"
     )
 
 
-def test_default_chart_draws_only_the_setup_and_debug_draws_every_zone(data, browser):
-    with serve(SMC) as url:
-        page = _open(browser, url)
-        d = _drawn(page)
-        assert d["mode"] == "setups"
-        assert d["zones"] == d["htf"] == d["liquidity"] == 0  # no standalone zone or level
-        assert d["setups"] == [[KEY, "waiting"]] and d["reasons"] == [[]]
-        plan = page.evaluate("() => state.analysis.setups[0].plan")
-        assert plan["range_mid"] and plan["tp"]["level"] and plan["cost_frac"] is not None
-        if SHOTS:
-            page.locator("#chart-card").screenshot(path=str(Path(SHOTS) / "setups.png"))
-        page.click("[data-mode=debug]")
-        d = _drawn(page)
-        assert d["mode"] == "debug" and d["zones"] > 0 and d["all"] >= 1
-        if SHOTS:
-            page.locator("#chart-card").screenshot(path=str(Path(SHOTS) / "debug.png"))
-        page.click("[data-mode=setups]")
-        assert _drawn(page)["zones"] == 0
+def test_workspace_features_panes_settings_and_full_screen(data, browser):
+    with serve() as url:
+        pg, errors = _open(browser, url)
+        pg.evaluate("() => localStorage.removeItem('smc-chart-v1')")
+        pg.reload()
+        pg.wait_for_function("() => state.ws && state.ws.bars.length > 0 && state.ws.overlays && state.ws.overlays.ready", timeout=60000)
 
+        # timeframes and the trend strip (top bar), green / red per timeframe
+        assert pg.eval_on_selector_all(".ws-tfs button", "bs => bs.map(b => b.textContent)") == ["5m", "15m", "1h", "4h", "1d"]
+        pg.wait_for_function("() => document.querySelectorAll('#tf-trends .tf-trend').length === 5")
+        assert all(c in ("tf-trend t-bull", "tf-trend t-bear", "tf-trend t-none")
+                   for c in pg.eval_on_selector_all("#tf-trends .tf-trend", "xs => xs.map(x => x.className)"))
 
-def test_a_setup_rejected_by_a_filter_is_hidden_by_default_and_shown_in_debug(data, browser):
-    with serve({**SMC, "min_net_rr": 50}) as url:
-        page = _open(browser, url)
-        page.evaluate("() => { state.mode = 'setups'; state.layer.update(); }")
-        assert _drawn(page)["setups"] == []  # LOW_NET_RR: not in the default view
-        page.click("[data-mode=debug]")
-        d = _drawn(page)
-        assert [KEY, "waiting"] in d["setups"]
-        assert "LOW_NET_RR" in d["reasons"][d["setups"].index([KEY, "waiting"])]
-        if SHOTS:
-            page.locator("#chart-card").screenshot(path=str(Path(SHOTS) / "rejected_debug.png"))
-        page.click("[data-mode=setups]")
+        # default: structure and levels drawn, no indicator pane
+        assert pg.evaluate("() => state.ws.chart.panes().length") == 1
+        base = _items(pg)
+        assert base["marks"] > 0 and base["boxes"] + base["lines"] > 0
 
+        # each structure feature switches off on its own
+        pg.click(".ws-layers-btn")
+        pg.uncheck("#ws-f-swings")
+        assert _items(pg)["marks"] == 0
+        pg.check("#ws-f-swings")
+        assert _items(pg) == base
 
-SMC23 = {
-    **SMC,
-    "sl_mode": "structure",
-    "tp_mode": "liquidity",
-    "discount_ref": "displacement",
-    "max_cost_frac": 0.2,
-    "min_net_rr": 2,
-    "liq_buffer_r": 1,
-}
+        # indicators: Donchian on the price pane, RSI and MACD each in their own pane
+        for f in ("donchian", "rsi", "macd"):
+            pg.check(f"#ws-f-{f}")
+        assert pg.evaluate("() => state.ws.chart.panes().length") == 3
+        pg.uncheck("#ws-f-rsi")
+        assert pg.evaluate("() => state.ws.chart.panes().length") == 2
 
+        # a setting applies at once and is kept
+        pg.check("#ws-f-rsi")
+        pg.click("#ws-f-rsi >> xpath=ancestor::div[contains(@class,'ws-item')]//button[contains(@class,'ws-gear')]")
+        inp = pg.locator("#ws-form-rsi input[type=number]").first
+        inp.fill("21")
+        inp.dispatch_event("change")
+        assert pg.evaluate("() => JSON.parse(localStorage.getItem('smc-chart-v1')).features.rsi.s.length") == 21
+        assert pg.evaluate("() => state.ws.cfg.features.rsi.s.length") == 21
 
-def test_smc23_default_view_shows_the_liquidity_target_and_hides_liq_limited(data, browser):
-    with serve(SMC23) as url:
-        page = _open(browser, url)
-        d = _drawn(page)
-        assert d["setups"] == [[KEY, "waiting"]] and d["reasons"] == [[]]
-        plan = page.evaluate("() => state.analysis.setups[0].plan")
-        assert plan["tp"]["source"].startswith("1h")  # nearest unswept liquidity
-        assert float(plan["sl"]) < 94  # beyond the OB / sweep wick (94) by the ATR buffer
-        assert float(plan["range_mid"]) == 100  # sweep wick 94 -> displacement high 106
-        page.goto(f"{url}/#/strategy")
-        page.wait_for_function(
-            "() => document.getElementById('model-flow').innerText.includes('liquidity')",
-            timeout=30000,
-        )
-        flow = page.inner_text("#model-flow")
-        assert "nearest unswept liquidity" in flow and "ATR" in flow
-    with serve({**SMC23, "liq_buffer_r": 10**9}) as url:
-        page = _open(browser, url)
-        assert _drawn(page)["setups"] == []  # LIQ_LIMITED: not in the default view
-        page.click("[data-mode=debug]")
-        d = _drawn(page)
-        assert "LIQ_LIMITED" in d["reasons"][d["setups"].index([KEY, "waiting"])]
+        # a timeframe change re-applies every active feature to that timeframe
+        pg.click(".ws-tfs button:has-text('4h')")
+        pg.wait_for_function("() => state.ws.overlays && state.ws.overlays.tf === '4h'", timeout=30000)
+        assert pg.evaluate("() => state.ws.chart.panes().length") == 3
+        assert pg.evaluate("() => state.ws.tf") == "4h"
+
+        # mitigated order blocks only on request
+        pg.click(".ws-tfs button:has-text('15m')")
+        pg.wait_for_function("() => state.ws.overlays && state.ws.overlays.tf === '15m'", timeout=30000)
+        n_valid = pg.evaluate("() => state.ws.overlays.zones.filter(z => z.kind === 'OB' && z.valid).length")
+        n_all = pg.evaluate("() => state.ws.overlays.zones.filter(z => z.kind === 'OB').length")
+        pg.uncheck("#ws-f-fvg")
+        pg.uncheck("#ws-f-sr")
+        assert _items(pg)["boxes"] == n_valid
+        pg.evaluate("() => { state.ws.cfg.features.ob.s.history = true; state.ws.redraw(); }")
+        assert _items(pg)["boxes"] == n_all
+
+        # full screen keeps the toolbar and the options
+        pg.click(".chart-ws .icon-btn")
+        assert pg.evaluate("() => state.ws.isFull()")
+        assert pg.is_visible(".ws-layers-btn") and pg.is_visible(".ws-tfs")
+        pg.click(".chart-ws .icon-btn")
+        assert not pg.evaluate("() => state.ws.isFull()")
+        assert errors == []
+        pg.close()

@@ -21,11 +21,9 @@ it up every minute, so every timeframe is complete immediately; live collector c
 precedence where they exist. It runs without the collector too (chart then updates per minute).
 
 ## Dashboard
-- **Chart** — market switch (BTC / XRP), timeframe switch (1m…4h), full-screen button.
-  Default "Setups" view: only the tradable 1h setups (OB by state, its FVG, the sweep, the
-  break, planned SL / TP) and the positions (entry, SL, TP with net R, time stop);
-  "All zones (debug)" shows every zone, gap, break, liquidity level and setup. Position
-  ticket, top-down ladder, setup list and the setup log.
+- **Chart** — 5m / 15m / 1h / 4h / 1d with switchable support / resistance, trendlines, OB,
+  FVG, BOS, CHoCH, HH / HL / LH / LL, Donchian, RSI and MACD (each with its settings), the trend
+  of every timeframe in the top bar, full screen. Display only (`docs/CHART.md`).
 - **Signals** — full history with the lifecycle timeline of each signal; "Show on chart".
 - **Performance** — the shared wallet (balance, equity, fees, ledger, per-market results) and
   the backtest of the parameters in force per market (exit per trade).

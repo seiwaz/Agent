@@ -219,6 +219,42 @@ def create_app(cfg: RuntimeConfig) -> FastAPI:
             headers={"X-Accel-Buffering": "no"},
         )
 
+    # ---- chart workspace (display only) -----------------------------------------------------
+    from sp2l.chart.overlays import ChartParams
+    from sp2l.chart.service import CHART_TFS, ChartService
+
+    charts = {s: ChartService(db, s, sparams[s]) for s in symbols}
+    chart_tf = "^(" + "|".join(CHART_TFS) + ")$"
+
+    def chart(symbol: str | None) -> ChartService:
+        return charts[sym(symbol)]
+
+    @app.get("/api/chart/candles")
+    def chart_candles(
+        symbol: str | None = None,
+        tf: str = Query("1h", pattern=chart_tf),
+        limit: int = Query(500, ge=50, le=1500),
+    ) -> Any:
+        return chart(symbol).candles(tf, limit)
+
+    @app.get("/api/chart/overlays")
+    def chart_overlays(
+        symbol: str | None = None,
+        tf: str = Query("1h", pattern=chart_tf),
+        bars: int = Query(500, ge=50, le=1500),
+        swing_len: int = Query(5, ge=2, le=20),
+        sr_tol_atr: float = Query(0.25, gt=0, le=2),
+        sr_touches: int = Query(2, ge=2, le=10),
+        sr_max: int = Query(8, ge=1, le=30),
+        tl_max: int = Query(3, ge=1, le=10),
+    ) -> Any:
+        cp = ChartParams(swing_len, sr_tol_atr, sr_touches, sr_max, tl_max)
+        return chart(symbol).overlays(tf, bars, cp)
+
+    @app.get("/api/chart/trends")
+    def chart_trends(symbol: str | None = None, swing_len: int = Query(5, ge=2, le=20)) -> Any:
+        return chart(symbol).trends(swing_len)
+
     @app.get("/api/trend")
     def trend(journal_days: int = Query(60, ge=1, le=400)) -> Any:
         """System B paper wallet: state after the last closed UTC day, and the journal."""

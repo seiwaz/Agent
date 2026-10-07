@@ -50,7 +50,7 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.mypy]
 strict = true
-files = ["src/sp2l/core", "src/sp2l/smc", "src/sp2l/trend", "src/sp2l/marketdata", "src/sp2l/runtime", "src/sp2l/persistence/market_store.py", "src/sp2l/__main__.py", "src/sp2l/api", "src/sp2l/validation", "src/sp2l/secrets.py", "src/sp2l/config.py"]
+files = ["src/sp2l/core", "src/sp2l/smc", "src/sp2l/trend", "src/sp2l/chart", "src/sp2l/marketdata", "src/sp2l/runtime", "src/sp2l/persistence/market_store.py", "src/sp2l/__main__.py", "src/sp2l/api", "src/sp2l/validation", "src/sp2l/secrets.py", "src/sp2l/config.py"]
 
 [tool.ruff.lint.per-file-ignores]
 # Long SQL DDL / query literals are clearer unwrapped.

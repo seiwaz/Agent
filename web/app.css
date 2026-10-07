@@ -85,29 +85,11 @@ main { padding: 16px 20px 24px; max-width: 1640px; margin: 0 auto; min-width: 0;
 .pos { color: var(--ok); } .neg { color: var(--bad); }
 
 /* ---- KPI strip ---- */
-.kpi-strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
-.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; min-width: 0; border-top: 3px solid var(--tone, var(--border-strong)); }
-.kpi .k { font-size: 12px; color: var(--text-2); }
-.kpi .v { font-size: 19px; font-weight: 600; margin-top: 2px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kpi .v svg { color: var(--tone); width: 18px; height: 18px; }
-.kpi .d { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---- chart ---- */
-.main-row { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(300px, 1fr); gap: 16px; align-items: start; }
-.side-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.chart-card { padding: 12px 12px 10px; }
-.chart-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 2px 4px 10px; }
-.chart-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .price { font-size: 20px; font-weight: 500; }
-.live-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ok); }
-.live-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
-@media (prefers-reduced-motion: reduce) { .live-dot::before { animation: none; } }
-.chart-slot { position: relative; min-width: 0; }
 .chart { height: 560px; width: 100%; }
-.go-live { position: absolute; right: 70px; bottom: 34px; z-index: 3; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); border-radius: 6px; padding: 6px 10px; font: 500 13px "IBM Plex Sans", sans-serif; cursor: pointer; }
-.chart-note { position: absolute; left: 12px; top: 10px; z-index: 3; font-size: 13px; color: var(--text-2); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
-.ohlc { min-height: 20px; padding: 6px 4px 0; color: var(--text-2); overflow-wrap: anywhere; }
 .legend { list-style: none; display: flex; gap: 14px; flex-wrap: wrap; padding: 0; margin: 8px 4px 0; font-size: 13px; color: var(--text-2); }
 .legend li { display: flex; align-items: center; gap: 6px; }
 .legend .sw { width: 14px; height: 10px; border-radius: 2px; background: var(--c); border: 1px solid var(--b, transparent); }
@@ -118,44 +100,14 @@ main { padding: 16px 20px 24px; max-width: 1640px; margin: 0 auto; min-width: 0;
 .seg button:hover { color: var(--text); }
 .seg button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .seg button .r { font: 500 11px "IBM Plex Mono", monospace; color: var(--info); margin-left: 4px; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px 10px; }
-.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border-strong); background: transparent; color: var(--text-2); font: 500 13px "IBM Plex Sans", sans-serif; cursor: pointer; }
-.chip .sw { width: 10px; height: 10px; border-radius: 3px; background: var(--c); }
-.chip[aria-pressed="true"] { color: var(--text); background: var(--surface-2); }
-.chip[aria-pressed="false"] { opacity: .55; }
 
-/* ---- position ticket ---- */
 .ticket-hero { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .ticket-hero .big { font-size: 26px; font-weight: 600; }
-.rr-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin: 6px 0 4px; background: var(--surface-2); }
-.rr-bar .loss { background: var(--bad); opacity: .75; } .rr-bar .win { background: var(--ok); opacity: .75; }
-.rr-scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-2); }
 .levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
 .levels div { border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-width: 0; border-left: 3px solid var(--tone); }
 .levels .k { font-size: 12px; color: var(--text-2); } .levels .v { font-size: 14px; overflow-wrap: anywhere; }
-.factors { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.factor { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-3); }
-.factor.on { color: var(--ok); border-color: var(--ok); background: var(--ok-bg); }
-.ticket-empty { display: grid; gap: 6px; }
-.ticket-empty .big { font-size: 18px; font-weight: 600; }
 
-/* ---- top-down ladder ---- */
-.ladder { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.ladder li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); border-left: 3px solid var(--tone); }
-.ladder .tf { font: 600 14px "IBM Plex Mono", monospace; }
-.ladder .role { font-size: 12px; color: var(--text-2); }
-.ladder .ev { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; line-height: 1.45; }
-.ladder .tr { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: var(--tone); }
 
-.poi-list, .trig-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.poi-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); border-left: 3px solid var(--tone); cursor: pointer; }
-.poi-list li:hover { background: var(--surface-2); }
-.poi-list .z { font-size: 14px; font-weight: 500; } .poi-list .px { font-size: 12px; color: var(--text-2); }
-.poi-list .dist { font: 500 13px "IBM Plex Mono", monospace; text-align: right; }
-.trig-list { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
-.trig-list li { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); border-left: 3px solid var(--tone); display: grid; gap: 4px; min-width: 0; }
-.trig-list .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
-.trig-list .why { font-size: 13px; color: var(--text-2); }
 
 /* ---- tables ---- */
 .table-wrap { overflow: auto; max-width: 100%; border: 1px solid var(--border); border-radius: 8px; max-height: 460px; }
@@ -217,9 +169,6 @@ td.empty { text-align: center; padding: 18px; white-space: normal; }
 
 /* ---- responsive ---- */
 @media (max-width: 1200px) {
-  .main-row { grid-template-columns: minmax(0, 1fr); }
-  .side-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-  .kpi-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .diag-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sig-layout { grid-template-columns: minmax(0, 1fr); }
 }
@@ -228,10 +177,7 @@ td.empty { text-align: center; padding: 18px; white-space: normal; }
   .nav { order: 3; flex-basis: 100%; }
   .brand-sub, #feed-pill { display: none; }
   main { padding: 12px 16px 20px; }
-  .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .chart { height: 420px; }
   .two-col, .diag-grid, .model-flow { grid-template-columns: minmax(0, 1fr); }
-  .tf-seg { width: 100%; grid-auto-columns: 1fr; }
   .dq-strip { grid-template-columns: repeat(90, minmax(0, 1fr)); }
   .dq-strip span:nth-child(-n+90) { display: none; }
 }
@@ -242,35 +188,62 @@ td.empty { text-align: center; padding: 18px; white-space: normal; }
 .sym-seg button .p { font: 500 12px "IBM Plex Mono", monospace; color: var(--text-3); }
 .sym-seg button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .sym-seg button[aria-selected="true"] .p { color: var(--text-2); }
-.sym-seg .pos-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); margin-left: 6px; vertical-align: middle; }
-.chart-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .filters-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.chart-card:fullscreen, .chart-card.maximized { position: fixed; inset: 0; z-index: 50; border-radius: 0; border: 0; margin: 0;
-  display: flex; flex-direction: column; padding: 12px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--surface); }
-.chart-card:fullscreen .chart-slot, .chart-card.maximized .chart-slot { flex: 1; min-height: 0; }
-.chart-card:fullscreen .chart, .chart-card.maximized .chart { height: 100%; }
 body.has-max { overflow: hidden; }
-.pos-list { display: grid; gap: 10px; }
-.pos-card { border: 1px solid var(--border); border-left: 3px solid var(--tone); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; cursor: pointer; background: var(--surface); text-align: left; color: var(--text); font: inherit; width: 100%; }
-.pos-card:hover { background: var(--surface-2); }
-.pos-card .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.pos-card .sym { font-weight: 600; }
-.pos-card .pnl { font: 600 17px "IBM Plex Mono", monospace; }
-.pos-card .meta { font-size: 12.5px; color: var(--text-2); display: flex; gap: 10px; flex-wrap: wrap; }
-.wallet-mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
-.wallet-mini div { background: var(--surface-2); border-radius: 8px; padding: 6px 10px; }
-.wallet-mini .k { font-size: 12px; color: var(--text-2); } .wallet-mini .v { font: 600 15px "IBM Plex Mono", monospace; }
 @media (max-width: 760px) {
   .sym-seg { order: 2; }
   .sym-seg button { padding: 3px 8px; }
-  .chart-tools { width: 100%; } .chart-tools .tf-seg { flex: 1; }
 }
 
-/* chart detail switch */
-.seg-mini button { min-height: 30px; padding: 3px 12px; font-size: 13px; }
-.chips .seg-mini { margin-right: 6px; }
 /* position levels never break a price over two lines */
 .levels { gap: 6px; }
 .levels div { padding: 6px; }
 .levels .k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .levels .v { white-space: nowrap; font-size: 13px; overflow-wrap: normal; }
+
+/* ---- chart workspace (web/chart/*) ---- */
+body[data-view="chart"] main { max-width: none; padding: 8px 12px 12px; }
+.chart-ws { padding: 0; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.ws-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.ws-head { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.ws-title { font-weight: 600; white-space: nowrap; }
+.ws-price { color: var(--text-2); }
+.ws-spacer { flex: 1; }
+.ws-tfs button { min-height: 32px; padding: 3px 11px; }
+.ws-trends, .tf-trends { display: flex; gap: 4px; flex-wrap: wrap; }
+.tf-trend { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font: 500 12px "IBM Plex Mono", monospace; border: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
+.tf-trend b { font-weight: 600; color: var(--text); }
+.tf-trend.t-bull { color: var(--ok); background: var(--ok-bg); border-color: var(--ok); }
+.tf-trend.t-bear { color: var(--bad); background: var(--bad-bg); border-color: var(--bad); }
+.tf-trend.t-bull b, .tf-trend.t-bear b { color: inherit; }
+.ws-layers-btn[aria-expanded="true"] { border-color: var(--info); color: var(--info); }
+.ws-panel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 24px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.ws-panel[hidden] { display: none; }
+.ws-group h3 { margin: 0; font-size: 13px; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; }
+.ws-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.ws-group > .ws-form { margin-bottom: 6px; }
+.ws-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 30px; }
+.ws-row label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.ws-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--info); }
+.ws-gear { border: 1px solid var(--border); background: transparent; color: var(--text-2); border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font-size: 14px; }
+.ws-gear:hover { color: var(--text); border-color: var(--border-strong); }
+.ws-form { padding: 6px 0 8px 24px; }
+.ws-form[hidden] { display: none; }
+.ws-fields { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.ws-field { display: grid; gap: 2px; font-size: 12px; color: var(--text-2); }
+.ws-field input { width: 92px; padding: 4px 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); color: var(--text); font: 13px "IBM Plex Mono", monospace; }
+.ws-check { grid-auto-flow: column; align-items: center; justify-content: start; gap: 6px; }
+.ws-check input { width: 16px; height: 16px; accent-color: var(--info); }
+.btn-quiet { min-height: 28px; padding: 3px 10px; font-size: 12px; }
+.ws-slot { position: relative; height: calc(100vh - 150px); min-height: 480px; }
+.ws-chart { position: absolute; inset: 0; }
+.ws-readout { position: absolute; left: 10px; top: 6px; z-index: 3; color: var(--text-2); pointer-events: none; background: color-mix(in srgb, var(--surface) 80%, transparent); padding: 1px 6px; border-radius: 4px; }
+.ws-readout:empty { display: none; }
+.ws-note { position: absolute; left: 10px; top: 30px; z-index: 3; font-size: 13px; color: var(--text-2); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+.chart-ws:fullscreen, .chart-ws.ws-max { position: fixed; inset: 0; z-index: 50; border-radius: 0; border: 0; margin: 0; background: var(--surface); }
+.chart-ws:fullscreen .ws-slot, .chart-ws.ws-max .ws-slot { flex: 1; height: auto; min-height: 0; }
+/* the toolbar repeats the trend strip only where the top bar is not visible */
+.chart-ws:not(.ws-max):not(:fullscreen) .ws-trends { display: none; }
+@media (max-width: 1100px) { .tf-trends { display: none; } .chart-ws .ws-trends { display: flex !important; } .ws-panel { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .ws-slot { height: 70vh; min-height: 380px; } .ws-trends { order: 5; } }
+
