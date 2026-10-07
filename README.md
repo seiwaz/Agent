@@ -43,6 +43,14 @@ precedence where they exist. It runs without the collector too (chart then updat
 `uv run python -m sp2l validate-readonly` runs GET-only authenticated checks. Credentials live
 outside the repo in `~/.config/sp2l/tabdeal.env` (directory 700, file 600).
 
+## System B (trend following, backtest)
+Daily Donchian trend following on spot, long only (`src/sp2l/trend/`, spec and pre-declared
+evaluation rules in `docs/TREND_STRATEGY.md`):
+```sh
+uv run python scripts/fetch_daily.py --source binance --symbol BTCUSDT   # daily CSV into data/
+uv run python -m sp2l trend-backtest --csv data/binance_BTCUSDT_1d.csv --grid --out docs/trend/btc
+```
+
 ## Development
 ```sh
 uv sync

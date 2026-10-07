@@ -3,6 +3,7 @@
     python -m sp2l [--config PATH] [--symbol S] collect [--duration S] [--log-file PATH]
     python -m sp2l [--config PATH] smc [--duration S] [--log-file PATH]
     python -m sp2l [--config PATH] [--symbol S] backtest [--days N] [--set key=value ...]
+    python -m sp2l [--config PATH] [--symbol S] trend-backtest (--csv PATH | --days N) [--grid]
     python -m sp2l [--config PATH] api [--host 127.0.0.1] [--port 8765]
     python -m sp2l [--config PATH] validate-readonly [--only ITEM,ITEM]
     python -m sp2l [--config PATH] reconcile-history [--apply]
@@ -15,6 +16,8 @@ it loads the full warmup from Tabdeal's chart history (no live warmup), analyses
 timeframe and creates / tracks M1 positions.
 It requires validated maker_fee / taker_fee / slippage_allowance.
 `backtest` replays the same engine over the stored history and prints the statistics.
+`trend-backtest` runs System B (daily Donchian trend following, docs/TREND_STRATEGY.md) over a
+daily CSV or the stored history aggregated to UTC days, against buy & hold.
 `validate-readonly` performs authenticated READ-ONLY account checks and records the
 evidence in runtime_validation_runs. It never places, cancels or modifies anything.
 """
@@ -258,6 +261,71 @@ def backtest(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
     print(_json.dumps(out, indent=2))
 
 
+GRID_AXES: dict[str, list[Any]] = {
+    "entry_len": [10, 20, 30, 55],
+    "exit_len": [5, 10, 20],
+    "regime_ma": [0, 200],
+    "sizing": ["risk", "full"],
+}
+
+
+def trend_backtest(args: argparse.Namespace, cfg: RuntimeConfig) -> None:
+    """System B on daily bars: a CSV (`--csv`) or the stored Tabdeal history (`--days`)."""
+    import csv as _csv
+    import json as _json
+    from datetime import UTC, datetime
+
+    from sp2l.trend import backtest as tb
+    from sp2l.trend.data import drop_forming, load_csv, quality
+    from sp2l.trend.model import TrendParams
+
+    base = dict(cfg.section("trend"))
+    for kv in args.set or []:
+        k, _, v = kv.partition("=")
+        base[k] = v
+    try:
+        params = TrendParams.from_mapping(base)
+    except (TypeError, ValueError) as e:
+        raise ConfigError(str(e)) from e
+    if args.fee is not None and args.slippage is not None:
+        fees = tb.Fees(args.fee, args.slippage)
+    else:  # market orders: the taker fee and the measured slippage allowance of `costs`
+        c = cfg.costs()
+        fees = tb.Fees(
+            float(c.taker_fee) if args.fee is None else args.fee,
+            float(c.slippage) if args.slippage is None else args.slippage,
+        )
+    if args.csv:
+        bars, q = load_csv(args.csv)
+        bars = drop_forming(bars)
+    else:
+        from sp2l.smc.history import load_bars, series_end
+
+        db = create_engine(cfg.database_url)
+        upto = series_end(db, cfg.symbol) or datetime.now(UTC)
+        bars = load_bars(db, cfg.symbol, "1d", int(args.days), upto, grid="utc")
+        q = quality(bars, source=f"database {cfg.symbol} (1m -> UTC days)")
+    res = tb.run(bars, params, fees)
+    out: dict[str, Any] = {"version": "TREND-1.0", "data": q, **tb.summary(res, fees)}
+    if args.grid:
+        out["grid"] = tb.grid(bars, params, fees, GRID_AXES)
+    print(_json.dumps(out, indent=1))
+    if args.out:
+        args.out.mkdir(parents=True, exist_ok=True)
+        (args.out / "summary.json").write_text(_json.dumps(out, indent=1))
+        with (args.out / "trades.csv").open("w", newline="") as f:
+            rows = [t.as_dict() for t in res.trades]
+            if rows:
+                w = _csv.DictWriter(f, fieldnames=list(rows[0]))
+                w.writeheader()
+                w.writerows(rows)
+        with (args.out / "equity.csv").open("w", newline="") as f:
+            w2 = _csv.writer(f)
+            w2.writerow(["date", "close", "equity", "in_market"])
+            for t, px, eq, m in zip(res.times, res.close, res.equity, res.in_market, strict=True):
+                w2.writerow([t.date().isoformat(), px, round(eq, 2), int(m)])
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="sp2l", description="SMC trading-signal system")
     p.add_argument("--config", default="config/runtime.yaml")
@@ -272,6 +340,15 @@ def main() -> None:
     bt = sub.add_parser("backtest", help="backtest the SMC engine on Tabdeal history")
     bt.add_argument("--days", type=float, default=30.0)
     bt.add_argument("--set", action="append", help="override a parameter: key=value")
+    tr = sub.add_parser("trend-backtest", help="backtest System B (daily trend following)")
+    src = tr.add_mutually_exclusive_group(required=True)
+    src.add_argument("--csv", type=Path, help="daily OHLC CSV (scripts/fetch_daily.py)")
+    src.add_argument("--days", type=float, help="stored Tabdeal 1m history, as UTC days")
+    tr.add_argument("--set", action="append", help="override a parameter: key=value")
+    tr.add_argument("--fee", type=float, default=None, help="per fill (default: costs.taker_fee)")
+    tr.add_argument("--slippage", type=float, default=None, help="per fill (default: costs)")
+    tr.add_argument("--grid", action="store_true", help="add the sensitivity table")
+    tr.add_argument("--out", type=Path, default=None, help="write summary/trades/equity here")
     api = sub.add_parser("api", help="serve the read-only API and WebUI")
     api.add_argument("--host", default="127.0.0.1")
     api.add_argument("--port", type=int, default=8765)
@@ -314,6 +391,8 @@ def main() -> None:
             asyncio.run(smc(args, cfg))
         elif args.cmd == "backtest":
             backtest(args, cfg)
+        elif args.cmd == "trend-backtest":
+            trend_backtest(args, cfg)
         elif args.cmd == "api":
             import uvicorn
 

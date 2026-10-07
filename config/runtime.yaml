@@ -134,3 +134,21 @@ smc:
   liq_buffer_r: 1         # cross-margin liquidation at least 1 x the stop beyond the stop, else a smaller size (LIQ_LIMITED)
   maint_margin_rate: 0.005 # assumed: Tabdeal publishes no maintenance margin rate
 # SMC-1.0 evidence (270 days, M1-trigger model) is kept in docs/SMC_STRATEGY.md.
+
+# System B: daily Donchian trend following, long only, spot (docs/TREND_STRATEGY.md).
+# Backtest: `python -m sp2l trend-backtest --csv data/binance_BTCUSDT_1d.csv`. Every key below is
+# in the parameter hash; omitted keys keep src/sp2l/trend/model.py defaults. Fills are market
+# orders: costs.taker_fee and costs.slippage_allowance apply to every fill (override: --fee,
+# --slippage; Tabdeal spot fees differ from the futures fees above).
+trend:
+  entry_len: 20     # enter: daily close above the highest high of the previous 20 days
+  exit_len: 10      # exit: daily close below the lowest low of the previous 10 days (next open)
+  atr_len: 20
+  stop_atr: 2       # initial stop 2 x ATR(20) below the fill
+  regime_ma: 0      # 200: only enter while the close is above SMA(200); 0 = off
+  sizing: risk      # risk: lose risk_pct of equity at the stop / full: all cash in
+  risk_pct: 0.01
+  max_exposure: 1   # notional / equity (1 = spot, no leverage)
+  max_units: 1      # pyramiding off
+  add_atr: 1
+  initial_equity: 10000
