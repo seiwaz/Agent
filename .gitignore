@@ -13,3 +13,10 @@ __pycache__/
 .DS_Store
 graphify-out/
 *.log
+.env
+*.key
+__pycache__/
+.venv/
+venv/
+node_modules/
+*.log
