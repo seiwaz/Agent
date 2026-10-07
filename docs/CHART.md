@@ -78,6 +78,16 @@ The panel under the chart (▾ / ▴ hides it) has two tabs:
 - **History** — closed (target, stop, closed here, closed on Tabdeal), canceled and rejected
   trades with entry, exit and realized PnL.
 
+**Positions opened directly on Tabdeal** (in its app or site) are adopted: when a market has a
+position and no open trade here, the poller adds it to Open trades (marked *Tabdeal*) and follows
+it like the others — size and average entry as they change, mark price, PnL, its end. The chart
+draws a Long / Short position for every open trade of the shown market, linked to it: entry from
+the exchange, stop / target from Tabdeal when it reports them; otherwise suggested ones, dashed,
+with "No stop / target on Tabdeal". Drag the stop / target of a linked drawing and press
+**SL/TP** in its row to set (or move) them on Tabdeal — for any active trade. A linked drawing's
+entry follows the exchange and cannot be dragged; the part from the entry to the current price is
+shaded by the live PnL.
+
 Tabdeal has no futures user stream, so the API server polls it every `trading.poll_s` seconds
 while a trade is open — with or without a browser — and the table follows the exchange: a fill,
 a stop or target, a cancel or a close made in Tabdeal's own app all show up here.

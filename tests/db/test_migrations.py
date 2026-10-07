@@ -21,4 +21,4 @@ def test_downgrade_to_base_and_upgrade_again(engine, alembic_cfg):
     command.downgrade(alembic_cfg, "base")
     command.upgrade(alembic_cfg, "head")
     with engine.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0025"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0026"

@@ -117,6 +117,10 @@ class TradingDesk:
         def trade_cancel(tid: int) -> Any:
             return self._do(lambda m: m.cancel(tid))
 
+        @app.post("/api/trade/{tid}/sltp")
+        def trade_sltp(tid: int, body: dict[str, Any] = JSON_BODY) -> Any:
+            return self._do(lambda m: m.set_sltp(tid, body.get("sl"), body.get("tp")))
+
         @app.post("/api/trade/{tid}/close")
         def trade_close(tid: int) -> Any:
             return self._do(lambda m: m.close(tid))

@@ -370,3 +370,54 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         pg.wait_for_url("**/login")
         assert errors == []
         pg.close()
+
+
+def test_a_position_opened_on_tabdeal_is_drawn_and_protected_from_the_chart(data, browser, engine, tmp_path):  # noqa: F811
+    from decimal import Decimal
+
+    from sp2l.api.auth import set_login
+    from tests.trading.fake_exchange import FakeExchange
+
+    with engine.begin() as c:
+        c.execute(text("DELETE FROM manual_trades"))
+    ex = FakeExchange(wallet="1000")
+    users = tmp_path / "auth" / "dashboard.auth"
+    set_login(users, "admin", "test password")
+    with serve({"enabled": True, "poll_s": 1}, ex, {"enabled": True, "users_file": str(users)}) as url:
+        pg = browser.new_page(viewport={"width": 1500, "height": 950})
+        errors: list[str] = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.on("dialog", lambda d: d.accept())
+        pg.goto(f"{url}/login")
+        pg.fill("input[name=user]", "admin")
+        pg.fill("input[name=password]", "test password")
+        pg.click(".login-btn")
+        pg.wait_for_function("() => typeof state !== 'undefined' && state.ws && state.ws.bars.length > 0 && state.ws.trading && state.ws.trading.cfg", timeout=60000)
+        last = pg.evaluate("() => state.ws.bars[state.ws.bars.length - 1].c")
+        entry = round(last, 1)
+        ex.manual("BTC_USDT", "0.003", str(entry), lev=7)  # opened in Tabdeal's app, unprotected
+        ex.mark["BTC_USDT"] = Decimal(str(entry)) * Decimal("1.002")
+
+        # it appears in the table (Tabdeal, unprotected) and on the chart as a linked Long drawing
+        pg.wait_for_selector(".ws-trade-table .b-origin", timeout=15000)
+        assert "no stop / target" in pg.inner_text(".ws-trade-table tbody tr >> nth=0")
+        pg.wait_for_function("() => state.ws.tools.items.some(i => i.trade && i.status === 'ACTIVE' && i.type === 'long' && i.unset)", timeout=15000)
+        d = pg.evaluate("() => state.ws.tools.items.find(i => i.trade)")
+        assert abs(d["entry"] - entry) < 1e-6 and d["sl"] < entry < d["tp"]
+
+        # the user moves the stop / target on the chart, then sends them with SL/TP
+        sl, tp = round(entry * 0.98, 1), round(entry * 1.05, 1)
+        pg.evaluate(f"() => {{ const d = state.ws.tools.items.find(i => i.trade); Object.assign(d, {{ sl: {sl}, tp: {tp}, dirty: true }}); state.ws.tools.redraw(); }}")
+        pg.click(".ws-trade-table button:has-text('SL/TP')")
+        pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('✓')", timeout=15000)
+        assert ex.position["BTC_USDT"]["sl"] == Decimal(str(sl)) and ex.position["BTC_USDT"]["tp"] == Decimal(str(tp))
+        assert not pg.evaluate("() => state.ws.tools.items.find(i => i.trade).dirty")
+
+        # closed on Tabdeal at the target: history, and the drawing is no longer an open trade
+        ex.end("BTC_USDT", str(tp))
+        pg.wait_for_function("() => document.querySelector('.ws-trade-table td.empty')", timeout=15000)
+        pg.wait_for_function("() => !state.ws.tools.items.find(i => i.trade).status", timeout=15000)
+        pg.click(".ws-trade-tabs button:has-text('History')")
+        pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('Target')", timeout=15000)
+        assert errors == []
+        pg.close()

@@ -138,13 +138,15 @@ class TabdealTrade:
         return self.call("DELETE", "/fapi/v1/order", {"symbol": market, "orderId": order_id})
 
     def position_sl_tp(
-        self, position_id: int, market: str, sl: str, tp: str, working_type: str
+        self, position_id: int, market: str, sl: str | None, tp: str | None, working_type: str
     ) -> Any:
-        return self.call(
-            "POST", "/fapi/v1/positionSlTp",
-            {"positionId": position_id, "symbol": market, "slPrice": sl, "tpPrice": tp,
-             "workingType": working_type},
-        )
+        params: dict[str, Any] = {"positionId": position_id, "symbol": market,
+                                  "workingType": working_type}
+        if sl is not None:
+            params["slPrice"] = sl
+        if tp is not None:
+            params["tpPrice"] = tp
+        return self.call("POST", "/fapi/v1/positionSlTp", params)
 
     def close_position(self, market: str) -> Any:
         return self.call("DELETE", "/fapi/v1/position", {"symbol": market})

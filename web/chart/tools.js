@@ -3,7 +3,9 @@
  * through its entry, the part from the entry to the current price (or to the stop / target that
  * was hit) is shaded darker green (in profit) or red (at a loss). The Trade button (⚡) sends the
  * selected or last position drawing to the trade dialog (web/chart/trading.js); drawing alone
- * never creates an order.
+ * never creates an order. Every open trade — placed here or directly on Tabdeal — has a position
+ * drawing linked to it (`trade`), kept in line with the exchange; dragging its stop / target
+ * marks it moved until the panel's SL/TP button sends them to Tabdeal.
  *
  * Drawings are kept per market in localStorage, in time (UTC seconds) / price, so they appear on
  * every timeframe. Interaction: pick a tool and click on the price pane (trend line, range: two
@@ -110,9 +112,44 @@
       } catch { /* storage unavailable */ }
     }
     setSymbol(sym) { this.pick(null); this.items = this.load(sym); this.redraw(); }
-    /** The selected position drawing, else the last one placed. */
+    /** Link a position drawing to every open trade of this market (creating one for a trade
+     * opened on Tabdeal), with the exchange's entry, stop and target unless the user moved them. */
+    syncTrades(trades) {
+      const b = this.ws.bars, step = this.step();
+      if (!b.length) return;
+      const open = new Set();
+      let changed = false;
+      for (const t of trades) {
+        if (t.symbol !== this.ws.symbol) continue;
+        open.add(t.id);
+        const type = t.side === "LONG" ? "long" : "short", dir = type === "long" ? 1 : -1;
+        const entry = +(t.status === "ACTIVE" && t.avg_entry ? t.avg_entry : t.entry);
+        let it = this.items.find((x) => x.trade === t.id) || (t.drawing_id && this.items.find((x) => x.id === t.drawing_id && !x.trade));
+        if (!it) {
+          const r = b.slice(-14), atr = r.reduce((s, x) => s + (x.h - x.l), 0) / r.length, risk = 1.5 * atr;
+          const t1 = Math.floor(Date.parse(t.filled_at || t.created_at) / 1000);
+          it = { id: `trade-${t.id}`, type, t1, t2: Math.max(t1 + 20 * step, b[b.length - 1].t + 10 * step), entry,
+            sl: t.sl !== null ? +t.sl : entry - dir * risk, tp: t.tp !== null ? +t.tp : entry + dir * 2 * risk };
+          this.items.push(it); changed = true;
+        }
+        const unset = t.sl === null && t.tp === null;
+        const was = JSON.stringify([it.trade, it.status, it.unset, it.entry, it.sl, it.tp, it.t2]);
+        Object.assign(it, { trade: t.id, status: t.status, origin: t.origin, unset });
+        if (!it.dirty) {
+          if (t.origin === "TABDEAL" || t.status === "ACTIVE") it.entry = entry;
+          if (t.sl !== null) it.sl = +t.sl;
+          if (t.tp !== null) it.tp = +t.tp;
+        }
+        if (t.status === "ACTIVE" && it.t2 < b[b.length - 1].t + 3 * step) it.t2 = b[b.length - 1].t + 10 * step;
+        if (JSON.stringify([it.trade, it.status, it.unset, it.entry, it.sl, it.tp, it.t2]) !== was) changed = true;
+      }
+      for (const it of this.items) if (it.trade && it.status && !open.has(it.trade)) { it.status = null; it.dirty = false; it.unset = false; changed = true; }
+      if (changed) { this.save(); this.redraw(); }
+    }
+    linked(tradeId) { return this.items.find((x) => x.trade === tradeId) || null; }
+    /** The selected position drawing, else the last one placed (not one of an open trade). */
     lastPosition() {
-      const isPos = (x) => x.type === "long" || x.type === "short";
+      const isPos = (x) => (x.type === "long" || x.type === "short") && !(x.trade && x.status);
       const sel = this.items.find((x) => x.id === this.sel && isPos(x));
       return sel || [...this.items].reverse().find(isPos) || null;
     }
@@ -121,6 +158,11 @@
      * the drawing. null while price has not reached the entry. */
     outcome(it) {
       const b = this.ws.bars, long = it.type === "long";
+      if (it.trade && it.status) {  // an open trade: Tabdeal decides its end; shade entry → now
+        if (it.status !== "ACTIVE" || !b.length) return null;
+        const k = b.findIndex((x) => x.t + this.step() > it.t1), last = b[b.length - 1];
+        return k < 0 ? null : { t0: b[k].t, t1: last.t, price: last.c, hit: null };
+      }
       let i = b.findIndex((x) => x.t >= it.t1 && x.l <= it.entry && x.h >= it.entry);
       if (i < 0 || b[i].t > it.t2) return null;
       for (let j = i; j < b.length && b[j].t <= it.t2; j++) {
@@ -216,7 +258,9 @@
       if (!hit) { if (this.sel) { this.sel = null; this.redraw(); } return; }
       this.eat = true; e.stopPropagation(); e.preventDefault();
       this.sel = hit.item.id;
-      this.drag = { item: hit.item, handle: hit.handle, start: q, orig: JSON.parse(JSON.stringify(hit.item)) };
+      const fixed = hit.item.trade && hit.item.status && !["sl", "tp", "right"].includes(hit.handle);
+      this.drag = fixed ? null : { item: hit.item, handle: hit.handle, start: q, orig: JSON.parse(JSON.stringify(hit.item)) };
+      if (fixed) return this.redraw();
       this.ws.chart.applyOptions({ handleScroll: false, handleScale: false });
       this.redraw();
     }
@@ -246,6 +290,7 @@
       else if (h === "tp" || h === "sl") it[h] = q.p;
       else if (h === "entry") Object.assign(it, { entry: q.p, t1: q.t });
       else if (h === "right") it.t2 = Math.max(it.t1 + this.step(), q.t);
+      if (it.trade && it.status && (h === "sl" || h === "tp")) it.dirty = true;  // to send with SL/TP
       this.redraw();
     }
     key(e) {
@@ -346,7 +391,17 @@
             const cx = (x1 + x2) / 2;
             label(`Target ${fmt(it.tp)} (${long ? "+" : "−"}${pct(reward)})`, cx, T.y(it.tp) + (long ? -11 : 11), `rgba(${col.bull},0.95)`, "center");
             label(`Stop ${fmt(it.sl)} (${long ? "−" : "+"}${pct(risk)})`, cx, T.y(it.sl) + (long ? 11 : -11), `rgba(${col.bear},0.95)`, "center");
-            label(`${long ? "Long" : "Short"} ${fmt(it.entry)} · R:R ${risk ? (reward / risk).toFixed(2) : "—"}${pnl}`, cx, ye, "rgba(90,98,110,0.95)", "center");
+            if (it.trade && it.status && (it.unset || it.dirty)) {  // not (yet) the stop / target on Tabdeal
+              ctx.save(); ctx.setLineDash([5, 4]); ctx.lineWidth = 1.2;
+              ctx.strokeStyle = `rgba(${col.bull},0.9)`; ctx.strokeRect(rt[0], rt[1], rt[2] - rt[0], rt[3] - rt[1]);
+              ctx.strokeStyle = `rgba(${col.bear},0.9)`; ctx.strokeRect(rs[0], rs[1], rs[2] - rs[0], rs[3] - rs[1]);
+              ctx.restore();
+            }
+            const tag = it.trade && it.status ? `#${it.trade} ${it.status === "ACTIVE" ? "open" : "pending"}${it.origin === "TABDEAL" ? " (Tabdeal)" : ""} · ` : "";
+            label(`${tag}${long ? "Long" : "Short"} ${fmt(it.entry)} · R:R ${risk ? (reward / risk).toFixed(2) : "—"}${pnl}`, cx, ye, it.trade && it.status ? "rgba(70,90,150,0.95)" : "rgba(90,98,110,0.95)", "center");
+            if (it.trade && it.status && (it.unset || it.dirty)) {
+              label(it.dirty ? "Moved: press SL/TP below to apply on Tabdeal" : "No stop / target on Tabdeal: drag them, then SL/TP", x1, Math.min(rt[1], rs[1]) - 24, "rgba(196,118,0,0.95)", "left");
+            }
           } else if (it.type === "range") {
             const r = g.rects[0];
             if (!r) continue;

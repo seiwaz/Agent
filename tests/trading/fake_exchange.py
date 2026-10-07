@@ -21,6 +21,7 @@ class FakeExchange:
         self.mark: dict[str, Decimal] = {}
         self.fail: dict[str, ExchangeError] = {}  # call name -> the error it raises once
         self.lost_reply = False  # place the next order but answer with a timeout
+        self.reports_sltp = False  # positionRisk carries the stop / target (undocumented)
         self._ids = 5000
 
     def _call(self, name: str, args: Any) -> None:
@@ -54,7 +55,9 @@ class FakeExchange:
         return [{"symbol": market, "positionAmt": str(p["amt"]), "entryPrice": str(p["entry"]),
                  "markPrice": str(mark), "unRealizedProfit": str((mark - p["entry"]) * p["amt"]),
                  "liquidationPrice": "1", "leverage": str(p["lev"]), "marginType": "cross",
-                 "positionSide": "BOTH"}]
+                 "positionSide": "BOTH",
+                 **({"slPrice": str(p.get("sl", 0)), "tpPrice": str(p.get("tp", 0))}
+                    if self.reports_sltp else {})}]
 
     def positions(self, market: str, active: bool, limit: int = 20) -> Any:
         self._call("positions", (market, active))
@@ -69,7 +72,7 @@ class FakeExchange:
         return {"id": p["id"], "symbol": p["market"], "side": "BUY" if p["amt"] > 0 else "SELL",
                 "positionAmt": str(abs(p["amt"])), "entryPrice": str(p["entry"]),
                 "avgExitPrice": str(p.get("exit", 0)), "realizedPnl": str(p.get("pnl", 0)),
-                "status": status}
+                "status": status, "createdTime": p.get("created", 1_700_000_000_000)}
 
     def order(self, market: str, order_id: int) -> Any:
         self._call("order", order_id)
@@ -116,12 +119,17 @@ class FakeExchange:
         o["status"] = "CANCELED"
         return self._order_row(o)
 
-    def position_sl_tp(self, position_id: int, market: str, sl: str, tp: str, wt: str) -> Any:
+    def position_sl_tp(self, position_id: int, market: str, sl: str | None, tp: str | None,
+                       wt: str) -> Any:
         self._call("position_sl_tp", (position_id, market, sl, tp, wt))
         p = self.position.get(market)
         if not p or p["id"] != position_id:
             raise ExchangeError("position not found", 1300, 400)
-        p.update(sl=Decimal(sl), tp=Decimal(tp), sltp_amt=abs(p["amt"]))
+        if sl is not None:
+            p["sl"] = Decimal(sl)
+        if tp is not None:
+            p["tp"] = Decimal(tp)
+        p["sltp_amt"] = abs(p["amt"])
         return {"msg": "success"}
 
     def close_position(self, market: str) -> Any:
@@ -147,6 +155,19 @@ class FakeExchange:
             self.position[o["market"]] = p
         p["entry"] = (p["entry"] * abs(p["amt"]) + o["price"] * q) / (abs(p["amt"]) + q)
         p["amt"] += signed
+
+    def manual(self, market: str, amt: str, price: str, lev: int = 10,
+               sl: str | None = None, tp: str | None = None) -> dict[str, Any]:
+        """A position opened directly in Tabdeal's app (amt < 0: short)."""
+        self._ids += 1
+        p = {"id": self._ids, "market": market, "amt": Decimal(amt), "entry": Decimal(price),
+             "lev": lev, "created": 1_790_000_000_000}
+        if sl is not None:
+            p["sl"] = Decimal(sl)
+        if tp is not None:
+            p["tp"] = Decimal(tp)
+        self.position[market] = p
+        return p
 
     def end(self, market: str, price: Decimal | str) -> None:
         """The position closes at `price` (its stop, its target, or a close on Tabdeal)."""

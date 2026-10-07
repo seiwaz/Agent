@@ -12,6 +12,11 @@ Tabdeal has no futures user-data stream, so `reconcile()` polls the exchange (ev
 unrealized PnL, liquidation), and its end (stop, target, closed on Tabdeal, or closed here). The
 exchange is the truth; `manual_trades` mirrors it and keeps the trade's own log (`events`).
 
+Positions opened directly on Tabdeal (no open trade here for that market) are adopted by the
+poller (`origin` TABDEAL): followed like the others — size, average entry, live PnL, its end —
+with the stop / target Tabdeal reports for it when it reports one. `set_sltp()` sets or moves
+the stop / target of any active trade (the chart's position drawing, dragged).
+
 Safety: one open trade per market (one-way mode, position-level SL/TP), refused while the market
 already has a position or open orders on Tabdeal; leverage and margin are capped by the config;
 the stop must sit before the estimated cross-margin liquidation; an entry remainder still resting
@@ -20,6 +25,7 @@ when the position ends is canceled (it would open a new, unprotected position).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import secrets
@@ -131,6 +137,24 @@ def _first(rows: Any, market: str) -> dict[str, Any] | None:
     return None
 
 
+SL_KEYS = ("slPrice", "stopLossPrice", "stopLoss", "sl_price", "sl")
+TP_KEYS = ("tpPrice", "takeProfitPrice", "takeProfit", "tp_price", "tp")
+
+
+def _price(rows: list[dict[str, Any] | None], keys: tuple[str, ...]) -> Decimal | None:
+    """A stop / target price Tabdeal reports on a position (field names vary), if any."""
+    for r in rows:
+        for k in keys:
+            v = (r or {}).get(k)
+            try:
+                d = Decimal(str(v)) if v not in (None, "") else None
+            except InvalidOperation:
+                d = None
+            if d is not None and d.is_finite() and d > 0:
+                return d
+    return None
+
+
 def _rows(rows: Any) -> list[dict[str, Any]]:
     if isinstance(rows, dict):
         rows = rows.get("data") or rows.get("orders") or rows.get("result") or []
@@ -140,7 +164,7 @@ def _rows(rows: Any) -> list[dict[str, Any]]:
 COLUMNS = (
     "id, symbol, side, status, leverage, margin_usdt, qty, entry, sl, tp, client_id, order_id,"
     " position_id, filled_qty, avg_entry, sltp_qty, exit_price, realized_pnl, close_reason,"
-    " drawing_id, last_error, events, created_at, filled_at, closed_at, updated_at"
+    " drawing_id, last_error, events, created_at, filled_at, closed_at, updated_at, origin"
 )
 
 
@@ -243,7 +267,8 @@ class TradeManager:
             for k, v in r.items()
         }
         filled = Decimal(r["filled_qty"] or 0)
-        out["protected"] = bool(filled > 0 and Decimal(r["sltp_qty"] or 0) >= filled)
+        out["protected"] = bool(filled > 0 and Decimal(r["sltp_qty"] or 0) >= filled
+                                and (r["sl"] is not None or r["tp"] is not None))
         out["events"] = (r.get("events") or [])[-12:]
         if r["status"] == "ACTIVE":
             live = self.live.get(r["symbol"])
@@ -380,6 +405,40 @@ class TradeManager:
             self._settle(tid)
             return self.view(self._get(tid))
 
+    def set_sltp(self, tid: int, sl: Any, tp: Any) -> dict[str, Any]:
+        """Set or move the stop / target of an active trade on Tabdeal."""
+        with self._lock:
+            t = self._get(tid)
+            if t["status"] != "ACTIVE":
+                raise TradeError(f"trade {tid} is {t['status']}: only an active trade")
+            tick = self.instruments[t["symbol"]][0]
+            nsl = None if sl in (None, "") else near(D(sl), tick)
+            ntp = None if tp in (None, "") else near(D(tp), tick)
+            if nsl is None and ntp is None:
+                raise TradeError("give a stop, a target or both")
+            live = self.live.get(t["symbol"]) or {}
+            ref = D(live["mark"]) if live.get("mark") else Decimal(t["avg_entry"] or t["entry"])
+            long = t["side"] == "LONG"
+            if nsl is not None and (nsl >= ref if long else nsl <= ref):
+                raise TradeError(f"the stop must be {'below' if long else 'above'} the price {ref}")
+            if ntp is not None and (ntp <= ref if long else ntp >= ref):
+                raise TradeError(
+                    f"the target must be {'above' if long else 'below'} the price {ref}")
+            market = ws_market(t["symbol"])
+            if t["position_id"] is None:
+                p = self._position(market)
+                if p is None:
+                    raise TradeError("Tabdeal reports no open position for this trade")
+                self._set(tid, f"position {p.get('id')}", position_id=p.get("id"))
+            old = (t["sl"], t["tp"])
+            self._set(tid, f"stop / target requested: {nsl} / {ntp}", sl=nsl, tp=ntp)
+            try:
+                self._protect(self._get(tid), market)
+            except TradeError:
+                self._set(tid, None, sl=old[0], tp=old[1])  # Tabdeal keeps the previous ones
+                raise
+            return self.view(self._get(tid))
+
     def _cancel_rest(self, t: dict[str, Any], market: str) -> None:
         """Cancel the entry's unfilled remainder, if it still rests."""
         if t["order_id"] is None:
@@ -395,18 +454,67 @@ class TradeManager:
     # ---- reconciliation -------------------------------------------------------------------------
     def reconcile(self) -> None:
         """Bring every open trade in line with the exchange (the poller calls this)."""
-        ids = self._open_ids()
-        if not ids:
-            self.live.clear()
-            return
         with self._lock:
-            for tid in ids:
+            errors = []
+            for tid in self._open_ids():
                 try:
                     self._reconcile_one(tid)
-                    self.poll_error = None
                 except ExchangeError as e:
-                    self.poll_error = str(e)
+                    errors.append(str(e))
                     log.warning("trade %s: reconcile failed: %s", tid, e)
+            for symbol in self.instruments:
+                if self._open_ids(symbol):
+                    continue
+                self.live.pop(symbol, None)
+                try:
+                    self._adopt(symbol)
+                except ExchangeError as e:
+                    errors.append(str(e))
+                    log.warning("%s: position check failed: %s", symbol, e)
+            self.poll_error = errors[0] if errors else None
+
+    def _adopt(self, symbol: str) -> int | None:
+        """A position opened directly on Tabdeal: follow it as a trade from now on."""
+        market = ws_market(symbol)
+        pos = _first(self.ex.position_risk(market), market)
+        amt = D(pos.get("positionAmt", 0)) if pos else Decimal(0)
+        if pos is None or amt == 0:
+            return None
+        p = self._position(market) or {}
+        entry = D(pos.get("entryPrice") or p.get("entryPrice") or 0)
+        lev = int(D(pos.get("leverage") or 1)) or 1
+        sl, tp = _price([pos, p], SL_KEYS), _price([pos, p], TP_KEYS)
+        opened = p.get("createdTime")
+        side = "LONG" if amt > 0 else "SHORT"
+        qty = abs(amt)
+        pid = p.get("id")
+        from datetime import UTC, datetime
+
+        at = datetime.fromtimestamp(int(opened) / 1000, UTC) if opened else _now()
+        protected = qty if (sl is not None or tp is not None) else Decimal(0)
+        ev = f"adopted from Tabdeal: {side} {qty.normalize()} @ {entry} x{lev}" + (
+            f", stop {sl} / target {tp}" if protected else ", no stop / target reported"
+        )
+        with self.db.begin() as c:
+            tid = int(
+                c.execute(
+                    text(
+                        "INSERT INTO manual_trades (symbol, side, status, leverage, margin_usdt,"
+                        " qty, entry, sl, tp, client_id, position_id, filled_qty, avg_entry,"
+                        " sltp_qty, origin, created_at, filled_at, events) VALUES (:s, :side,"
+                        " 'ACTIVE', :lev, :m, :q, :e, :sl, :tp, :cid, :pid, :q, :e, :prot,"
+                        " 'TABDEAL', :at, :at, CAST(:ev AS jsonb)) RETURNING id"
+                    ),
+                    {"s": symbol, "side": side, "lev": lev, "m": qty * entry / lev, "q": qty,
+                     "e": entry, "sl": sl, "tp": tp,
+                     "cid": f"tabdeal-{pid or secrets.token_hex(6)}-{int(self.clock())}",
+                     "pid": pid, "prot": protected, "at": at,
+                     "ev": json.dumps([{"at": self.clock(), "event": ev}])},
+                ).scalar_one()
+            )
+        log.info("trade %s: %s", tid, ev)
+        self._active(self._get(tid), market, "FILLED")
+        return tid
 
     def _settle(self, tid: int, canceling: bool = False) -> None:
         """Read the outcome of an action at once; if Tabdeal does not answer, the poller will."""
@@ -422,6 +530,8 @@ class TradeManager:
             return self._find_order(t, market)
         if t["status"] not in OPEN:
             return None
+        if t["order_id"] is None:  # adopted from Tabdeal: only the position to follow
+            return self._active(t, market, "FILLED")
         o = self.ex.order(market, t["order_id"])
         st = str(o.get("status", ""))
         executed = D(o.get("executedQty") or o.get("cumQty") or 0)
@@ -462,8 +572,13 @@ class TradeManager:
     def _active(self, t: dict[str, Any], market: str, order_status: str) -> None:
         pos = _first(self.ex.position_risk(market), market)
         amt = D(pos.get("positionAmt", 0)) if pos else Decimal(0)
-        if amt == 0:
+        if amt == 0 or (amt > 0) != (t["side"] == "LONG"):  # closed (or flipped on Tabdeal)
             return self._ended(t, market, order_status)
+        if t["origin"] == "TABDEAL" and abs(amt) != Decimal(t["filled_qty"]):
+            entry = D(pos.get("entryPrice") or t["avg_entry"]) if pos else Decimal(t["entry"])
+            self._set(t["id"], f"size on Tabdeal now {abs(amt).normalize()} @ {entry}",
+                      filled_qty=abs(amt), qty=abs(amt), avg_entry=entry)
+            t = self._get(t["id"])
         self.live[t["symbol"]] = {
             "position_amt": float(amt),
             "entry_price": fnum(pos.get("entryPrice")) if pos else None,
@@ -478,8 +593,15 @@ class TradeManager:
             if p is not None:
                 self._set(t["id"], f"position {p.get('id')}", position_id=p.get("id"))
                 t = self._get(t["id"])
+        if t["sl"] is None and t["tp"] is None:  # adopted unprotected: did it get one on Tabdeal?
+            sl, tp = _price([pos], SL_KEYS), _price([pos], TP_KEYS)
+            if sl is not None or tp is not None:
+                self._set(t["id"], f"stop {sl} / target {tp} reported by Tabdeal", sl=sl, tp=tp,
+                          sltp_qty=t["filled_qty"])
+            return None
         if Decimal(t["sltp_qty"]) < Decimal(t["filled_qty"]):
-            self._protect(t, market)
+            with contextlib.suppress(TradeError):  # logged on the trade; the next poll retries
+                self._protect(t, market)
         return None
 
     def _position(self, market: str) -> dict[str, Any] | None:
@@ -491,13 +613,14 @@ class TradeManager:
                       last_error="position id not yet known")
             return
         tick = self.instruments[t["symbol"]][0]
+        sl = None if t["sl"] is None else wire(t["sl"], tick)
+        tp = None if t["tp"] is None else wire(t["tp"], tick)
         try:
-            self.ex.position_sl_tp(t["position_id"], market, wire(t["sl"], tick),
-                                   wire(t["tp"], tick), self.cfg.working_type)
+            self.ex.position_sl_tp(t["position_id"], market, sl, tp, self.cfg.working_type)
         except ExchangeError as e:
             self._set(t["id"], f"stop / target refused: {e}", last_error=str(e))
-            return
-        self._set(t["id"], f"stop {wire(t['sl'], tick)} / target {wire(t['tp'], tick)} set on"
+            raise TradeError(f"Tabdeal refused the stop / target: {e}") from e
+        self._set(t["id"], f"stop {sl} / target {tp} set on"
                   f" {Decimal(t['filled_qty']).normalize()}",
                   sltp_qty=t["filled_qty"], last_error=None)
 
@@ -520,10 +643,10 @@ class TradeManager:
     def _why(t: dict[str, Any], exit_price: Decimal | None) -> str:
         if exit_price is None:
             return "CLOSED_ON_TABDEAL"
-        entry, sl, tp = Decimal(t["entry"]), Decimal(t["sl"]), Decimal(t["tp"])
-        if abs(exit_price - tp) <= abs(tp - entry) / 4:
+        entry = Decimal(t["avg_entry"] or t["entry"])
+        if t["tp"] is not None and abs(exit_price - t["tp"]) <= abs(t["tp"] - entry) / 4:
             return "TP"
-        if abs(exit_price - sl) <= abs(entry - sl) / 4:
+        if t["sl"] is not None and abs(exit_price - t["sl"]) <= abs(entry - t["sl"]) / 4:
             return "SL"
         return "CLOSED_ON_TABDEAL"
 

@@ -296,3 +296,52 @@ def test_an_unreadable_key_file_turns_trading_off_but_the_dashboard_runs(engine,
     finally:
         mp.undo()
     assert desk.manager is None and "Permission denied" in (desk.problem or "")
+
+
+# ---- positions opened directly on Tabdeal -----------------------------------------------------------
+def test_a_position_opened_on_tabdeal_is_adopted_followed_and_protected_from_here(tm, ex):
+    ex.manual(M, "-0.004", "61000", lev=5)  # a short opened in Tabdeal's app, no stop / target
+    ex.mark[M] = Decimal("60500")
+    tm.reconcile()
+    a = tm.trades("BTCUSDT", "open")[0]
+    assert (a["origin"], a["side"], a["status"], a["leverage"]) == ("TABDEAL", "SHORT", "ACTIVE", 5)
+    assert a["avg_entry"] == 61000 and a["filled_qty"] == pytest.approx(0.004)
+    assert a["sl"] is None and a["tp"] is None and not a["protected"]
+    assert a["live"]["upnl"] == pytest.approx(2.0) and a["filled_at"].startswith("2026-")
+    tm.reconcile()
+    assert len(tm.trades(None, "open")) == 1  # adopted once
+    assert "position_sl_tp" not in ex.names()  # nothing is set without the user
+    with pytest.raises(TradeError, match="stop must be above"):
+        tm.set_sltp(a["id"], 60000, 58000)
+    s = tm.set_sltp(a["id"], 62000, 58000)  # dragged on the chart, sent from the panel
+    assert s["protected"] and (s["sl"], s["tp"]) == (62000, 58000)
+    assert (ex.position[M]["sl"], ex.position[M]["tp"]) == (Decimal("62000.0"), Decimal("58000.0"))
+    ex.position[M]["amt"] = Decimal("-0.006")  # added to on Tabdeal
+    tm.reconcile()
+    a = tm.trades(None, "open")[0]
+    assert a["filled_qty"] == pytest.approx(0.006) and ex.position[M]["sltp_amt"] == Decimal("0.006")
+    ex.end(M, "58000")
+    tm.reconcile()
+    h = tm.trades(None, "history")[0]
+    assert (h["origin"], h["close_reason"]) == ("TABDEAL", "TP")
+    assert tm.trades(None, "open") == []
+
+
+def test_an_adopted_position_keeps_the_stop_and_target_tabdeal_reports(tm, ex):
+    ex.reports_sltp = True
+    ex.manual(M, "0.002", "60000", sl="59000", tp="62000")
+    tm.reconcile()
+    a = tm.trades(None, "open")[0]
+    assert (a["sl"], a["tp"]) == (59000, 62000) and a["protected"]
+    assert "position_sl_tp" not in ex.names()
+
+
+def test_a_refused_stop_change_keeps_the_previous_one(tm, ex):
+    ex.manual(M, "0.002", "60000")
+    tm.reconcile()
+    tid = tm.trades(None, "open")[0]["id"]
+    tm.set_sltp(tid, 59000, 62000)
+    ex.fail["position_sl_tp"] = ExchangeError("price out of range", 1, 400)
+    with pytest.raises(TradeError, match="refused"):
+        tm.set_sltp(tid, 59500, 61000)
+    assert (tm.trades(None, "open")[0]["sl"], tm.trades(None, "open")[0]["tp"]) == (59000, 62000)

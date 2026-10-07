@@ -69,6 +69,7 @@
         const d = await this.call("GET", "/api/trade/trades?scope=open");
         const before = new Set(this.open.map((t) => t.id));
         this.open = d.items; this.problem = d.poll_error ? `Tabdeal: ${d.poll_error}` : "";
+        if (this.ws.tools) this.ws.tools.syncTrades(this.open);
         if ([...before].some((id) => !this.open.find((t) => t.id === id))) this.loadHistory();
       } catch (e) {
         this.problem = e.message;
@@ -79,6 +80,17 @@
       if (!this.ready()) return;
       try { this.history = (await this.call("GET", "/api/trade/trades?scope=history&limit=200")).items; } catch (e) { this.problem = e.message; }
       this.render();
+    }
+    /** Send the linked drawing's stop / target to Tabdeal. */
+    async setSlTp(t) {
+      const d = this.ws.tools && this.ws.tools.linked(t.id);
+      if (t.symbol !== this.ws.symbol || !d) { alert(`Open ${this.ws.display(t.symbol)} on the chart and drag the stop / target of trade #${t.id} first.`); return; }
+      if (!confirm(`Set on Tabdeal for #${t.id} (${t.symbol} ${t.side}):\nstop ${num(d.sl)} · target ${num(d.tp)}?`)) return;
+      try {
+        await this.call("POST", `/api/trade/${t.id}/sltp`, { sl: d.sl, tp: d.tp });
+        d.dirty = false; this.ws.tools.save();
+      } catch (e) { alert(`Not done: ${e.message}`); }
+      await this.refresh();
     }
     async act(t, what) {
       const verb = what === "cancel" ? "Cancel the pending order" : "Close the position at market";
@@ -142,12 +154,14 @@
       const rows = [];
       for (const t of this.open) {
         const lv = t.live || {}, active = t.status === "ACTIVE";
-        const prot = active ? (t.protected ? h("span", { class: "pos", title: "Stop and target are set on the position" }, " ✓") : h("span", { class: "neg", title: t.last_error || "Stop / target not set yet" }, " ⚠ unprotected")) : null;
+        const prot = active ? (t.protected ? h("span", { class: "pos", title: "Stop / target set on the position" }, " ✓") : h("span", { class: "neg", title: t.last_error || "No stop / target on Tabdeal" }, " ⚠ no stop / target")) : null;
+        const src = t.origin === "TABDEAL" ? h("span", { class: "ws-badge b-origin", title: "Opened directly on Tabdeal; followed here" }, "Tabdeal") : null;
+        const moved = active && this.ws.tools && (this.ws.tools.linked(t.id) || {}).dirty;
         rows.push(h("tr", { class: "ws-trade-row", onclick: this.rowToggle(t) },
           h("td", { class: "num" }, String(t.id)),
           h("td", {}, this.ws.display(t.symbol)),
           h("td", { class: t.side === "LONG" ? "pos" : "neg" }, t.side),
-          h("td", {}, h("span", { class: `ws-badge b-${t.status.toLowerCase()}` }, t.status), prot),
+          h("td", {}, h("span", { class: `ws-badge b-${t.status.toLowerCase()}` }, t.status), " ", src, prot),
           h("td", { class: "num" }, active && t.avg_entry ? num(t.avg_entry) : num(t.entry)),
           h("td", { class: "num" }, active && t.filled_qty < t.qty ? `${num(t.filled_qty, 5)} / ${num(t.qty, 5)}` : num(t.qty, 5)),
           h("td", { class: "num" }, `${t.leverage}×`),
@@ -158,10 +172,12 @@
           h("td", { class: `num ${tone(lv.roe_pct)}` }, lv.roe_pct === undefined || lv.roe_pct === null ? "—" : `${num(lv.roe_pct, 2)}%`),
           h("td", { class: "num" }, lv.liquidation ? num(lv.liquidation) : "—"),
           h("td", { class: "num" }, when(t.created_at)),
-          h("td", {}, h("button", { class: "btn btn-quiet", type: "button", onclick: (e) => { e.stopPropagation(); this.act(t, active ? "close" : "cancel"); } }, active ? "Close" : "Cancel"))));
+          h("td", { class: "ws-trade-acts" },
+            active ? h("button", { class: `btn btn-quiet${moved || !t.protected ? " ws-attn" : ""}`, type: "button", title: "Send the stop / target of this trade's drawing to Tabdeal", onclick: (e) => { e.stopPropagation(); this.setSlTp(t); } }, "SL/TP") : null,
+            h("button", { class: "btn btn-quiet", type: "button", onclick: (e) => { e.stopPropagation(); this.act(t, active ? "close" : "cancel"); } }, active ? "Close" : "Cancel"))));
         if (this.expanded.has(t.id)) rows.push(this.events(t, head.length));
       }
-      return this.table(head, rows, "No open trades. Place a Long / Short position on the chart, then press Trade (⚡) in the left toolbar.");
+      return this.table(head, rows, "No open trades. Place a Long / Short position on the chart, then press Trade (⚡) in the left toolbar. Positions opened directly on Tabdeal appear here by themselves.");
     }
     historyTable() {
       const head = ["#", "Market", "Side", "Result", "Entry", "Exit", "Size", "Lev.", "PnL (USDT)", "Opened", "Closed"];
@@ -172,7 +188,7 @@
           h("td", { class: "num" }, String(t.id)),
           h("td", {}, this.ws.display(t.symbol)),
           h("td", { class: t.side === "LONG" ? "pos" : "neg" }, t.side),
-          h("td", {}, h("span", { class: `ws-badge b-${t.status.toLowerCase()}`, title: t.last_error || "" }, result)),
+          h("td", {}, h("span", { class: `ws-badge b-${t.status.toLowerCase()}`, title: t.last_error || "" }, result), t.origin === "TABDEAL" ? h("span", { class: "ws-badge b-origin" }, " Tabdeal") : null),
           h("td", { class: "num" }, num(t.avg_entry || t.entry)),
           h("td", { class: "num" }, t.exit_price ? num(t.exit_price) : "—"),
           h("td", { class: "num" }, num(t.filled_qty || t.qty, 5)),

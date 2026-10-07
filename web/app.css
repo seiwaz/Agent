@@ -302,3 +302,6 @@ body[data-view="chart"] main { max-width: none; padding: 8px 12px 12px; }
 .login-btn { justify-content: center; min-height: 40px; background: var(--info); border-color: var(--info); color: #fff; }
 .login-warn { margin: 0; font-size: 13px; color: var(--warn); background: var(--warn-bg); padding: 8px 10px; border-radius: 8px; }
 .login-err { margin: 0; font-size: 13px; color: var(--bad); background: var(--bad-bg); padding: 8px 10px; border-radius: 8px; }
+.b-origin { color: var(--warn); margin-left: 4px; }
+.ws-trade-acts { display: flex; gap: 6px; }
+.ws-attn { border-color: var(--warn); color: var(--warn); }
