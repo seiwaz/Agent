@@ -366,6 +366,7 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         pg.click(".ws-trade-tabs button:has-text('History')")
         pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('Closed here')", timeout=15000)
         assert "BTC_USDT" not in ex.position
+        pg.wait_for_function("() => !state.ws.tools.items.some(i => i.id === 'L1')", timeout=15000)  # its drawing went too
         pg.click(".logout-form button")  # sign out: back to the login page
         pg.wait_for_url("**/login")
         assert errors == []
@@ -416,7 +417,7 @@ def test_a_position_opened_on_tabdeal_is_drawn_and_protected_from_the_chart(data
         # closed on Tabdeal at the target: history, and the drawing is no longer an open trade
         ex.end("BTC_USDT", str(tp))
         pg.wait_for_function("() => document.querySelector('.ws-trade-table td.empty')", timeout=15000)
-        pg.wait_for_function("() => !state.ws.tools.items.find(i => i.trade).status", timeout=15000)
+        pg.wait_for_function("() => !state.ws.tools.items.some(i => i.trade)", timeout=15000)  # removed
         pg.click(".ws-trade-tabs button:has-text('History')")
         pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('Target')", timeout=15000)
         assert errors == []

@@ -86,8 +86,9 @@ the exchange, stop / target from Tabdeal when it reports them; otherwise suggest
 with "No stop / target on Tabdeal". Drag the stop / target of a linked drawing and press
 **SL/TP** in its row to set (or move) them on Tabdeal — for any active trade. A linked drawing's
 entry follows the exchange and cannot be dragged; across its whole width, the zone from the entry
-to the current price line is filled darker green (in profit) or red (at a loss). A trade's drawing
-is on its own market's chart: click the market in its row to switch the chart there with the
+to the current price line is filled darker green (in profit) or red (at a loss). When the trade
+closes (target, stop, closed here or on Tabdeal) or is canceled, its drawing is removed. A trade's
+drawing is on its own market's chart: click the market in its row to switch the chart there with the
 drawing selected and in view. Prices show at each market's precision (BTC 1, XRP 5 decimals).
 
 The open trades update live: the price, PnL and ROE of each open position every second, from

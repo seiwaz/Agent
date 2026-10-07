@@ -5,7 +5,8 @@
  * selected or last position drawing to the trade dialog (web/chart/trading.js); drawing alone
  * never creates an order. Every open trade — placed here or directly on Tabdeal — has a position
  * drawing linked to it (`trade`), kept in line with the exchange; dragging its stop / target
- * marks it moved until the panel's SL/TP button sends them to Tabdeal. A position drawing shows
+ * marks it moved until the panel's SL/TP button sends them to Tabdeal. When the trade closes (or
+ * is canceled) its drawing is removed. A position drawing shows
  * its labels (entry, stop, target, R:R, result) only while it is selected.
  *
  * Drawings are kept per market in localStorage, in time (UTC seconds) / price, so they appear on
@@ -148,7 +149,12 @@
         if (t.status === "ACTIVE" && it.t2 < b[b.length - 1].t + 3 * step) it.t2 = b[b.length - 1].t + 10 * step;
         if (JSON.stringify([it.trade, it.status, it.unset, it.entry, it.sl, it.tp, it.t2]) !== was) changed = true;
       }
-      for (const it of this.items) if (it.trade && it.status && !open.has(it.trade)) { it.status = null; it.dirty = false; it.unset = false; changed = true; }
+      // a trade that closed (or was canceled): its drawing goes too, older leftovers included
+      const kept = this.items.filter((it) => !it.trade || open.has(it.trade));
+      if (kept.length !== this.items.length) {
+        if (this.sel && !kept.some((it) => it.id === this.sel)) this.sel = null;
+        this.items = kept; changed = true;
+      }
       if (changed) { this.save(); this.redraw(); }
     }
     linked(tradeId) { return this.items.find((x) => x.trade === tradeId) || null; }
