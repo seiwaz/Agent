@@ -39,6 +39,7 @@ Tabdeal's ~300 days of 1-minute history give too few trades to judge anything.
 ```sh
 # long history (public, read-only, no key): Binance from 2017-08, Bitstamp from 2011-08
 uv run python scripts/fetch_daily.py --source binance --symbol BTCUSDT
+uv run python scripts/fetch_daily.py --source binance_vision --symbol BTCUSDT  # where the API says 451
 uv run python scripts/fetch_daily.py --source bitstamp --symbol btcusd
 # any other daily CSV works too (TradingView export, ...): date, open, high, low, close[, volume]
 ```
@@ -65,6 +66,8 @@ Output (JSON, and with `--out`: `summary.json`, `trades.csv`, `equity.csv`):
   it shows whether the result depends on the exact numbers. It is not for picking the best row.
 
 ## Evaluation rules (fixed before the first run on real data)
+
+Results: [`docs/trend/report.md`](trend/report.md).
 
 The defaults above (20 / 10 / 2 × ATR(20), filter off) are the ones under test. They come from
 the literature (Donchian / Turtle rules), not from this data. Judged on BTC daily data from

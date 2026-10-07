@@ -2,6 +2,7 @@
 
     uv run python scripts/fetch_daily.py --source binance --symbol BTCUSDT   # from 2017-08
     uv run python scripts/fetch_daily.py --source bitstamp --symbol btcusd   # from 2011-08
+    uv run python scripts/fetch_daily.py --source binance_vision --symbol BTCUSDT  # bulk archive
 
 Public endpoints only (no API key), GET requests only. Days are UTC; today's still-forming
 day is dropped. Output: data/<SOURCE>_<SYMBOL>_1d.csv (columns date, open, high, low, close,
@@ -75,13 +76,58 @@ def bitstamp(symbol: str, since: datetime) -> list[Candle]:
             )
             for r in rows
         ]
-        if len(rows) < 1000:
+        # days without trades are left out (2011-2013), so a short page is not the end
+        if not rows or int(rows[-1]["timestamp"]) + 2 * 86400 > time.time():
             return out
         start = int(rows[-1]["timestamp"]) + 86400
         time.sleep(0.3)
 
 
-SOURCES = {"binance": binance, "bitstamp": bitstamp}
+def binance_vision(symbol: str, since: datetime) -> list[Candle]:
+    """Binance's bulk archive (data.binance.vision): monthly files, then daily files for the
+    current month. Reachable where the REST API answers 451 (restricted locations)."""
+    import csv
+    import io
+    import urllib.error
+    import zipfile
+
+    base = "https://data.binance.vision/data/spot"
+    out: list[Candle] = []
+
+    def read(url: str) -> bool:
+        req = urllib.request.Request(url, headers={"User-Agent": "sp2l-fetch-daily"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                blob = r.read()
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return False
+            raise
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            text = z.read(z.namelist()[0]).decode()
+        for row in csv.reader(io.StringIO(text)):
+            if not row or not row[0].isdigit():
+                continue  # header line in some files
+            ts = int(row[0])
+            ms = ts // 1000 if ts > 10**14 else ts  # microseconds from 2025 on
+            out.append(_candle(ms, row[1], row[2], row[3], row[4], row[5]))
+        return True
+
+    now = datetime.now(UTC)
+    y, m = max(since, datetime(2017, 8, 1, tzinfo=UTC)).year, since.month
+    if since < datetime(2017, 8, 1, tzinfo=UTC):
+        y, m = 2017, 8
+    while (y, m) < (now.year, now.month):
+        read(f"{base}/monthly/klines/{symbol}/1d/{symbol}-1d-{y}-{m:02d}.zip")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    day = datetime(now.year, now.month, 1, tzinfo=UTC)
+    while day + timedelta(days=1) <= now:
+        read(f"{base}/daily/klines/{symbol}/1d/{symbol}-1d-{day.date().isoformat()}.zip")
+        day += timedelta(days=1)
+    return out
+
+
+SOURCES = {"binance": binance, "binance_vision": binance_vision, "bitstamp": bitstamp}
 
 
 def main() -> None:

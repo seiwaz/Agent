@@ -1,0 +1,284 @@
+{
+ "version": "TREND-1.0",
+ "data": {
+  "repaired": 0,
+  "unreadable": 0,
+  "source": "data/bitstamp_BTCUSD_1d.csv",
+  "bars": 5529,
+  "first": "2011-08-18",
+  "last": "2026-10-06",
+  "missing_days": 0,
+  "largest_gaps": []
+ },
+ "params": {
+  "entry_len": 20,
+  "exit_len": 10,
+  "atr_len": 20,
+  "stop_atr": 2.0,
+  "regime_ma": 0,
+  "sizing": "full",
+  "risk_pct": 0.01,
+  "max_exposure": 1.0,
+  "max_units": 1,
+  "add_atr": 1.0,
+  "initial_equity": 10000.0
+ },
+ "params_hash": "c47e84a3230d3d2d",
+ "fees": {
+  "fee": 0.00095,
+  "slippage": 0.000326
+ },
+ "bars": 5529,
+ "first_signal_bar": "2011-09-07",
+ "full": {
+  "strategy": {
+   "from": "2011-09-07",
+   "to": "2026-10-06",
+   "days": 5508,
+   "total_return_pct": 1294540.8,
+   "cagr_pct": 87.3,
+   "vol_pct": 53.5,
+   "sharpe": 1.45,
+   "sortino": 2.25,
+   "max_drawdown_pct": 70.3,
+   "max_drawdown_peak": "2013-04-09",
+   "max_drawdown_trough": "2013-04-16",
+   "calmar": 1.24
+  },
+  "buy_hold": {
+   "from": "2011-09-07",
+   "to": "2026-10-06",
+   "days": 5508,
+   "total_return_pct": 1006412.0,
+   "cagr_pct": 84.2,
+   "vol_pct": 80.9,
+   "sharpe": 1.17,
+   "sortino": 1.75,
+   "max_drawdown_pct": 84.9,
+   "max_drawdown_peak": "2013-12-04",
+   "max_drawdown_trough": "2015-01-14",
+   "calmar": 0.99
+  },
+  "exposure_pct": 44.1,
+  "trades": {
+   "trades": 71,
+   "open_trade": true,
+   "win_rate_pct": 47.9,
+   "avg_r": 4.39,
+   "median_r": -0.08,
+   "best_r": 111.85,
+   "worst_r": -1.06,
+   "profit_factor": 2.42,
+   "avg_win_pct": 73.4,
+   "avg_loss_pct": -7.5,
+   "avg_bars_win": 58.0,
+   "avg_bars_loss": 11.9,
+   "exits": {
+    "STOP": 22,
+    "CHANNEL": 49
+   },
+   "fees_paid": 5394303.31,
+   "max_losing_streak": 7
+  }
+ },
+ "first_two_thirds": {
+  "strategy": {
+   "from": "2011-09-07",
+   "to": "2021-09-26",
+   "days": 3672,
+   "total_return_pct": 631535.5,
+   "cagr_pct": 138.7,
+   "vol_pct": 62.0,
+   "sharpe": 1.72,
+   "sortino": 2.68,
+   "max_drawdown_pct": 70.3,
+   "max_drawdown_peak": "2013-04-09",
+   "max_drawdown_trough": "2013-04-16",
+   "calmar": 1.97
+  },
+  "buy_hold": {
+   "from": "2011-09-07",
+   "to": "2021-09-26",
+   "days": 3672,
+   "total_return_pct": 508190.9,
+   "cagr_pct": 133.6,
+   "vol_pct": 92.1,
+   "sharpe": 1.39,
+   "sortino": 2.09,
+   "max_drawdown_pct": 84.9,
+   "max_drawdown_peak": "2013-12-04",
+   "max_drawdown_trough": "2015-01-14",
+   "calmar": 1.57
+  },
+  "exposure_pct": 45.9,
+  "trades": {
+   "trades": 42,
+   "open_trade": false,
+   "win_rate_pct": 54.8,
+   "avg_r": 6.99,
+   "median_r": 0.56,
+   "best_r": 111.85,
+   "worst_r": -1.06,
+   "profit_factor": 7.16,
+   "avg_win_pct": 99.8,
+   "avg_loss_pct": -9.3,
+   "avg_bars_win": 63.1,
+   "avg_bars_loss": 12.3,
+   "exits": {
+    "STOP": 13,
+    "CHANNEL": 29
+   },
+   "fees_paid": 511631.04,
+   "max_losing_streak": 6
+  }
+ },
+ "last_third": {
+  "strategy": {
+   "from": "2021-09-26",
+   "to": "2026-10-06",
+   "days": 1836,
+   "total_return_pct": 105.0,
+   "cagr_pct": 15.3,
+   "vol_pct": 29.9,
+   "sharpe": 0.63,
+   "sortino": 0.96,
+   "max_drawdown_pct": 46.3,
+   "max_drawdown_peak": "2021-10-20",
+   "max_drawdown_trough": "2022-12-16",
+   "calmar": 0.33
+  },
+  "buy_hold": {
+   "from": "2021-09-26",
+   "to": "2026-10-06",
+   "days": 1836,
+   "total_return_pct": 98.0,
+   "cagr_pct": 14.5,
+   "vol_pct": 51.6,
+   "sharpe": 0.52,
+   "sortino": 0.76,
+   "max_drawdown_pct": 76.7,
+   "max_drawdown_peak": "2021-11-08",
+   "max_drawdown_trough": "2022-11-21",
+   "calmar": 0.19
+  },
+  "exposure_pct": 40.4,
+  "trades": {
+   "trades": 29,
+   "open_trade": true,
+   "win_rate_pct": 37.9,
+   "avg_r": 0.63,
+   "median_r": -0.62,
+   "best_r": 6.95,
+   "worst_r": -1.05,
+   "profit_factor": 1.83,
+   "avg_win_pct": 18.2,
+   "avg_loss_pct": -5.6,
+   "avg_bars_win": 47.5,
+   "avg_bars_loss": 11.4,
+   "exits": {
+    "STOP": 9,
+    "CHANNEL": 20
+   },
+   "fees_paid": 4882672.27,
+   "max_losing_streak": 7
+  }
+ },
+ "yearly": [
+  {
+   "year": 2011,
+   "strategy_pct": -18.9,
+   "buy_hold_pct": -46.1,
+   "exposure_pct": 3.0
+  },
+  {
+   "year": 2012,
+   "strategy_pct": 72.1,
+   "buy_hold_pct": 189.1,
+   "exposure_pct": 57.0
+  },
+  {
+   "year": 2013,
+   "strategy_pct": 3847.7,
+   "buy_hold_pct": 5428.7,
+   "exposure_pct": 70.0
+  },
+  {
+   "year": 2014,
+   "strategy_pct": -16.4,
+   "buy_hold_pct": -56.1,
+   "exposure_pct": 12.0
+  },
+  {
+   "year": 2015,
+   "strategy_pct": 33.3,
+   "buy_hold_pct": 34.2,
+   "exposure_pct": 44.0
+  },
+  {
+   "year": 2016,
+   "strategy_pct": 112.0,
+   "buy_hold_pct": 124.3,
+   "exposure_pct": 59.0
+  },
+  {
+   "year": 2017,
+   "strategy_pct": 345.2,
+   "buy_hold_pct": 1336.4,
+   "exposure_pct": 64.0
+  },
+  {
+   "year": 2018,
+   "strategy_pct": -17.2,
+   "buy_hold_pct": -73.4,
+   "exposure_pct": 14.0
+  },
+  {
+   "year": 2019,
+   "strategy_pct": 73.6,
+   "buy_hold_pct": 94.1,
+   "exposure_pct": 41.0
+  },
+  {
+   "year": 2020,
+   "strategy_pct": 284.7,
+   "buy_hold_pct": 304.5,
+   "exposure_pct": 58.0
+  },
+  {
+   "year": 2021,
+   "strategy_pct": 112.1,
+   "buy_hold_pct": 59.4,
+   "exposure_pct": 48.0
+  },
+  {
+   "year": 2022,
+   "strategy_pct": -33.3,
+   "buy_hold_pct": -64.2,
+   "exposure_pct": 19.0
+  },
+  {
+   "year": 2023,
+   "strategy_pct": 63.2,
+   "buy_hold_pct": 155.7,
+   "exposure_pct": 52.0
+  },
+  {
+   "year": 2024,
+   "strategy_pct": 58.1,
+   "buy_hold_pct": 121.0,
+   "exposure_pct": 55.0
+  },
+  {
+   "year": 2025,
+   "strategy_pct": 3.0,
+   "buy_hold_pct": -6.3,
+   "exposure_pct": 30.0
+  },
+  {
+   "year": 2026,
+   "strategy_pct": 7.4,
+   "buy_hold_pct": -2.2,
+   "exposure_pct": 52.0
+  }
+ ]
+}
