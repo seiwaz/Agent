@@ -235,3 +235,30 @@ def test_api_trading_off(engine, tmp_path):
     new_token(tok)
     r = c.get("/api/trade/trades", headers={"X-Trade-Token": tok.read_text().strip()})
     assert r.status_code == 403 and "trading.enabled" in r.json()["detail"]
+
+
+def test_an_unreadable_key_file_turns_trading_off_but_the_dashboard_runs(engine, tmp_path):
+    from sp2l.config import RuntimeConfig
+    from sp2l.trading.api import TradingDesk
+
+    d = tmp_path / "sp2l"
+    d.mkdir(mode=0o700)
+    env = d / "tabdeal.env"
+    env.write_text("SP2L_TABDEAL_API_KEY=k\nSP2L_TABDEAL_API_SECRET=s\n")
+    env.chmod(0o600)
+    real = Path.read_text
+
+    def denied(self: Path, *a: Any, **k: Any) -> str:
+        if self == env:
+            raise PermissionError(13, "Permission denied")
+        return real(self, *a, **k)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(Path, "read_text", denied)
+    try:
+        cfg = RuntimeConfig({"database_url": "x", "symbols": ["BTCUSDT"],
+                             "trading": {"enabled": True, "credentials_file": str(env)}})
+        desk = TradingDesk(cfg, engine)
+    finally:
+        mp.undo()
+    assert desk.manager is None and "Permission denied" in (desk.problem or "")

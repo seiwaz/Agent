@@ -40,8 +40,12 @@ def load_credentials(path: Path = DEFAULT_PATH) -> Credentials:
         raise CredentialError(f"{path.parent} must be mode 700")
     if _mode(path) & 0o077:
         raise CredentialError(f"{path} must be mode 600")
+    try:
+        text = path.read_text()
+    except OSError as e:  # e.g. owned by another user: a clear message, never a crash
+        raise CredentialError(f"cannot read {path}: {e.strerror}") from e
     values: dict[str, str] = {}
-    for line in path.read_text().splitlines():
+    for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue

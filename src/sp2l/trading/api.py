@@ -44,7 +44,7 @@ class TradingDesk:
 
         try:
             creds = load_credentials(Path(self.cfg.credentials_file).expanduser())
-        except CredentialError as e:
+        except (CredentialError, OSError) as e:  # trading stays off; the dashboard still runs
             self.problem = f"Tabdeal credentials: {e}"
             return
         self.manager = TradeManager(
