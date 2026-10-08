@@ -3,9 +3,11 @@
 Only the endpoints listed in ENDPOINTS can be called, each with its own method
 (docs.tabdeal.org v0.9.0, docs/tabdeal_endpoint_map.md). Signing as in the read-only client:
 query string = urlencode(params + timestamp[ms] + recvWindow), signature = HMAC-SHA256(secret,
-query string) hex, API key in the X-MBX-APIKEY header; the signed parameters travel in the query
-string (the docs allow it for every signed request). The key and the secret are never logged or
-returned.
+query string) hex, API key in the X-MBX-APIKEY header. Where the signed parameters travel follows
+Tabdeal's own client (tabdeal-python, `Client.request`): GET and DELETE in the query string, POST
+in the body as a form (application/x-www-form-urlencoded). Sent in the query string, a POST is
+refused with "Access denied." (2026-10-08, setting the leverage). The key and the secret are
+never logged or returned.
 """
 
 from __future__ import annotations
@@ -77,13 +79,19 @@ class TabdealTrade:
     def call(self, method: str, path: str, params: dict[str, Any] | None = None) -> Any:
         if (method, path) not in ENDPOINTS:
             raise PermissionError(f"{method} {path} is not an allowed endpoint")
-        url = f"{self.base}{path}?{self._signed(dict(params or {}))}"
+        signed = self._signed(dict(params or {}))
         headers = {
             "User-Agent": "sp2l-trade/1",
             "Accept": "application/json",
             "X-MBX-APIKEY": self._creds.api_key,
         }
-        req = urllib.request.Request(url, headers=headers, method=method)
+        if method == "POST":  # in the body, as Tabdeal's own client sends it
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+            req = urllib.request.Request(f"{self.base}{path}", data=signed.encode(),
+                                         headers=headers, method=method)
+        else:
+            req = urllib.request.Request(f"{self.base}{path}?{signed}", headers=headers,
+                                         method=method)
         try:
             with self._open(req, self.timeout) as resp:
                 raw = resp.read().decode()
