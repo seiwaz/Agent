@@ -313,7 +313,7 @@
           ...row("Size ≈", `${num(qty, 5)} (${num(qty * d.entry, 2)} USDT)`),
           ...row("Loss at the stop ≈", `−${num(loss, 2)} USDT`, "neg"), ...row("Gain at the target ≈", `+${num(gain, 2)} USDT`, "pos"),
           ...row("R:R", loss ? (gain / loss).toFixed(2) : "—"),
-          ...row("Futures wallet", account ? `${num(account.wallet_usdt, 2)} USDT (${num(account.available_usdt, 2)} available)` : "—"));
+          ...row("Futures wallet", account ? `${num(account.wallet_usdt, 2)} USDT (${account.available_estimated ? "≈ " : ""}${num(account.available_usdt, 2)} available)` : "—"));
       };
       const notReady = !this.cfg ? "Trading status unavailable." : !this.cfg.enabled ? "Trading is off: set trading.enabled: true in the server config and restart the API." : !this.cfg.ready ? `Trading is not ready: ${this.cfg.problem}` : "";
       const form = h("form", { method: "dialog", novalidate: true, onsubmit: async (e) => {

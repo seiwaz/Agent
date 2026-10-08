@@ -139,6 +139,21 @@ class TradingDesk:
             want = [s for s in symbols.split(",") if s in self.symbols] or self.symbols
             return {s: self.prices.get(s) for s in want}
 
+        @app.get("/api/trade/raw")
+        def trade_raw() -> Any:
+            """What Tabdeal answers for the wallet and the positions, as is (no credentials):
+            for comparing with Tabdeal's app when a number looks wrong."""
+            def raw(m: TradeManager) -> Any:
+                from sp2l.marketdata.tabdeal_ws import ws_market
+
+                out: dict[str, Any] = {"balance": m.ex.balance()}
+                for s in self.symbols:
+                    out[f"positionRisk {s}"] = m.ex.position_risk(ws_market(s))
+                out["wallet (as used here)"] = {k: str(v) for k, v in m.wallet().items()}
+                return out
+
+            return self._do(raw)
+
         @app.get("/api/trade/account")
         def trade_account(symbol: str | None = None) -> Any:
             return self._do(lambda m: m.account(self._sym(symbol)))

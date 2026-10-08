@@ -231,15 +231,38 @@ class TradeManager:
     def account(self, symbol: str) -> dict[str, Any]:
         """Balance and whether a trade can be opened on `symbol` now."""
         market = ws_market(symbol)
-        usdt = self._usdt()
+        w = self.wallet()
         busy = self._busy(symbol, market)
         return {
             "symbol": symbol,
-            "available_usdt": fnum(usdt.get("availableBalance")),
-            "wallet_usdt": fnum(usdt.get("crossWalletBalance") or usdt.get("balance")),
+            "available_usdt": float(w["available"]),
+            "available_estimated": w["estimated"],
+            "wallet_usdt": float(w["wallet"]),
             "busy": busy,
             **self.cfg.public(),
         }
+
+    def wallet(self) -> dict[str, Any]:
+        """The futures wallet in USDT: {wallet, available, estimated}.
+
+        Tabdeal has been seen to report availableBalance 0 with no position open and a funded
+        wallet (2026-09-26), so a non-positive one is replaced by an estimate: wallet balance +
+        unrealized PnL - the initial margin of the open positions. The exchange still has the last
+        word when the order is placed."""
+        u = self._usdt()
+        wallet = D(u.get("crossWalletBalance") or u.get("walletBalance") or u.get("balance") or 0)
+        avail = D(u.get("availableBalance") or 0)
+        if avail > 0:
+            return {"wallet": wallet, "available": avail, "estimated": False}
+        used = Decimal(0)
+        for market in (ws_market(s) for s in self.instruments):
+            pos = _first(self.ex.position_risk(market), market)
+            amt = D(pos.get("positionAmt", 0)) if pos else Decimal(0)
+            if pos is not None and amt != 0:
+                lev = D(pos.get("leverage") or 1) or Decimal(1)
+                used += abs(amt) * D(pos.get("entryPrice") or 0) / lev
+        est = wallet + D(u.get("crossUnPnl") or 0) - used
+        return {"wallet": wallet, "available": max(est, Decimal(0)), "estimated": True}
 
     def _usdt(self) -> dict[str, Any]:
         rows = _rows(self.ex.balance())
@@ -337,12 +360,13 @@ class TradeManager:
             busy = self._busy(symbol, market)
             if busy:
                 raise TradeError(f"{busy}: close or cancel it first")
-            usdt = self._usdt()
-            avail = D(usdt.get("availableBalance", 0))
-            wallet = D(usdt.get("crossWalletBalance") or usdt.get("balance") or 0)
+            w = self.wallet()
+            avail, wallet = w["available"], w["wallet"]
             if notional / leverage > avail:
                 raise TradeError(
                     f"needs {notional / leverage:.2f} USDT margin; {avail:.2f} available"
+                    + (" (estimated)" if w["estimated"] else "")
+                    + f" in the futures wallet ({wallet:.2f} USDT)"
                 )
             if loss + notional * LIQ_BUFFER >= wallet:
                 raise TradeError(

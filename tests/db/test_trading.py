@@ -384,3 +384,19 @@ def test_live_prices_are_cached_for_a_second_and_errors_are_reported():
     assert p.get("BTCUSDT")["price"] == 60002.5
     x = p.get("XRPUSDT")
     assert x["price"] is None and "timed out" in x["error"]
+
+
+def test_an_available_balance_of_zero_is_estimated_from_the_wallet(tm, ex, monkeypatch):
+    real = ex.balance
+
+    def zero_available() -> Any:
+        rows = real()
+        rows[0]["availableBalance"] = "0"  # as Tabdeal reported with a funded wallet, no position
+        return rows
+
+    monkeypatch.setattr(ex, "balance", zero_available)
+    acc = tm.account("BTCUSDT")
+    assert acc["available_estimated"] and acc["available_usdt"] == pytest.approx(200.0)
+    assert tm.open(LONG)["status"] == "PENDING"  # not refused for "0 available"
+    ex.manual("XRP_USDT", "10", "1.5", lev=5)  # 3 USDT of margin in use
+    assert tm.wallet()["available"] == pytest.approx(Decimal("197"))
