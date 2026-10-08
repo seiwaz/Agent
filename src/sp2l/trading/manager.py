@@ -390,17 +390,21 @@ class TradeManager:
                                             f"requested {side} {qty} @ {entry} x{leverage}"}])},
                     ).scalar_one()
                 )
+            step_name = "setting the leverage"
             try:
                 self.ex.set_leverage(market, leverage)
                 self._set(tid, f"leverage set to {leverage}")
+                step_name = "placing the order"
                 o = self.ex.limit_order(market, "BUY" if side == "LONG" else "SELL",
                                         wire(qty, step), wire(entry, tick), client_id)
             except ExchangeError as e:
-                if e.status is None:  # the order may or may not exist: look for it
+                if e.status is None and step_name == "placing the order":
+                    # the order may or may not exist: look for it
                     self._set(tid, f"order outcome unknown ({e})", last_error=str(e))
                     self._settle(tid)
                 else:
-                    self._set(tid, f"rejected: {e}", status="REJECTED", last_error=str(e),
+                    why = f"{step_name}: {e}" + _hint(e)
+                    self._set(tid, f"rejected while {why}", status="REJECTED", last_error=why,
                               closed_at=_now())
                 return self.view(self._get(tid))
             oid = o.get("orderId") if isinstance(o, dict) else None
@@ -717,6 +721,17 @@ class TradeManager:
             except Exception:  # keep polling: the next tick retries
                 log.exception("trade reconcile failed")
             stop.wait(self.cfg.poll_s)
+
+
+def _hint(e: ExchangeError) -> str:
+    """What to check when Tabdeal refuses a trading call."""
+    msg = str(e).lower()
+    if e.status in (401, 403) or "denied" in msg or "permission" in msg or "ip" in msg.split():
+        return (" — check the Tabdeal API key: it must allow futures trading (not read-only),"
+                " and if it is limited to IP addresses, the server's IP must be on its list")
+    if "signature" in msg or "timestamp" in msg or "recvwindow" in msg:
+        return " — the request signature / clock was refused: check the key, secret and server time"
+    return ""
 
 
 def _now() -> Any:

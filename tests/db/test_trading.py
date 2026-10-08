@@ -400,3 +400,11 @@ def test_an_available_balance_of_zero_is_estimated_from_the_wallet(tm, ex, monke
     assert tm.open(LONG)["status"] == "PENDING"  # not refused for "0 available"
     ex.manual("XRP_USDT", "10", "1.5", lev=5)  # 3 USDT of margin in use
     assert tm.wallet()["available"] == pytest.approx(Decimal("197"))
+
+
+def test_a_refused_leverage_says_which_step_and_what_to_check(tm, ex):
+    ex.fail["set_leverage"] = ExchangeError("access denied", None, 403)
+    r = tm.open(LONG)
+    assert r["status"] == "REJECTED" and "limit_order" not in ex.names()
+    assert r["last_error"].startswith("setting the leverage: access denied")
+    assert "futures trading" in r["last_error"] and "IP" in r["last_error"]
