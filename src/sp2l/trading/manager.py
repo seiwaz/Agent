@@ -56,7 +56,7 @@ class TradeError(ValueError):
 @dataclass(frozen=True)
 class TradingConfig:
     enabled: bool = False
-    max_leverage: int = 20
+    max_leverage: int = 100
     max_margin_usdt: float = 50.0
     working_type: str = "MARK_PRICE"
     poll_s: float = 3.0

@@ -177,7 +177,7 @@ trend_live:
 # API key file below (mode 600; the key needs trading permission).
 trading:
   enabled: true
-  max_leverage: 20          # the dialog's leverage is capped here
+  max_leverage: 100         # the dialog's leverage is capped here (Tabdeal: up to 125)
   max_margin_usdt: 50       # margin (USDT) of one trade is capped here
   working_type: MARK_PRICE  # stop / target trigger: MARK_PRICE or CONTRACT_PRICE
   poll_s: 2                 # Tabdeal has no futures user stream: fills and exits are polled

@@ -40,6 +40,14 @@
   const when = (iso) => (iso ? LOCAL.format(new Date(iso)) : "—");
   const tone = (v) => (v === null || v === undefined || +v === 0 ? "" : +v > 0 ? "pos" : "neg");
 
+  /** A number typed by the user: Persian / Arabic digits and decimal separators accepted. */
+  function numIn(v) {
+    const t = String(v || "").trim()
+      .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0))
+      .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660))
+      .replace(/[٫,]/g, ".");
+    return t === "" ? NaN : Number(t);
+  }
   /** A price at its market's precision (tick), e.g. BTC 1 decimal, XRP 5. */
   function pxOf(ws, sym) {
     const f = ws.format && ws.format(sym);
@@ -287,8 +295,9 @@
       const sym = this.ws.symbol, side = d.type === "long" ? "LONG" : "SHORT";
       const prefs = store.get(PREFS, {});
       const max = this.cfg ? this.cfg.max_leverage : 1, maxMargin = this.cfg ? this.cfg.max_margin_usdt : 0;
-      const lev = h("input", { type: "number", min: 1, max, step: 1, value: Math.min(max, prefs.leverage || 10), required: true });
-      const margin = h("input", { type: "number", min: 0.01, max: maxMargin, step: 0.01, value: Math.min(maxMargin, prefs.margin || 10), required: true });
+      // text inputs (not type=number): Persian / Arabic digits and any number of decimals are fine
+      const lev = h("input", { type: "text", inputmode: "numeric", autocomplete: "off", value: String(Math.min(max, prefs.leverage || 10)) });
+      const margin = h("input", { type: "text", inputmode: "decimal", autocomplete: "off", value: String(Math.min(maxMargin, prefs.margin || 5)) });
       const calc = h("dl", { class: "ws-dl" });
       const msg = h("p", { class: "ws-dlg-msg", "aria-live": "polite" });
       const go = h("button", { class: `btn ws-go ${side === "LONG" ? "go-long" : "go-short"}`, type: "submit" }, `Place ${side} limit on Tabdeal`);
@@ -296,7 +305,7 @@
       const close = () => { dlg.close(); dlg.remove(); };
       let account = null;
       const update = () => {
-        const L = +lev.value, m = +margin.value, qty = (m * L) / d.entry;
+        const L = numIn(lev.value), m = numIn(margin.value), qty = (m * L) / d.entry;
         const loss = qty * Math.abs(d.entry - d.sl), gain = qty * Math.abs(d.tp - d.entry);
         const row = (k, v, cls) => [h("dt", {}, k), h("dd", { class: `num ${cls || ""}` }, v)];
         calc.replaceChildren(
@@ -307,10 +316,14 @@
           ...row("Futures wallet", account ? `${num(account.wallet_usdt, 2)} USDT (${num(account.available_usdt, 2)} available)` : "—"));
       };
       const notReady = !this.cfg ? "Trading status unavailable." : !this.cfg.enabled ? "Trading is off: set trading.enabled: true in the server config and restart the API." : !this.cfg.ready ? `Trading is not ready: ${this.cfg.problem}` : "";
-      const form = h("form", { method: "dialog", onsubmit: async (e) => {
+      const form = h("form", { method: "dialog", novalidate: true, onsubmit: async (e) => {
         e.preventDefault();
-        const L = Math.round(+lev.value), m = +margin.value;
-        if (!(L >= 1 && L <= max) || !(m > 0 && m <= maxMargin)) { msg.textContent = `Leverage 1–${max}, margin up to ${maxMargin} USDT.`; return; }
+        const L = numIn(lev.value), m = numIn(margin.value);
+        const avail = account ? +account.available_usdt : null;
+        if (!(Number.isInteger(L) && L >= 1 && L <= max)) { msg.textContent = `Leverage must be a whole number from 1 to ${max}.`; return; }
+        if (!(m > 0)) { msg.textContent = "Margin must be a number above 0 (USDT), e.g. 5."; return; }
+        if (m > maxMargin) { msg.textContent = `Margin is at most ${maxMargin} USDT per trade (trading.max_margin_usdt).`; return; }
+        if (avail !== null && m > avail) { msg.textContent = `Margin ${m} USDT is more than the ${num(avail, 2)} USDT available in your Tabdeal futures wallet.`; return; }
         store.set(PREFS, { ...store.get(PREFS, {}), leverage: L, margin: m });
         go.disabled = true; msg.textContent = "Placing the order on Tabdeal…";
         try {

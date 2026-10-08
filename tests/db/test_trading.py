@@ -117,7 +117,7 @@ def test_order_cancelled_on_tabdeal(tm, ex):
     [
         ({"sl": 61000}, "stop < entry < target"),
         ({"side": "SHORT"}, "target < entry < stop"),
-        ({"leverage": 21}, "leverage must be 1..20"),
+        ({"leverage": 101}, "leverage must be 1..100"),
         ({"margin_usdt": 51}, "at most 50"),
         ({"margin_usdt": 0}, "above 0"),
         ({"margin_usdt": 0.001, "leverage": 1}, "less than one step"),

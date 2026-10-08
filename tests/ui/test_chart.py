@@ -344,8 +344,8 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         pg.click(".ws-trade-btn")
         pg.wait_for_selector("dialog.ws-dialog[open]")
         assert "Long" in pg.inner_text("dialog.ws-dialog h2")
-        pg.fill("dialog.ws-dialog input[type=number] >> nth=0", "5")
-        pg.fill("dialog.ws-dialog input[type=number] >> nth=1", "20")
+        pg.fill("dialog.ws-dialog .ws-field input >> nth=0", "۵")  # Persian digits are accepted
+        pg.fill("dialog.ws-dialog .ws-field input >> nth=1", "۲۰")
         pg.click("dialog.ws-dialog .ws-go")
         pg.wait_for_function("() => !document.querySelector('dialog.ws-dialog')", timeout=15000)
         pg.wait_for_selector(".ws-trade-table .b-pending", timeout=15000)

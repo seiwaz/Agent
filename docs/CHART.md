@@ -62,7 +62,7 @@ label adds the result ("+1.20 %", "Target hit +3.00 %", "Stopped −1.50 %").
 1. Place a **Long position** or **Short position** and drag its entry, stop and target.
 2. Press **Trade** (⚡, left toolbar). It takes the selected position drawing, or the last one
    placed, and asks for the **leverage** (1 … `trading.max_leverage`) and the **margin** in USDT
-   (≤ `trading.max_margin_usdt`); it shows the size, the loss at the stop, the gain at the
+   (≤ `trading.max_margin_usdt` and the available balance; Persian digits are fine); it shows the size, the loss at the stop, the gain at the
    target, R:R and the futures wallet.
 3. **Place** sends: the leverage, then a LIMIT GTC order at the entry. When (part of) it fills,
    the server sets the position's stop and target on Tabdeal (`positionSlTp`,
