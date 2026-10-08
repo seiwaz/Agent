@@ -135,8 +135,11 @@
           update(bars) {
             const d = I.macd(bars, s.fast, s.slow, s.signal);
             const pts = (xs) => bars.map((b, i) => (xs[i] === null ? { time: b.t } : { time: b.t, value: xs[i] }));
+            // four shades: strong while the histogram grows away from zero, faded while it shrinks
+            const shade = I.histShades(d.hist);
+            const tone = { up: `rgba(${c.bull},0.95)`, upFade: `rgba(${c.bull},0.38)`, down: `rgba(${c.bear},0.95)`, downFade: `rgba(${c.bear},0.38)` };
             hist.setData(bars.map((b, i) => (d.hist[i] === null ? { time: b.t }
-              : { time: b.t, value: d.hist[i], color: `rgba(${d.hist[i] >= 0 ? c.bull : c.bear},0.55)` })));
+              : { time: b.t, value: d.hist[i], color: tone[shade[i]] })));
             m.setData(pts(d.macd)); sg.setData(pts(d.signal));
           },
           remove() { for (const x of [hist, m, sg]) chart.removeSeries(x); },

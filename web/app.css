@@ -239,7 +239,7 @@ body[data-view="chart"] main { max-width: none; padding: 8px 12px 12px; }
 .ws-chart { position: absolute; inset: 0 0 0 44px; }
 .ws-chart.ws-drawing { cursor: crosshair; }
 .ws-chart.ws-hover { cursor: pointer; }
-.ws-draw { position: absolute; left: 0; top: 0; bottom: 0; width: 44px; z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-right: 1px solid var(--border); background: var(--surface); }
+.ws-draw { position: absolute; left: 0; top: 0; bottom: 0; width: 44px; z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 0; border-right: 1px solid var(--border); background: var(--surface); overflow-y: auto; scrollbar-width: none; }
 .ws-draw button { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-2); cursor: pointer; padding: 0; }
 .ws-draw button svg { width: 20px; height: 20px; }
 .ws-draw button:hover { background: var(--surface-2); color: var(--text); }

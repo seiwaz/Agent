@@ -33,7 +33,7 @@
     for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) e.append(k);
     return e;
   };
-  const bar = (b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c });
+  const bar = (b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v || 0 });
   const fmtOf = (o) => new Intl.DateTimeFormat(undefined, { hourCycle: "h23", ...o });
   const LOCAL = {  // axis and crosshair in the browser's time zone
     long: fmtOf({ year: "2-digit", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }),

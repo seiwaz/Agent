@@ -31,7 +31,18 @@
       icon: '<path d="M12 3v18"/><path d="M8 7l4-4 4 4"/><path d="M8 17l4 4 4-4"/><path d="M4 3h16M4 21h16" opacity=".6"/>' },
     { id: "path", label: "Path", points: Infinity,
       icon: '<path d="M3 18l6-8 5 5 7-10"/><path d="M17 5h4v4"/>' },
+    { id: "vline", label: "Vertical line", points: 1,
+      icon: '<path d="M12 2v20"/><circle cx="12" cy="12" r="2"/>' },
+    { id: "daterange", label: "Date range", points: 2,
+      icon: '<path d="M3 12h18"/><path d="M7 8l-4 4 4 4"/><path d="M17 8l4 4-4 4"/><path d="M3 4v16M21 4v16" opacity=".6"/>' },
+    { id: "avwap", label: "Anchored VWAP", points: 1,
+      icon: '<path d="M4 20c4-1 5-9 9-10s5 3 7-2"/><path d="M4 22v-6" stroke-width="2.4"/><circle cx="4" cy="16" r="1.6"/>' },
+    { id: "fib", label: "Fib retracement", points: 2,
+      icon: '<path d="M3 4h18M3 9h18M3 13h18M3 20h18" opacity=".75"/><path d="M5 20 19 4" stroke-dasharray="2 2"/>' },
   ];
+  const FIB = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+  const FIB_TONE = ["120,123,134", "242,54,69", "255,152,0", "76,175,80", "8,153,129", "0,188,212", "120,123,134"];
+  const VDATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const TRASH = '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/>';
   const TRADE = '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>';
 
@@ -231,6 +242,7 @@
     /* ---- creating ---------------------------------------------------------------------------- */
     newItem(type, q) {
       if (type === "hline") return { id: uid(), type, p: q.p };
+      if (type === "vline" || type === "avwap") return { id: uid(), type, t: q.t };
       if (type === "long" || type === "short") {
         const b = this.ws.bars.slice(-14);
         const atr = b.length ? b.reduce((s, x) => s + (x.h - x.l), 0) / b.length : q.p * 0.01;
@@ -302,11 +314,14 @@
       if (h === "body") {
         if (o.a) it.a = o.a.map((pt) => ({ t: pt.t + dt, p: pt.p + dp }));
         if (o.type === "hline") it.p = o.p + dp;
+        if (o.type === "vline") it.t = o.t + dt;
+        if (o.type === "avwap") it.t = q.t;  // the anchor follows the pointer, bar by bar
         if (o.entry !== undefined) Object.assign(it, { t1: o.t1 + dt, t2: o.t2 + dt, entry: o.entry + dp, sl: o.sl + dp, tp: o.tp + dp });
       } else if (typeof h === "number") it.a[h] = { t: q.t, p: q.p };
       else if (h === "tp" || h === "sl") it[h] = q.p;
       else if (h === "entry") Object.assign(it, { entry: q.p, t1: q.t });
       else if (h === "right") it.t2 = Math.max(it.t1 + this.step(), q.t);
+      else if (h === "anchor") it.t = q.t;
       if (it.trade && it.status && (h === "sl" || h === "tp")) it.dirty = true;  // to send with SL/TP
       this.redraw();
     }
@@ -324,6 +339,28 @@
     /** Screen geometry of a drawing: { handles: [[key, x, y]], segs: [[x1,y1,x2,y2]], rects: [[x1,y1,x2,y2]] } */
     geom(it) {
       const g = { handles: [], segs: [], rects: [] };
+      if (it.type === "vline") {
+        const x = this.x(it.t), hgt = this.ws.chart.panes()[0].getHeight();
+        if (x === null) return g;
+        g.segs.push([x, 0, x, hgt]); g.handles.push(["body", x, hgt / 2]);
+        return g;
+      }
+      if (it.type === "avwap") {
+        const b = this.ws.bars, i0 = b.findIndex((x) => x.t + this.step() > it.t);
+        if (i0 < 0) return g;
+        const v = window.ChartIndicators.anchoredVwap(b, i0);
+        let prev = null;
+        for (let i = i0; i < b.length; i++) {
+          const pt = [this.x(b[i].t), this.y(v[i])];
+          if (pt[0] === null || pt[1] === null) continue;
+          if (prev) g.segs.push([...prev, ...pt]);
+          prev = pt;
+        }
+        const ax = this.x(b[i0].t), ay = this.y(v[i0]);
+        if (ax !== null && ay !== null) g.handles.push(["anchor", ax, ay]);
+        g.vwap = v[b.length - 1];
+        return g;
+      }
       if (it.type === "hline") {
         const y = this.y(it.p), w = this.ws.chart.timeScale().width();
         if (y === null) return g;
@@ -339,9 +376,14 @@
       }
       const pts = it.a.map((pt) => [this.x(pt.t), this.y(pt.p)]);
       if (pts.some(([x, y]) => x === null || y === null)) return g;
-      if (it.type === "range") {
+      if (it.type === "range" || it.type === "daterange") {
         const [[x1, y1], [x2, y2]] = pts;
         g.rects.push([Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)]);
+      } else if (it.type === "fib") {
+        const [[x1], [x2]] = pts, [a, b] = it.a, l = Math.min(x1, x2), r = Math.max(x1, x2);
+        g.levels = FIB.map((f) => { const p = b.p + (a.p - b.p) * f; return [f, p, this.y(p)]; });
+        for (const [, , y] of g.levels) if (y !== null) g.segs.push([l, y, r, y]);
+        g.diag = [...pts[0], ...pts[1]];
       } else for (let i = 1; i < pts.length; i++) g.segs.push([...pts[i - 1], ...pts[i]]);
       pts.forEach(([x, y], i) => g.handles.push([i, x, y]));
       return g;
@@ -422,6 +464,46 @@
             if (selected && it.trade && it.status && (it.unset || it.dirty)) {
               label(it.dirty ? "Moved: press SL/TP below to apply on Tabdeal" : "No stop / target on Tabdeal: drag them, then SL/TP", Math.max(x1, 0) + 4, Math.min(rt[1], rs[1]) - 34, "rgba(196,118,0,0.95)", "left");
             }
+          } else if (it.type === "daterange") {
+            const r = g.rects[0];
+            if (!r) continue;
+            const [a, b] = it.a, fwd = b.t >= a.t, c = col.line;
+            ctx.fillStyle = c.replace("rgb(", "rgba(").replace(")", ",0.12)"); ctx.fillRect(r[0], r[1], r[2] - r[0], r[3] - r[1]);
+            ctx.strokeStyle = c; ctx.lineWidth = 1.2;
+            const my = (r[1] + r[3]) / 2, xa = T.x(a.t), xb = T.x(b.t);
+            ctx.beginPath(); ctx.moveTo(xa, my); ctx.lineTo(xb, my); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(xb + (fwd ? -6 : 6), my - 5); ctx.lineTo(xb, my); ctx.lineTo(xb + (fwd ? -6 : 6), my + 5); ctx.stroke();
+            const secs = Math.abs(b.t - a.t), bars = Math.round(secs / T.step());
+            const d = Math.floor(secs / 86400), hh = Math.floor((secs % 86400) / 3600), mm = Math.floor((secs % 3600) / 60);
+            const dur = [d ? `${d}d` : "", hh ? `${hh}h` : "", mm && !d ? `${mm}m` : ""].filter(Boolean).join(" ") || "0m";
+            const vol = T.ws.bars.filter((x) => x.t >= Math.min(a.t, b.t) && x.t <= Math.max(a.t, b.t)).reduce((s, x) => s + (x.v || 0), 0);
+            label(`${bars} bars · ${dur}${vol ? ` · vol ${vol >= 1000 ? (vol / 1000).toFixed(1) + "K" : vol.toFixed(2)}` : ""}`, (r[0] + r[2]) / 2, r[3] + 12, c, "center");
+          } else if (it.type === "fib") {
+            if (!g.levels) continue;
+            const l = Math.min(g.diag[0], g.diag[2]), rr = Math.max(g.diag[0], g.diag[2]);
+            for (let k = 0; k < g.levels.length - 1; k++) {  // a light band between two levels
+              const y1 = g.levels[k][2], y2 = g.levels[k + 1][2];
+              if (y1 === null || y2 === null) continue;
+              ctx.fillStyle = `rgba(${FIB_TONE[k + 1]},0.07)`; ctx.fillRect(l, Math.min(y1, y2), rr - l, Math.abs(y2 - y1));
+            }
+            g.levels.forEach(([f, p, y], k) => {
+              if (y === null) return;
+              ctx.strokeStyle = `rgba(${FIB_TONE[k]},0.95)`; ctx.lineWidth = 1.2;
+              ctx.beginPath(); ctx.moveTo(l, y); ctx.lineTo(rr, y); ctx.stroke();
+              ctx.fillStyle = `rgba(${FIB_TONE[k]},1)`; ctx.textAlign = "right";
+              ctx.fillText(`${f} (${fmt(p)})`, l - 4, y);
+            });
+            ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = `rgba(${col.text},0.45)`; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(g.diag[0], g.diag[1]); ctx.lineTo(g.diag[2], g.diag[3]); ctx.stroke(); ctx.restore();
+          } else if (it.type === "avwap") {
+            ctx.strokeStyle = "rgba(233,30,99,0.95)"; ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            g.segs.forEach(([x1, y1, x2, y2], k) => { if (k === 0) ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); });
+            ctx.stroke();
+            if (g.segs.length && g.vwap !== undefined && g.vwap !== null) {
+              const [, , xe, ye2] = g.segs[g.segs.length - 1];
+              label(`AVWAP ${fmt(g.vwap)}`, xe - 4, ye2 - 14, "rgba(233,30,99,0.95)", "right");
+            }
           } else if (it.type === "range") {
             const r = g.rects[0];
             if (!r) continue;
@@ -443,10 +525,11 @@
               ctx.moveTo(x2, y2); ctx.lineTo(x2 - 9 * Math.cos(ang + 0.45), y2 - 9 * Math.sin(ang + 0.45)); ctx.stroke();
             }
             if (it.type === "hline" && g.segs.length) label(fmt(it.p), mediaSize.width - 2, g.segs[0][1], col.line, "right");
+            if (it.type === "vline" && g.segs.length) label(VDATE.format(new Date(it.t * 1000)), g.segs[0][0], mediaSize.height - 12, col.line, "center");
           }
           if (selected) {
             for (const [key, hx, hy] of g.handles) {
-              if (key === "body" && it.type !== "hline") continue;
+              if (key === "body" && it.type !== "hline" && it.type !== "vline") continue;
               ctx.fillStyle = col.surface; ctx.strokeStyle = col.line; ctx.lineWidth = 1.5;
               ctx.beginPath(); ctx.arc(hx, hy, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
             }

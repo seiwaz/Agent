@@ -61,5 +61,28 @@
     const hist = line.map((v, i) => (v === null || sig[i] === null ? null : v - sig[i]));
     return { macd: line, signal: sig, hist };
   }
-  window.ChartIndicators = { sma, ema, donchian, rsi, macd };
+  /** MACD histogram shade per bar, as TradingView: above zero and growing "up", above zero and
+   * shrinking "upFade", below zero and falling further "down", below zero and recovering
+   * "downFade" (null where there is no value). */
+  function histShades(hist) {
+    return hist.map((v, i) => {
+      if (v === null) return null;
+      const prev = i > 0 ? hist[i - 1] : null;
+      const growing = prev === null || v >= prev;
+      return v >= 0 ? (growing ? "up" : "upFade") : (growing ? "downFade" : "down");
+    });
+  }
+  /** Anchored VWAP from bar i0: cumulative (typical price × volume) / cumulative volume; bars
+   * without volume weigh 1. Values before the anchor are null. */
+  function anchoredVwap(bars, i0) {
+    const out = bars.map(() => null);
+    let pv = 0, vol = 0;
+    for (let i = Math.max(0, i0); i < bars.length; i++) {
+      const b = bars[i], w = b.v > 0 ? b.v : 1, tp = (b.h + b.l + b.c) / 3;
+      pv += tp * w; vol += w;
+      out[i] = pv / vol;
+    }
+    return out;
+  }
+  window.ChartIndicators = { sma, ema, donchian, rsi, macd, histShades, anchoredVwap };
 })();

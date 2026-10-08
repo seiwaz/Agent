@@ -31,7 +31,7 @@ item to the new timeframe.
 | Structure | BOS, CHoCH | server | from the broken swing to the closing break |
 | Structure | HH / HL / LH / LL | server | each swing against the previous swing of its kind |
 | Indicators | Donchian channels | browser | on the price pane |
-| Indicators | RSI, MACD | browser | each in its own pane |
+| Indicators | RSI, MACD | browser | each in its own pane; the MACD histogram is strong while it grows away from zero, faded while it shrinks |
 
 The structure pivot length (⚙ next to *Structure*) applies to every structure and level item.
 Server items use closed bars only (a pivot is known *pivot length* bars after it); the forming bar
@@ -46,6 +46,10 @@ is drawn and feeds the indicators live.
 | Long position / Short position | one click at the entry: stop 1.5 × the average bar range away, target at 2R, 20 bars wide | drag the target, the stop, the entry (left) or the width (right); while selected it shows the prices, percentages and R:R (unselected: no labels) |
 | Price range | two clicks | drag either corner; shows the change, % and bars |
 | Path | a click per point, double-click or Enter to finish | drag any point, or the path |
+| Vertical line | one click (its date and time are labelled at the bottom) | drag the line |
+| Date range | two clicks | drag either corner; shows the bars, the duration and the volume |
+| Anchored VWAP | one click on the anchor bar: the volume-weighted average price from that bar to the last one | drag the anchor to another bar |
+| Fib retracement | two clicks (from the swing's start to its end) | drag either end; levels 0, 0.236, 0.382, 0.5, 0.618, 0.786, 1 with their prices |
 
 Pick the same tool again or press Esc to cancel. Click a drawing to select it (handles appear),
 Delete removes it, the trash button removes every drawing of the market. Drawings are stored per

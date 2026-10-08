@@ -215,6 +215,7 @@ def test_drawing_tools_create_edit_delete_and_persist(data, browser):
 
         assert pg.eval_on_selector_all(".ws-draw button", "bs => bs.map(b => b.getAttribute('aria-label'))") == [
             "Trend line", "Horizontal line", "Long position", "Short position", "Price range", "Path",
+            "Vertical line", "Date range", "Anchored VWAP", "Fib retracement",
             "Trade on Tabdeal: the selected (or last) Long / Short position", "Remove all drawings"]
         pg.evaluate("() => state.ws.trading.setCollapsed(true)")  # the whole height for the chart
         pg.wait_for_timeout(300)
@@ -420,5 +421,61 @@ def test_a_position_opened_on_tabdeal_is_drawn_and_protected_from_the_chart(data
         pg.wait_for_function("() => !state.ws.tools.items.some(i => i.trade)", timeout=15000)  # removed
         pg.click(".ws-trade-tabs button:has-text('History')")
         pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('Target')", timeout=15000)
+        assert errors == []
+        pg.close()
+
+
+def test_vertical_line_date_range_anchored_vwap_fib_and_macd_shades(data, browser):
+    with serve() as url:
+        pg, errors = _open(browser, url)
+        pg.evaluate("() => { localStorage.removeItem('smc-drawings-v1'); localStorage.removeItem('smc-chart-v1'); }")
+        pg.reload()
+        pg.wait_for_function("() => state.ws && state.ws.bars.length > 0", timeout=60000)
+        pg.evaluate("() => state.ws.trading.setCollapsed(true)")
+        pg.wait_for_timeout(300)
+        box = pg.locator(".ws-chart").bounding_box()
+        X, Y = box["x"], box["y"]
+
+        def click(x, y):
+            pg.mouse.move(X + x, Y + y)
+            pg.mouse.click(X + x, Y + y)
+
+        def tool(name):
+            pg.click(f".ws-draw button[aria-label='{name}']")
+
+        tool("Vertical line")
+        click(400, 300)
+        tool("Date range")
+        click(500, 250)
+        click(700, 350)
+        tool("Anchored VWAP")
+        click(600, 300)
+        tool("Fib retracement")
+        click(800, 200)
+        click(1000, 450)
+        items = pg.evaluate("() => state.ws.tools.items")
+        assert [i["type"] for i in items] == ["vline", "daterange", "avwap", "fib"]
+        dr, fib = items[1], items[3]
+        assert dr["a"][1]["t"] > dr["a"][0]["t"] and fib["a"][0]["p"] > fib["a"][1]["p"]
+
+        # the anchored VWAP runs from its anchor bar to the last bar, at the volume-weighted price
+        g = pg.evaluate("""() => { const T = state.ws.tools, it = T.items.find(i => i.type === 'avwap');
+            const geo = T.geom(it), b = state.ws.bars, i0 = b.findIndex(x => x.t + T.step() > it.t);
+            let pv = 0, v = 0; for (let i = i0; i < b.length; i++) { const w = b[i].v > 0 ? b[i].v : 1; pv += (b[i].h + b[i].l + b[i].c) / 3 * w; v += w; }
+            return { segs: geo.segs.length, n: b.length - i0, vwap: geo.vwap, want: pv / v }; }""")
+        assert g["segs"] >= g["n"] - 2 and abs(g["vwap"] - g["want"]) < 1e-6
+
+        # Fib retracement: 0 at the second point, 1 at the first, the usual levels between
+        lv = pg.evaluate("() => { const T = state.ws.tools; return T.geom(T.items.find(i => i.type === 'fib')).levels.map(l => [l[0], l[1]]); }")
+        a, b = fib["a"][0]["p"], fib["a"][1]["p"]
+        assert [f for f, _ in lv] == [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+        assert abs(lv[0][1] - b) < 1e-6 and abs(lv[-1][1] - a) < 1e-6 and abs(lv[4][1] - (b + (a - b) * 0.618)) < 1e-6
+
+        # MACD: strong / faded green and red histogram bars
+        pg.click(".ws-layers-btn")
+        pg.check("#ws-f-macd")
+        pg.wait_for_function("() => state.ws.chart.panes().length === 2")
+        colors = pg.evaluate("() => { const s = state.ws.chart.panes()[1].getSeries()[0]; return [...new Set(s.data().filter(d => d.color).map(d => d.color))]; }")
+        assert len(colors) == 4, colors
         assert errors == []
         pg.close()
