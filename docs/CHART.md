@@ -51,6 +51,15 @@ is drawn and feeds the indicators live.
 | Anchored VWAP | one click on the anchor bar: the volume-weighted average price from that bar to the last one | drag the anchor to another bar |
 | Fib retracement | two clicks (from the swing's start to its end) | drag either end; levels 0, 0.236, 0.382, 0.5, 0.618, 0.786, 1 with their prices |
 
+**Settings of a drawing.** A selected drawing shows a small toolbar above the chart: colour, line
+width and style, ⚙ for its settings window (or double-click the drawing), and 🗑. Vertical line:
+date label on / off; horizontal line: price label; anchored VWAP: value label; Fib retracement:
+each level on / off with its value and colour, level and price labels, background, extend to the
+right, reverse. Settings are kept with the drawing. Vertical lines cross the indicator panes too.
+
+Confirmations (remove drawings, cancel / close a trade, set a stop / target) and the trade dialog
+are windows inside the chart workspace, so they show in full screen as well.
+
 Pick the same tool again or press Esc to cancel. Click a drawing to select it (handles appear),
 Delete removes it, the trash button removes every drawing of the market. Drawings are stored per
 market in the browser, in time / price, so they appear on every timeframe. A position drawing is a

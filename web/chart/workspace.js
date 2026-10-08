@@ -319,6 +319,7 @@
       }
       const panes = this.chart.panes();
       panes.forEach((p, i) => p.setStretchFactor(i === 0 ? 1 : 0.28));
+      if (this.tools) this.tools.attachPanes();  // vertical lines cross the indicator panes too
       this.updateIndicators();
     }
     updateIndicators() { for (const hd of this.handles) hd.update(this.bars); }

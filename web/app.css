@@ -308,3 +308,27 @@ body[data-view="chart"] main { max-width: none; padding: 8px 12px 12px; }
 .ws-raw { margin-top: 6px; color: var(--text-2); word-break: break-word; }
 .ws-link { border: 0; background: none; padding: 0; color: var(--info); font: inherit; cursor: pointer; text-decoration: underline dotted; }
 .ws-link:hover { text-decoration: underline; }
+/* in-page dialogs (web/chart/ui.js): shown in full screen too */
+.ws-modal { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.45); }
+.ws-modal .ws-dialog { max-height: calc(100vh - 32px); overflow: auto; }
+.ws-confirm { width: min(400px, calc(100vw - 32px)); }
+.ws-dlg-text { margin: 6px 0 14px; font-size: 14px; white-space: pre-line; line-height: 1.5; }
+.ws-primary { background: var(--info); border-color: var(--info); color: #fff; }
+.ws-danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+/* the selected drawing's mini toolbar and settings (web/chart/tools.js) */
+.ws-dbar { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 6px; padding: 4px 6px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+.ws-dbar[hidden] { display: none; }
+.ws-dbar .ws-dbar-name { font-size: 12px; color: var(--text-2); padding: 0 4px; white-space: nowrap; }
+.ws-dbar input[type="color"] { width: 28px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; cursor: pointer; }
+.ws-dbar select, .ws-set select { height: 28px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text); font-size: 12px; }
+.ws-dbar button { height: 28px; min-width: 28px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text); cursor: pointer; font-size: 13px; }
+.ws-dbar button:hover { border-color: var(--info); }
+.ws-set { display: grid; gap: 10px; }
+.ws-set h2 { margin: 0; font-size: 16px; }
+.ws-set-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.ws-set-row > span { min-width: 90px; color: var(--text-2); }
+.ws-set input[type="color"] { width: 30px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; }
+.ws-set input[type="number"] { width: 72px; padding: 3px 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); color: var(--text); font: 13px "IBM Plex Mono", monospace; }
+.ws-set input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--info); }
+.ws-fib-levels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; }
+.ws-fib-levels label { display: flex; align-items: center; gap: 6px; }

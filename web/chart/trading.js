@@ -166,18 +166,21 @@
     /** Send the linked drawing's stop / target to Tabdeal. */
     async setSlTp(t) {
       const d = this.ws.tools && this.ws.tools.linked(t.id);
-      if (t.symbol !== this.ws.symbol || !d) { alert(`Open ${this.ws.display(t.symbol)} on the chart and drag the stop / target of trade #${t.id} first.`); return; }
-      if (!confirm(`Set on Tabdeal for #${t.id} (${t.symbol} ${t.side}):\nstop ${num(d.sl)} · target ${num(d.tp)}?`)) return;
+      const root = this.ws.root;
+      if (t.symbol !== this.ws.symbol || !d) { await ChartUI.notice(root, `Open ${this.ws.display(t.symbol)} on the chart and drag the stop / target of trade #${t.id} first.`); return; }
+      const px = pxOf(this.ws, t.symbol);
+      if (!(await ChartUI.confirm(root, `Stop ${px(d.sl)} · target ${px(d.tp)}`, { title: `Set on Tabdeal: #${t.id} ${this.ws.display(t.symbol)} ${t.side}`, ok: "Set on Tabdeal" }))) return;
       try {
         await this.call("POST", `/api/trade/${t.id}/sltp`, { sl: d.sl, tp: d.tp });
         d.dirty = false; this.ws.tools.save();
-      } catch (e) { alert(`Not done: ${e.message}`); }
+      } catch (e) { await ChartUI.notice(root, e.message, { title: "Not done", error: true }); }
       await this.refresh();
     }
     async act(t, what) {
       const verb = what === "cancel" ? "Cancel the pending order" : "Close the position at market";
-      if (!confirm(`${verb} of trade #${t.id} (${t.symbol} ${t.side}) on Tabdeal?`)) return;
-      try { await this.call("POST", `/api/trade/${t.id}/${what}`); } catch (e) { alert(`Not done: ${e.message}`); }
+      const root = this.ws.root;
+      if (!(await ChartUI.confirm(root, `${verb} of trade #${t.id} (${this.ws.display(t.symbol)} ${t.side}) on Tabdeal?`, { title: what === "cancel" ? "Cancel order" : "Close position", ok: what === "cancel" ? "Cancel order" : "Close position", cancel: "Keep it", danger: true }))) return;
+      try { await this.call("POST", `/api/trade/${t.id}/${what}`); } catch (e) { await ChartUI.notice(root, e.message, { title: "Not done", error: true }); }
       await this.refresh(); this.loadHistory();
     }
 
@@ -290,7 +293,7 @@
 
     /* ---- the trade dialog -------------------------------------------------------------------- */
     async openDialog(d) {
-      if (!d) { alert("Place a Long or Short position on the chart first (left toolbar), then press Trade."); return; }
+      if (!d) { await ChartUI.notice(this.ws.root, "Place a Long or Short position on the chart first (left toolbar), then press Trade."); return; }
       if (!this.cfg) await this.loadConfig();
       const sym = this.ws.symbol, side = d.type === "long" ? "LONG" : "SHORT";
       const prefs = store.get(PREFS, {});
@@ -301,8 +304,8 @@
       const calc = h("dl", { class: "ws-dl" });
       const msg = h("p", { class: "ws-dlg-msg", "aria-live": "polite" });
       const go = h("button", { class: `btn ws-go ${side === "LONG" ? "go-long" : "go-short"}`, type: "submit" }, `Place ${side} limit on Tabdeal`);
-      const dlg = h("dialog", { class: "ws-dialog", "aria-label": "Trade on Tabdeal" });
-      const close = () => { dlg.close(); dlg.remove(); };
+      let modal = null;
+      const close = () => { if (modal) modal.close(); };
       let account = null;
       const update = () => {
         const L = numIn(lev.value), m = numIn(margin.value), qty = (m * L) / d.entry;
@@ -316,7 +319,7 @@
           ...row("Futures wallet", account ? `${num(account.wallet_usdt, 2)} USDT (${account.available_estimated ? "≈ " : ""}${num(account.available_usdt, 2)} available)` : "—"));
       };
       const notReady = !this.cfg ? "Trading status unavailable." : !this.cfg.enabled ? "Trading is off: set trading.enabled: true in the server config and restart the API." : !this.cfg.ready ? `Trading is not ready: ${this.cfg.problem}` : "";
-      const form = h("form", { method: "dialog", novalidate: true, onsubmit: async (e) => {
+      const form = h("form", { novalidate: true, onsubmit: async (e) => {
         e.preventDefault();
         const L = numIn(lev.value), m = numIn(margin.value);
         const avail = account ? +account.available_usdt : null;
@@ -342,10 +345,8 @@
       calc, msg,
       h("div", { class: "ws-dlg-actions" }, h("button", { class: "btn", type: "button", onclick: close }, "Cancel"), go));
       lev.addEventListener("input", update); margin.addEventListener("input", update);
-      dlg.append(form);
-      dlg.addEventListener("cancel", close);
-      this.ws.root.append(dlg);
-      dlg.showModal();
+      // an in-page overlay (not <dialog>): it shows in full screen too
+      modal = ChartUI.open(this.ws.root, form, { label: "Trade on Tabdeal", cls: "ws-trade-dlg" });
       update();
       if (notReady) { msg.textContent = notReady; go.disabled = true; return; }
       try {

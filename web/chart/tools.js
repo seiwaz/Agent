@@ -42,6 +42,28 @@
   ];
   const FIB = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
   const FIB_TONE = ["120,123,134", "242,54,69", "255,152,0", "76,175,80", "8,153,129", "0,188,212", "120,123,134"];
+  const NAMES = Object.fromEntries(TOOLS.map((t) => [t.id, t.label]));
+
+  /* ---- per-drawing settings (it.st), kept with the drawing --------------------------------- */
+  const DASH = { solid: [], dashed: [7, 4], dotted: [2, 3] };
+  const hex = (rgb) => `#${rgb.split(",").map((v) => (+v).toString(16).padStart(2, "0")).join("")}`;
+  const rgba = (h, a) => { const n = parseInt(h.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; };
+  const COLORED = new Set(["trend", "hline", "vline", "path", "avwap", "daterange"]);
+  const LINED = new Set(["trend", "hline", "vline", "path", "avwap", "fib"]);
+  const SETTINGS = new Set(["trend", "hline", "vline", "path", "avwap", "fib"]);
+  function defaults(type) {
+    if (type === "fib") {
+      return { width: 1, style: "solid", levels: FIB.map((v, k) => ({ v, on: true, color: hex(FIB_TONE[k]) })),
+        labels: true, prices: true, fill: true, extend: false, reverse: false };
+    }
+    if (type === "avwap") return { color: "#e91e63", width: 2, style: "solid", label: true };
+    return { color: null, width: 2, style: "solid", label: true };  // color null: the theme's line colour
+  }
+  /** A drawing's settings over the defaults of its type. */
+  function st(it) {
+    const d = defaults(it.type), s = it.st || {};
+    return { ...d, ...s, levels: s.levels || d.levels };
+  }
   const VDATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const TRASH = '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/>';
   const TRADE = '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>';
@@ -69,11 +91,20 @@
       this.layer = new Layer(this);
       ws.candles.attachPrimitive(this.layer);
       this.bar = this.buildBar();
+      this.dbar = document.createElement("div");  // the selected drawing's mini toolbar
+      this.dbar.className = "ws-dbar"; this.dbar.hidden = true; this.dbar.setAttribute("role", "toolbar");
+      this.dbar.setAttribute("aria-label", "Selected drawing");
+      ws.el.slot.append(this.dbar);
+      this.paneLayers = [];
       const host = ws.el.chart;
       host.addEventListener("pointerdown", (e) => this.down(e), true);
       for (const t of ["mousedown", "touchstart"]) host.addEventListener(t, (e) => { if (this.eat) { e.stopPropagation(); e.preventDefault(); } }, true);
       host.addEventListener("pointermove", (e) => this.move(e), true);
-      host.addEventListener("dblclick", (e) => { if (this.draft && this.draft.type === "path") { e.stopPropagation(); this.finish(); } }, true);
+      host.addEventListener("dblclick", (e) => {
+        if (this.draft && this.draft.type === "path") { e.stopPropagation(); this.finish(); return; }
+        const q = this.point(e), hit = q && !this.tool && this.hitTest(q.x, q.y);
+        if (hit && SETTINGS.has(hit.item.type)) { e.stopPropagation(); this.sel = hit.item.id; this.redraw(); this.settings(hit.item); }
+      }, true);
       window.addEventListener("pointerup", (e) => this.up(e));
       window.addEventListener("keydown", (e) => this.key(e));
     }
@@ -101,7 +132,12 @@
       const del = document.createElement("button");
       del.type = "button"; del.title = "Remove all drawings"; del.setAttribute("aria-label", "Remove all drawings");
       del.append(svg(TRASH));
-      del.addEventListener("click", () => { if (this.items.length && confirm("Remove every drawing on this market?")) { this.items = []; this.sel = null; this.save(); this.redraw(); } });
+      del.addEventListener("click", async () => {
+        const mine = this.items.filter((x) => !(x.trade && x.status));  // an open trade keeps its drawing
+        if (!mine.length) return;
+        if (!(await ChartUI.confirm(this.ws.root, `Remove ${mine.length} drawing${mine.length > 1 ? "s" : ""} on this market?`, { ok: "Remove", danger: true }))) return;
+        this.items = this.items.filter((x) => x.trade && x.status); this.sel = null; this.save(); this.redraw();
+      });
       bar.append(del);
       return bar;
     }
@@ -380,10 +416,13 @@
         const [[x1, y1], [x2, y2]] = pts;
         g.rects.push([Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)]);
       } else if (it.type === "fib") {
-        const [[x1], [x2]] = pts, [a, b] = it.a, l = Math.min(x1, x2), r = Math.max(x1, x2);
-        g.levels = FIB.map((f) => { const p = b.p + (a.p - b.p) * f; return [f, p, this.y(p)]; });
+        const s = st(it), [[x1], [x2]] = pts, [a, b] = it.a, l = Math.min(x1, x2);
+        const r = s.extend ? Math.max(Math.max(x1, x2), this.ws.chart.timeScale().width()) : Math.max(x1, x2);
+        const [lo, hi] = s.reverse ? [a.p, b.p] : [b.p, a.p];  // level 0 at the second point (reverse: the first)
+        g.levels = s.levels.filter((x) => x.on).sort((p, q) => p.v - q.v)
+          .map((x) => { const p = lo + (hi - lo) * x.v; return [x.v, p, this.y(p), x.color]; });
         for (const [, , y] of g.levels) if (y !== null) g.segs.push([l, y, r, y]);
-        g.diag = [...pts[0], ...pts[1]];
+        g.diag = [...pts[0], ...pts[1]]; g.left = l; g.right = r;
       } else for (let i = 1; i < pts.length; i++) g.segs.push([...pts[i - 1], ...pts[i]]);
       pts.forEach(([x, y], i) => g.handles.push([i, x, y]));
       return g;
@@ -399,7 +438,84 @@
       }
       return null;
     }
-    redraw() { this.layer.update(); }
+    redraw() {
+      this.layer.update();
+      for (const l of this.paneLayers) l.update();
+      this.syncDbar();
+    }
+    lineHex() { return hex(css("--c-fvg-bull")); }
+    remove(id) {
+      this.items = this.items.filter((x) => x.id !== id);
+      if (this.sel === id) this.sel = null;
+      this.save(); this.redraw();
+    }
+    /** Vertical lines across the indicator panes too: a layer on each pane's first series. */
+    attachPanes() {
+      this.paneLayers = [];
+      this.ws.chart.panes().forEach((pane, i) => {
+        const s = i > 0 && pane.getSeries()[0];
+        if (!s) return;
+        const l = new PaneLayer(this);
+        s.attachPrimitive(l);
+        this.paneLayers.push(l);
+      });
+    }
+
+    /* ---- the selected drawing: mini toolbar and settings --------------------------------------- */
+    styleControls(s, apply) {
+      const H = ChartUI.h;
+      return [
+        H("select", { title: "Line width", "aria-label": "Line width", onchange: (e) => apply({ width: +e.target.value }) },
+          [1, 2, 3, 4].map((w) => H("option", { value: w, selected: s.width === w }, `${w}px`))),
+        H("select", { title: "Line style", "aria-label": "Line style", onchange: (e) => apply({ style: e.target.value }) },
+          [["solid", "───"], ["dashed", "- - -"], ["dotted", "·····"]].map(([v, t]) => H("option", { value: v, selected: s.style === v }, t))),
+      ];
+    }
+    syncDbar() {
+      const it = this.items.find((x) => x.id === this.sel);
+      if (!it || this.tool || this.draft || (it.trade && it.status)) { this.dbar.hidden = true; this.dbarFor = null; return; }
+      this.dbar.hidden = false;
+      if (this.dbarFor === it.id) return;  // rebuilt only when the selection changes (keeps focus)
+      this.dbarFor = it.id;
+      const H = ChartUI.h, s = st(it);
+      const apply = (patch) => { it.st = { ...(it.st || {}), ...patch }; this.save(); this.layer.update(); for (const l of this.paneLayers) l.update(); };
+      const kids = [H("span", { class: "ws-dbar-name" }, NAMES[it.type] || it.type)];
+      if (COLORED.has(it.type)) kids.push(H("input", { type: "color", title: "Colour", "aria-label": "Colour", value: s.color || this.lineHex(), oninput: (e) => apply({ color: e.target.value }) }));
+      if (LINED.has(it.type)) kids.push(...this.styleControls(s, apply));
+      if (SETTINGS.has(it.type)) kids.push(H("button", { type: "button", title: "Settings", "aria-label": "Drawing settings", onclick: () => this.settings(it) }, "⚙"));
+      kids.push(H("button", { type: "button", title: "Delete (Del)", "aria-label": "Delete drawing", onclick: () => this.remove(it.id) }, "🗑"));
+      this.dbar.replaceChildren(...kids);
+    }
+    /** The drawing's settings window (double-click a drawing, or ⚙ on its toolbar). */
+    settings(it) {
+      const H = ChartUI.h, s = st(it);
+      const apply = (patch) => {
+        it.st = { ...(it.st || {}), ...patch }; this.save();
+        this.dbarFor = null; this.redraw();
+      };
+      const row = (label, ...kids) => H("div", { class: "ws-set-row" }, H("span", {}, label), ...kids);
+      const check = (k, text) => H("label", {}, H("input", { type: "checkbox", checked: !!s[k], onchange: (e) => apply({ [k]: e.target.checked }) }), ` ${text}`);
+      const parts = [H("h2", {}, `${NAMES[it.type]} — settings`)];
+      if (it.type !== "fib") parts.push(row("Colour", H("input", { type: "color", value: s.color || this.lineHex(), oninput: (e) => apply({ color: e.target.value }) })));
+      parts.push(row("Line", ...this.styleControls(s, apply)));
+      if (it.type === "vline") parts.push(row("Label", check("label", "date and time at the bottom")));
+      if (it.type === "hline") parts.push(row("Label", check("label", "price at the right")));
+      if (it.type === "avwap") parts.push(row("Label", check("label", "AVWAP value at the end")));
+      if (it.type === "fib") {
+        const levels = s.levels.map((x) => ({ ...x }));
+        const setLevels = () => apply({ levels: levels.map((x) => ({ ...x })) });
+        parts.push(H("div", { class: "ws-fib-levels" }, levels.map((x) => H("label", {},
+          H("input", { type: "checkbox", checked: x.on, "aria-label": `Level ${x.v}`, onchange: (e) => { x.on = e.target.checked; setLevels(); } }),
+          H("input", { type: "number", step: "0.001", value: x.v, "aria-label": "Level value", onchange: (e) => { const v = Number(e.target.value); if (Number.isFinite(v)) { x.v = v; setLevels(); } } }),
+          H("input", { type: "color", value: x.color, "aria-label": "Level colour", oninput: (e) => { x.color = e.target.value; setLevels(); } })))));
+        parts.push(row("Show", check("labels", "levels"), check("prices", "prices"), check("fill", "background")));
+        parts.push(row("Lines", check("extend", "extend to the right"), check("reverse", "reverse (0 ↔ 1)")));
+      }
+      const m = ChartUI.open(this.ws.root, H("div", { class: "ws-set" }, parts,
+        H("div", { class: "ws-dlg-actions" },
+          H("button", { class: "btn", type: "button", onclick: () => { delete it.st; this.save(); this.dbarFor = null; this.redraw(); m.close(); } }, "Defaults"),
+          H("button", { class: "btn ws-primary", type: "button", onclick: () => m.close() }, "Done"))), { label: "Drawing settings" });
+    }
   }
 
   /* ---- rendering ------------------------------------------------------------------------------- */
@@ -467,8 +583,8 @@
           } else if (it.type === "daterange") {
             const r = g.rects[0];
             if (!r) continue;
-            const [a, b] = it.a, fwd = b.t >= a.t, c = col.line;
-            ctx.fillStyle = c.replace("rgb(", "rgba(").replace(")", ",0.12)"); ctx.fillRect(r[0], r[1], r[2] - r[0], r[3] - r[1]);
+            const s = st(it), [a, b] = it.a, fwd = b.t >= a.t, c = s.color || col.line;
+            ctx.fillStyle = s.color ? rgba(s.color, 0.12) : c.replace("rgb(", "rgba(").replace(")", ",0.12)"); ctx.fillRect(r[0], r[1], r[2] - r[0], r[3] - r[1]);
             ctx.strokeStyle = c; ctx.lineWidth = 1.2;
             const my = (r[1] + r[3]) / 2, xa = T.x(a.t), xb = T.x(b.t);
             ctx.beginPath(); ctx.moveTo(xa, my); ctx.lineTo(xb, my); ctx.stroke();
@@ -480,29 +596,34 @@
             label(`${bars} bars · ${dur}${vol ? ` · vol ${vol >= 1000 ? (vol / 1000).toFixed(1) + "K" : vol.toFixed(2)}` : ""}`, (r[0] + r[2]) / 2, r[3] + 12, c, "center");
           } else if (it.type === "fib") {
             if (!g.levels) continue;
-            const l = Math.min(g.diag[0], g.diag[2]), rr = Math.max(g.diag[0], g.diag[2]);
-            for (let k = 0; k < g.levels.length - 1; k++) {  // a light band between two levels
-              const y1 = g.levels[k][2], y2 = g.levels[k + 1][2];
-              if (y1 === null || y2 === null) continue;
-              ctx.fillStyle = `rgba(${FIB_TONE[k + 1]},0.07)`; ctx.fillRect(l, Math.min(y1, y2), rr - l, Math.abs(y2 - y1));
+            const s = st(it), l = g.left, rr = g.right;
+            if (s.fill) {
+              for (let k = 0; k < g.levels.length - 1; k++) {  // a light band between two levels
+                const y1 = g.levels[k][2], y2 = g.levels[k + 1][2];
+                if (y1 === null || y2 === null) continue;
+                ctx.fillStyle = rgba(g.levels[k + 1][3], 0.08); ctx.fillRect(l, Math.min(y1, y2), rr - l, Math.abs(y2 - y1));
+              }
             }
-            g.levels.forEach(([f, p, y], k) => {
+            ctx.save(); ctx.setLineDash(DASH[s.style] || []);
+            g.levels.forEach(([f, p, y, color]) => {
               if (y === null) return;
-              ctx.strokeStyle = `rgba(${FIB_TONE[k]},0.95)`; ctx.lineWidth = 1.2;
+              ctx.strokeStyle = rgba(color, 0.95); ctx.lineWidth = s.width;
               ctx.beginPath(); ctx.moveTo(l, y); ctx.lineTo(rr, y); ctx.stroke();
-              ctx.fillStyle = `rgba(${FIB_TONE[k]},1)`; ctx.textAlign = "right";
-              ctx.fillText(`${f} (${fmt(p)})`, l - 4, y);
+              const txt = s.labels && s.prices ? `${f} (${fmt(p)})` : s.labels ? `${f}` : s.prices ? fmt(p) : "";
+              if (txt) { ctx.fillStyle = color; ctx.textAlign = "right"; ctx.fillText(txt, l - 4, y); }
             });
+            ctx.restore();
             ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = `rgba(${col.text},0.45)`; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(g.diag[0], g.diag[1]); ctx.lineTo(g.diag[2], g.diag[3]); ctx.stroke(); ctx.restore();
           } else if (it.type === "avwap") {
-            ctx.strokeStyle = "rgba(233,30,99,0.95)"; ctx.lineWidth = 1.8;
+            const s = st(it);
+            ctx.save(); ctx.strokeStyle = s.color; ctx.lineWidth = s.width; ctx.setLineDash(DASH[s.style] || []);
             ctx.beginPath();
             g.segs.forEach(([x1, y1, x2, y2], k) => { if (k === 0) ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); });
-            ctx.stroke();
-            if (g.segs.length && g.vwap !== undefined && g.vwap !== null) {
+            ctx.stroke(); ctx.restore();
+            if (s.label && g.segs.length && g.vwap !== undefined && g.vwap !== null) {
               const [, , xe, ye2] = g.segs[g.segs.length - 1];
-              label(`AVWAP ${fmt(g.vwap)}`, xe - 4, ye2 - 14, "rgba(233,30,99,0.95)", "right");
+              label(`AVWAP ${fmt(g.vwap)}`, xe - 4, ye2 - 14, s.color, "right");
             }
           } else if (it.type === "range") {
             const r = g.rects[0];
@@ -517,15 +638,17 @@
             const bars = Math.round(Math.abs(b.t - a.t) / T.step());
             label(`${up ? "+" : "−"}${fmt(Math.abs(b.p - a.p))} (${(((b.p - a.p) / a.p) * 100).toFixed(2)}%) · ${bars} bars`, mx, up ? r[1] - 12 : r[3] + 12, `rgba(${c},0.95)`, "center");
           } else {
-            ctx.strokeStyle = col.line; ctx.lineWidth = 1.8;
+            const s = st(it), lc = s.color || col.line;
+            ctx.save(); ctx.strokeStyle = lc; ctx.lineWidth = s.width; ctx.setLineDash(DASH[s.style] || []);
             for (const [x1, y1, x2, y2] of g.segs) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+            ctx.restore(); ctx.strokeStyle = lc; ctx.lineWidth = s.width;
             if (it.type === "path" && g.segs.length) {  // arrow at the end
               const [x1, y1, x2, y2] = g.segs[g.segs.length - 1], ang = Math.atan2(y2 - y1, x2 - x1);
               ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - 9 * Math.cos(ang - 0.45), y2 - 9 * Math.sin(ang - 0.45));
               ctx.moveTo(x2, y2); ctx.lineTo(x2 - 9 * Math.cos(ang + 0.45), y2 - 9 * Math.sin(ang + 0.45)); ctx.stroke();
             }
-            if (it.type === "hline" && g.segs.length) label(fmt(it.p), mediaSize.width - 2, g.segs[0][1], col.line, "right");
-            if (it.type === "vline" && g.segs.length) label(VDATE.format(new Date(it.t * 1000)), g.segs[0][0], mediaSize.height - 12, col.line, "center");
+            if (it.type === "hline" && s.label && g.segs.length) label(fmt(it.p), mediaSize.width - 2, g.segs[0][1], lc, "right");
+            if (it.type === "vline" && s.label && g.segs.length) label(VDATE.format(new Date(it.t * 1000)), g.segs[0][0], mediaSize.height - 12, lc, "center");
           }
           if (selected) {
             for (const [key, hx, hy] of g.handles) {
@@ -534,6 +657,28 @@
               ctx.beginPath(); ctx.arc(hx, hy, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
             }
           }
+        }
+      });
+    }
+  }
+  /** Vertical lines on an indicator pane (the price pane draws them with everything else). */
+  class PaneLayer {
+    constructor(tools) { this.tools = tools; this.view = { zOrder: () => "top", renderer: () => ({ draw: (t) => this.draw(t) }) }; }
+    attached(p) { this.request = p.requestUpdate; }
+    detached() { this.request = null; }
+    update() { if (this.request) this.request(); }
+    updateAllViews() {}
+    paneViews() { return [this.view]; }
+    draw(target) {
+      const T = this.tools, line = `rgb(${css("--c-fvg-bull")})`;
+      target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+        for (const it of T.items) {
+          if (it.type !== "vline") continue;
+          const x = T.x(it.t);
+          if (x === null) continue;
+          const s = st(it);
+          ctx.save(); ctx.strokeStyle = s.color || line; ctx.lineWidth = s.width; ctx.setLineDash(DASH[s.style] || []);
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, mediaSize.height); ctx.stroke(); ctx.restore();
         }
       });
     }

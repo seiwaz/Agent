@@ -320,7 +320,6 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         pg = browser.new_page(viewport={"width": 1500, "height": 950})
         errors: list[str] = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
-        pg.on("dialog", lambda d: d.accept())  # confirm() of Close
         pg.goto(f"{url}/#/chart")
         assert "/login" in pg.url
         pg.fill("input[name=user]", "admin")
@@ -343,12 +342,12 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
 
         # Trade: the dialog asks for the leverage (and the margin), then places the order
         pg.click(".ws-trade-btn")
-        pg.wait_for_selector("dialog.ws-dialog[open]")
-        assert "Long" in pg.inner_text("dialog.ws-dialog h2")
-        pg.fill("dialog.ws-dialog .ws-field input >> nth=0", "۵")  # Persian digits are accepted
-        pg.fill("dialog.ws-dialog .ws-field input >> nth=1", "۲۰")
-        pg.click("dialog.ws-dialog .ws-go")
-        pg.wait_for_function("() => !document.querySelector('dialog.ws-dialog')", timeout=15000)
+        pg.wait_for_selector(".ws-modal .ws-trade-dlg")  # an in-page window: shown in full screen too
+        assert "Long" in pg.inner_text(".ws-trade-dlg h2")
+        pg.fill(".ws-trade-dlg .ws-field input >> nth=0", "۵")  # Persian digits are accepted
+        pg.fill(".ws-trade-dlg .ws-field input >> nth=1", "۲۰")
+        pg.click(".ws-trade-dlg .ws-go")
+        pg.wait_for_function("() => !document.querySelector('.ws-trade-dlg')", timeout=15000)
         pg.wait_for_selector(".ws-trade-table .b-pending", timeout=15000)
         (_, side, qty, price, _cid) = next(a for n, a in ex.calls if n == "limit_order")
         assert side == "BUY" and ex.leverage["BTC_USDT"] == 5
@@ -363,6 +362,7 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         assert "+" in pg.inner_text(".ws-trade-table tbody tr >> nth=0")
         assert ex.position["BTC_USDT"]["sl"] == Decimal(str(d["it"]["sl"])).quantize(Decimal("0.1"))
         pg.click(".ws-trade-table button:has-text('Close')")
+        pg.click(".ws-modal .ws-danger")  # confirm, in the page
         pg.wait_for_function("() => document.querySelector('.ws-trade-table td.empty')", timeout=15000)
         pg.click(".ws-trade-tabs button:has-text('History')")
         pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('Closed here')", timeout=15000)
@@ -389,7 +389,6 @@ def test_a_position_opened_on_tabdeal_is_drawn_and_protected_from_the_chart(data
         pg = browser.new_page(viewport={"width": 1500, "height": 950})
         errors: list[str] = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
-        pg.on("dialog", lambda d: d.accept())
         pg.goto(f"{url}/login")
         pg.fill("input[name=user]", "admin")
         pg.fill("input[name=password]", "test password")
@@ -411,6 +410,7 @@ def test_a_position_opened_on_tabdeal_is_drawn_and_protected_from_the_chart(data
         sl, tp = round(entry * 0.98, 1), round(entry * 1.05, 1)
         pg.evaluate(f"() => {{ const d = state.ws.tools.items.find(i => i.trade); Object.assign(d, {{ sl: {sl}, tp: {tp}, dirty: true }}); state.ws.tools.redraw(); }}")
         pg.click(".ws-trade-table button:has-text('SL/TP')")
+        pg.click(".ws-modal .ws-primary")
         pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('✓')", timeout=15000)
         assert ex.position["BTC_USDT"]["sl"] == Decimal(str(sl)) and ex.position["BTC_USDT"]["tp"] == Decimal(str(tp))
         assert not pg.evaluate("() => state.ws.tools.items.find(i => i.trade).dirty")
@@ -477,5 +477,66 @@ def test_vertical_line_date_range_anchored_vwap_fib_and_macd_shades(data, browse
         pg.wait_for_function("() => state.ws.chart.panes().length === 2")
         colors = pg.evaluate("() => { const s = state.ws.chart.panes()[1].getSeries()[0]; return [...new Set(s.data().filter(d => d.color).map(d => d.color))]; }")
         assert len(colors) == 4, colors
+        assert errors == []
+        pg.close()
+
+
+def test_drawing_settings_vline_across_panes_and_dialogs_in_full_screen(data, browser):
+    with serve() as url:
+        pg, errors = _open(browser, url)
+        pg.evaluate("() => { localStorage.removeItem('smc-drawings-v1'); localStorage.removeItem('smc-chart-v1'); }")
+        pg.reload()
+        pg.wait_for_function("() => state.ws && state.ws.bars.length > 0", timeout=60000)
+        pg.evaluate("() => state.ws.trading.setCollapsed(true)")
+        pg.click(".ws-layers-btn")
+        pg.check("#ws-f-rsi")
+        pg.click(".ws-layers-btn")
+        pg.wait_for_function("() => state.ws.chart.panes().length === 2")
+        box = pg.locator(".ws-chart").bounding_box()
+        X, Y = box["x"], box["y"]
+
+        def click(x, y):
+            pg.mouse.move(X + x, Y + y)
+            pg.mouse.click(X + x, Y + y)
+
+        # a vertical line: drawn on the price pane and on the RSI pane
+        pg.click(".ws-draw button[aria-label='Vertical line']")
+        click(500, 200)
+        assert pg.evaluate("() => state.ws.tools.paneLayers.length") == 1
+        # selected after drawing: the mini toolbar edits its colour, width and style
+        pg.wait_for_selector(".ws-dbar:not([hidden])")
+        assert "Vertical line" in pg.inner_text(".ws-dbar")
+        pg.fill(".ws-dbar input[type=color]", "#ff0000")
+        pg.select_option(".ws-dbar select >> nth=0", "4")
+        pg.select_option(".ws-dbar select >> nth=1", "dashed")
+        st = pg.evaluate("() => state.ws.tools.items[0].st")
+        assert st == {"color": "#ff0000", "width": 4, "style": "dashed"}
+        # its settings window: the date label off
+        pg.click(".ws-dbar button[aria-label='Drawing settings']")
+        pg.uncheck(".ws-set input[type=checkbox]")
+        pg.click(".ws-set .ws-primary")
+        assert pg.evaluate("() => state.ws.tools.items[0].st.label") is False
+
+        # Fib: levels on / off, their values and colours, extend, reverse
+        pg.click(".ws-draw button[aria-label='Fib retracement']")
+        click(700, 150)
+        click(900, 400)
+        pg.click(".ws-dbar button[aria-label='Drawing settings']")
+        pg.uncheck(".ws-fib-levels label >> nth=1 >> input[type=checkbox]")
+        pg.fill(".ws-fib-levels label >> nth=3 >> input[type=number]", "0.65")
+        pg.dispatch_event(".ws-fib-levels label >> nth=3 >> input[type=number]", "change")
+        pg.check(".ws-set label:has-text('extend to the right') input")
+        pg.click(".ws-set .ws-primary")
+        lv = pg.evaluate("() => { const T = state.ws.tools, it = T.items[1]; return { levels: T.geom(it).levels.map(l => l[0]), ext: it.st.extend }; }")
+        assert lv["ext"] is True and 0.236 not in lv["levels"] and 0.65 in lv["levels"] and 0.5 not in lv["levels"]
+
+        # full screen: confirmations are in-page windows inside the full-screen element
+        pg.click(".ws-bar .icon-btn[aria-pressed]")
+        pg.wait_for_function("() => document.querySelector('.chart-ws').classList.contains('ws-max')")
+        pg.click(".ws-draw button[aria-label='Remove all drawings']")
+        pg.wait_for_selector(".chart-ws .ws-modal .ws-danger")
+        assert pg.evaluate("() => !!document.querySelector('.chart-ws .ws-modal')")  # inside the workspace root
+        pg.click(".ws-modal .ws-danger")
+        pg.wait_for_function("() => state.ws.tools.items.length === 0")
         assert errors == []
         pg.close()
