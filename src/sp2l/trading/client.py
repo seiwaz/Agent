@@ -30,6 +30,7 @@ ENDPOINTS: dict[tuple[str, str], str] = {
     ("GET", "/r/fapi/v1/position"): "positions (id, status, realized PnL)",
     ("GET", "/r/fapi/v1/order"): "one order",
     ("GET", "/r/fapi/v1/openOrders"): "open orders",
+    ("GET", "/r/fapi/v1/leverage"): "current leverage",
     ("POST", "/fapi/v1/leverage"): "set leverage",
     ("POST", "/fapi/v1/order"): "new LIMIT order",
     ("DELETE", "/fapi/v1/order"): "cancel an order",
@@ -121,6 +122,9 @@ class TabdealTrade:
 
     def open_orders(self, market: str) -> Any:
         return self.call("GET", "/r/fapi/v1/openOrders", {"symbol": market})
+
+    def get_leverage(self, market: str) -> Any:
+        return self.call("GET", "/r/fapi/v1/leverage", {"symbol": market})
 
     def set_leverage(self, market: str, leverage: int) -> Any:
         return self.call("POST", "/fapi/v1/leverage", {"symbol": market, "leverage": leverage})

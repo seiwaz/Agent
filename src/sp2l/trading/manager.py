@@ -734,6 +734,38 @@ def _hint(e: ExchangeError) -> str:
     return ""
 
 
+def check_key(client: Any, market: str) -> list[tuple[str, bool, str]]:
+    """Can this API key trade? Reads (balance, leverage), then sets the market's leverage to the
+    value it already has: nothing changes, no order is placed, but Tabdeal answers whether the
+    key may make changes. [(step, ok, detail)]."""
+    out: list[tuple[str, bool, str]] = []
+    try:
+        rows = _rows(client.balance())
+        usdt = next((r for r in rows if str(r.get("asset", "")).upper() == "USDT"), {})
+        out.append(("read the futures wallet", True,
+                    f"USDT wallet {usdt.get('crossWalletBalance') or usdt.get('walletBalance')}"
+                    f", available {usdt.get('availableBalance')}"))
+    except ExchangeError as e:
+        out.append(("read the futures wallet", False, str(e) + _hint(e)))
+        return out
+    try:
+        lev = client.get_leverage(market)
+        cur = int(D((lev or {}).get("leverage")))
+        out.append((f"read the leverage of {market}", True, f"{cur}x"))
+    except (ExchangeError, TradeError, TypeError, ValueError) as e:
+        detail = str(e) + (_hint(e) if isinstance(e, ExchangeError) else "")
+        out.append((f"read the leverage of {market}", False, detail))
+        return out
+    try:
+        client.set_leverage(market, cur)
+        out.append((f"set the leverage of {market} (same value, {cur}x)", True,
+                    "the key may trade"))
+    except ExchangeError as e:
+        out.append((f"set the leverage of {market} (same value, {cur}x)", False,
+                    str(e) + _hint(e)))
+    return out
+
+
 def _now() -> Any:
     from datetime import UTC, datetime
 

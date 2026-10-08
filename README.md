@@ -50,6 +50,12 @@ from one address lock it out for 15 minutes; sessions last `auth.session_hours`.
 sends the password unencrypted: open the dashboard through the SSH tunnel
 (`ssh -p 2266 -L 3000:127.0.0.1:3000 root@<server>`, then http://localhost:3000) or HTTPS.
 
+## Trading key check
+`uv run python -m sp2l --config config/server.yaml trade-check [--market XRPUSDT]` tells whether
+the Tabdeal API key in `trading.credentials_file` can trade: it reads the wallet and the market's
+leverage, then sets the leverage to the value it already has (nothing changes, no order). An
+"Access denied" there means the key is read-only or its IP allow-list lacks the server's IP.
+
 ## Read-only exchange validation
 `uv run python -m sp2l validate-readonly` runs GET-only authenticated checks. Credentials live
 outside the repo in `~/.config/sp2l/tabdeal.env` (directory 700, file 600).

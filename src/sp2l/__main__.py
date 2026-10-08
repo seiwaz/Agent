@@ -428,6 +428,10 @@ def main() -> None:
     bs.add_argument("--validate-minutes", type=int, default=60)
     bs.add_argument("--timeout-s", type=float, default=180)
     bs.add_argument("--apply", action="store_true", help="write (default: report only)")
+    tk = sub.add_parser(
+        "trade-check", help="can the Tabdeal API key trade? (sets leverage to its own value)"
+    )
+    tk.add_argument("--market", default=None, help="e.g. XRPUSDT (default: the first symbol)")
     sl = sub.add_parser("set-login", help="add a dashboard user or change its password")
     sl.add_argument("user", nargs="?", default="admin")
     ro = sub.add_parser("validate-readonly", help="authenticated READ-ONLY Tabdeal checks")
@@ -536,6 +540,24 @@ def main() -> None:
 
             only = set(args.only.split(",")) if args.only else None
             run_readonly_checks(cfg, only=only)
+        elif args.cmd == "trade-check":
+            from sp2l.marketdata.tabdeal_ws import ws_market
+            from sp2l.secrets import CredentialError, load_credentials
+            from sp2l.trading.client import TabdealTrade
+            from sp2l.trading.manager import TradingConfig, check_key
+
+            try:
+                tc = TradingConfig.from_mapping(dict(cfg.section("trading")))
+                creds = load_credentials(Path(tc.credentials_file).expanduser())
+            except (ValueError, CredentialError) as e:
+                raise ConfigError(str(e)) from e
+            market = ws_market(args.market or cfg.symbols[0])
+            ok = True
+            for step, good, detail in check_key(TabdealTrade(creds), market):
+                print(f"{'OK  ' if good else 'FAIL'} {step}: {detail}")
+                ok = ok and good
+            print("=> the key can trade" if ok else "=> the key cannot trade yet (see above)")
+            sys.exit(0 if ok else 1)
         elif args.cmd == "set-login":
             import getpass
 

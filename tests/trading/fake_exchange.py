@@ -95,6 +95,10 @@ class FakeExchange:
                 if o["market"] == market and o["status"] in ("NEW", "PARTIALLY_FILLED")]
 
     # ---- changes --------------------------------------------------------------------------------
+    def get_leverage(self, market: str) -> Any:
+        self._call("get_leverage", market)
+        return {"leverage": self.leverage.get(market, 10), "symbol": market}
+
     def set_leverage(self, market: str, leverage: int) -> Any:
         self._call("set_leverage", (market, leverage))
         self.leverage[market] = leverage

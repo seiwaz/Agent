@@ -408,3 +408,15 @@ def test_a_refused_leverage_says_which_step_and_what_to_check(tm, ex):
     assert r["status"] == "REJECTED" and "limit_order" not in ex.names()
     assert r["last_error"].startswith("setting the leverage: access denied")
     assert "futures trading" in r["last_error"] and "IP" in r["last_error"]
+
+
+def test_trade_check_tells_whether_the_key_can_trade_without_changing_anything(ex):
+    from sp2l.trading.manager import check_key
+
+    ex.leverage[M] = 7
+    steps = check_key(ex, M)
+    assert [ok for _, ok, _ in steps] == [True, True, True] and ex.leverage[M] == 7
+    assert "limit_order" not in ex.names()
+    ex.fail["set_leverage"] = ExchangeError("Access denied.", None, 403)
+    steps = check_key(ex, M)
+    assert steps[-1][1] is False and "futures trading" in steps[-1][2] and ex.leverage[M] == 7
