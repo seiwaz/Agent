@@ -255,10 +255,9 @@ class TradeManager:
         if avail > 0:
             return {"wallet": wallet, "available": avail, "estimated": False}
         used = Decimal(0)
-        for market in (ws_market(s) for s in self.instruments):
-            pos = _first(self.ex.position_risk(market), market)
-            amt = D(pos.get("positionAmt", 0)) if pos else Decimal(0)
-            if pos is not None and amt != 0:
+        for pos in _rows(self.ex.position_risk(None)):  # every open position, one call
+            amt = D(pos.get("positionAmt", 0))
+            if amt != 0:
                 lev = D(pos.get("leverage") or 1) or Decimal(1)
                 used += abs(amt) * D(pos.get("entryPrice") or 0) / lev
         est = wallet + D(u.get("crossUnPnl") or 0) - used
@@ -326,6 +325,10 @@ class TradeManager:
     def open(self, req: dict[str, Any]) -> dict[str, Any]:
         symbol = str(req.get("symbol", ""))
         if symbol not in self.instruments:
+            known = getattr(self.instruments, "markets", None)
+            if known is not None and symbol in known:
+                raise TradeError(f"{symbol}: its price / quantity precision is not known yet"
+                                 " (Tabdeal exchangeInfo has not answered); try again in a minute")
             raise TradeError(f"symbol must be one of {sorted(self.instruments)}")
         side = str(req.get("side", "")).upper()
         if side not in ("LONG", "SHORT"):
@@ -506,10 +509,20 @@ class TradeManager:
                 except ExchangeError as e:
                     errors.append(str(e))
                     log.warning("trade %s: reconcile failed: %s", tid, e)
+            try:  # positions opened on Tabdeal: one call for every market, adopted where found
+                rows = _rows(self.ex.position_risk(None))
+                held = {str(r.get("symbol", "")).replace("_", "") for r in rows
+                        if D(r.get("positionAmt", 0)) != 0}
+            except ExchangeError as e:
+                errors.append(str(e))
+                log.warning("position check failed: %s", e)
+                held = set()
             for symbol in self.instruments:
                 if self._open_ids(symbol):
                     continue
                 self.live.pop(symbol, None)
+                if symbol not in held:
+                    continue
                 try:
                     self._adopt(symbol)
                 except ExchangeError as e:

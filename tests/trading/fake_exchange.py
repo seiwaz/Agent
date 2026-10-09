@@ -46,8 +46,13 @@ class FakeExchange:
         return [{"asset": "USDT", "balance": w, "crossWalletBalance": w,
                  "availableBalance": str(self.wallet - used)}]
 
-    def position_risk(self, market: str) -> Any:
+    def position_risk(self, market: str | None) -> Any:
         self._call("position_risk", market)
+        if market is None:  # every open position
+            return [r for m in list(self.position) for r in self.position_risk_row(m)]
+        return self.position_risk_row(market)
+
+    def position_risk_row(self, market: str) -> Any:
         p = self.position.get(market)
         if not p:
             return []

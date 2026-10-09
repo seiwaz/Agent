@@ -4,6 +4,29 @@ The dashboard's **Chart** tab: price, market structure, levels and indicators fo
 5m / 15m / 1h / 4h / 1d, and trading on Tabdeal futures from a Long / Short position drawing
 (the Trade button, below). Nothing else on the chart sends an order.
 
+## Markets
+
+The market picker in the top bar is a combobox: click it (or Tab to it and press Enter), type to
+filter (`sol`, `SOL/USDT`), pick with ↑ ↓ and Enter; Esc closes it. It lists every market of
+`markets` in the config (BTC, ETH, SOL, BNB, XRP, ADA, LINK, AVAX, LTC, DOT, BCH, ATOM, NEAR, AAVE,
+SUI against USDT); the choice is kept in the browser. Everything on the chart works on each of them:
+candles, overlays, indicators, drawings (stored per market), the trend strip, and **Trade**, which
+always places the order on the market shown on the chart (`SOL_USDT` for SOL/USDT).
+
+The SMC engine and its live collectors run only on `symbols` (marked **SMC** in the list); the
+other markets' forming bar comes from Tabdeal's chart feed every 10 s. The engine's own views
+(Signals, Performance, Strategy, System) stay on the engine's markets.
+
+**Precision.** A market's price tick and quantity step come from `instruments` in the config, else
+from Tabdeal's futures `exchangeInfo` (`pricePrecision` / `quantityPrecision`), read when the API
+starts and every hour (`GET /api/markets` shows what is known). Until exchangeInfo has answered,
+such a market's chart works but a trade on it is refused ("precision is not known yet"), so no
+order is ever sent at a guessed precision.
+
+**Switching.** The previous market's candles leave the chart at once; answers that arrive for an
+earlier market or timeframe are dropped; if Tabdeal does not answer, the chart says so and tries
+again after 2, 4, 8, 15 and then every 30 s until it loads (no page refresh needed).
+
 ## Data: Tabdeal's chart
 
 Candles come from Tabdeal's own chart feed (`special-margin/plots/history`), so the chart matches
@@ -15,7 +38,7 @@ the last bars every 10 s (the last bar is the forming one).
 market's listing on Tabdeal; the overlays (S/R, trendlines, OB, FVG, structure) are recomputed
 over everything loaded. Closed bars are cached in the `chart_bars` table, so a page already seen
 is read from the database and not fetched again; the forming bar is never cached. If Tabdeal is
-unreachable the API answers 502 and the chart keeps what it has.
+unreachable the API answers 502; the chart keeps what it has, or retries the first page (above).
 
 ## What it shows
 
@@ -109,7 +132,9 @@ entry follows the exchange and cannot be dragged; across its whole width, the zo
 to the current price line is filled darker green (in profit) or red (at a loss). When the trade
 closes (target, stop, closed here or on Tabdeal) or is canceled, its drawing is removed. A trade's
 drawing is on its own market's chart: click the market in its row to switch the chart there with the
-drawing selected and in view. Prices show at each market's precision (BTC 1, XRP 5 decimals).
+drawing selected and in view. Prices show at each market's precision (BTC 1, XRP 5 decimals). The
+table lists the open trades of every market, whichever market the chart shows; Tabdeal's positions
+of all markets are read in one call.
 
 The open trades update live: the price, PnL and ROE of each open position every second, from
 the latest traded price on Tabdeal (`/api/trade/prices`, also moving the chart's forming bar);

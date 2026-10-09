@@ -22,6 +22,7 @@
   const OVERLAY_EVERY_MS = 60000;
   const TAIL_EVERY_MS = 10000;  // the forming bar from Tabdeal when no live stream feeds it
   const OLDER_AT = 30;  // load older bars once fewer than this many are left of the view
+  const RETRY_S = [2, 4, 8, 15, 30];  // the first page of bars failed: try again after (then every 30 s)
 
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const h = (tag, attrs, ...kids) => {
@@ -50,6 +51,8 @@
       this.cfg = this.load();
       this.tf = TFS.includes(this.cfg.tf) ? this.cfg.tf : "1h";
       this.bars = []; this.overlays = null; this.handles = []; this.trends = [];
+      // bumped by every market / timeframe switch: answers to an earlier request are dropped
+      this.gen = 0; this.loading = -1;
       this.build();
       this.chart = LightweightCharts.createChart(this.el.chart, { autoSize: true, ...this.theme() });
       this.candles = this.chart.addSeries(LightweightCharts.CandlestickSeries, this.candleColors(), 0);
@@ -185,28 +188,43 @@
       for (const x of FEATURES) if (x.query) Object.assign(s, this.cfg.features[x.id].s);
       return Object.entries(s).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
     }
-    async reload(keepView) {
-      const tf = this.tf, sym = this.symbol;
-      this.note("");
+    /** The newest page of bars; on failure it tries again (RETRY_S) until it loads or the
+     * market / timeframe changes, so a switch never leaves an empty or stale chart behind. */
+    async reload(keepView, attempt) {
+      const gen = this.gen, tf = this.tf, sym = this.symbol, n = attempt || 0;
+      if (this.loading === gen) return;  // already loading this market and timeframe
+      clearTimeout(this.retryTimer);
+      this.loading = gen;
       this.more = true;
+      if (!n) this.note(this.bars.length ? "" : `Loading ${this.display(sym)} · ${tf} …`);
+      let c = null;
       try {
-        const c = await this.api(this.q(`/api/chart/candles?tf=${tf}&limit=${BARS}`));
-        if (tf !== this.tf || sym !== this.symbol) return;
-        this.setBars(c.items.map(bar), keepView);
-        this.barsFor = sym;  // the bars now belong to this market (drawings of its trades may use them)
-        if (!c.items.length) { this.note("No market history from Tabdeal for this timeframe yet."); return; }
-        this.rebuildIndicators();
-        await this.refreshOverlays();
+        c = await this.api(this.q(`/api/chart/candles?tf=${tf}&limit=${BARS}`));
       } catch {
-        this.note("Tabdeal chart data unavailable — retrying.");
+        c = null;
+      } finally {
+        if (this.loading === gen) this.loading = -1;
       }
+      if (gen !== this.gen) return;
+      if (!c) {
+        const wait = RETRY_S[Math.min(n, RETRY_S.length - 1)];
+        this.note(`Tabdeal chart data unavailable — retrying in ${wait} s.`);
+        this.retryTimer = setTimeout(() => { if (gen === this.gen) this.reload(keepView, n + 1); }, wait * 1000);
+        return;
+      }
+      this.setBars(c.items.map(bar), keepView);
+      this.barsFor = sym;  // the bars now belong to this market (drawings of its trades may use them)
+      if (!c.items.length) { this.note("No market history from Tabdeal for this timeframe yet."); return; }
+      this.note("");
+      this.rebuildIndicators();
+      await this.refreshOverlays();
     }
     async refreshOverlays() {
       if (!this.bars.length) return this.reload(false);
-      const tf = this.tf, sym = this.symbol;
+      const gen = this.gen, tf = this.tf;
       try {
         const o = await this.api(this.q(`/api/chart/overlays?tf=${tf}&from=${this.bars[0].t}&${this.overlayQuery()}`));
-        if (tf !== this.tf || sym !== this.symbol) return;
+        if (gen !== this.gen) return;
         this.overlays = o;
         this.note(o.ready ? "" : `Structure not ready: ${o.reason || "too few bars"}.`);
         this.redraw();
@@ -215,11 +233,11 @@
     /** The newest bars from Tabdeal: the forming bar updates, a new bar is appended. */
     async refreshTail() {
       if (!this.bars.length || this.loadingTail) return;
-      const tf = this.tf, sym = this.symbol;
+      const gen = this.gen, tf = this.tf;
       this.loadingTail = true;
       try {
         const c = await this.api(this.q(`/api/chart/candles?tf=${tf}&limit=3`));
-        if (tf !== this.tf || sym !== this.symbol) return;
+        if (gen !== this.gen || !this.bars.length) return;
         let added = false;
         for (const b of c.items.map(bar)) {
           const last = this.bars[this.bars.length - 1];
@@ -236,11 +254,11 @@
     /** Scrolled near the left edge: the previous page of bars from Tabdeal. */
     async loadOlder() {
       if (this.loadingOlder || !this.more || !this.bars.length) return;
-      const tf = this.tf, sym = this.symbol, first = this.bars[0].t;
+      const gen = this.gen, tf = this.tf, first = this.bars[0].t;
       this.loadingOlder = true;
       try {
         const c = await this.api(this.q(`/api/chart/candles?tf=${tf}&limit=${BARS}&before=${first}`));
-        if (tf !== this.tf || sym !== this.symbol || this.bars[0].t !== first) return;
+        if (gen !== this.gen || !this.bars.length || this.bars[0].t !== first) return;
         this.more = !!c.more;
         const older = c.items.map(bar).filter((b) => b.t < first);
         if (!older.length) return;
@@ -267,7 +285,7 @@
     }
     /** The latest traded price (every second while a position is open): moves the forming bar. */
     livePrice(price, at) {
-      if (!this.bars.length || !price) return;
+      if (!this.bars.length || !price || this.barsFor !== this.symbol) return;
       const last = this.bars[this.bars.length - 1];
       if (at && at >= last.t + TF_SEC[this.tf]) return;  // a new bar: the tail refresh adds it
       Object.assign(last, { c: price, h: Math.max(last.h, price), l: Math.min(last.l, price) });
@@ -331,7 +349,7 @@
     setTf(tf) {
       if (tf === this.tf) return;
       this.tf = tf; this.save(); this.renderTfs(); this.renderTitle();
-      this.overlays = null; this.layer.set({ boxes: [], lines: [], marks: [] }, []);
+      this.gen++; this.overlays = null; this.layer.set({ boxes: [], lines: [], marks: [] }, []);
       this.reload(false);
     }
     applyFormat() {
@@ -341,8 +359,12 @@
     setSymbol(sym) {
       if (sym === this.symbol) return;
       this.symbol = sym; this.renderTitle(); this.applyFormat();
+      this.gen++; this.overlays = null; this.barsFor = null;
+      // the previous market's candles go at once: nothing of it may stay on this market's chart
+      this.bars = []; this.candles.setData([]); this.el.price.textContent = "—";
+      this.layer.set({ boxes: [], lines: [], marks: [] }, []);
+      this.updateIndicators();
       this.tools.setSymbol(sym);
-      this.overlays = null; this.layer.set({ boxes: [], lines: [], marks: [] }, []);
       this.reload(false);
     }
     focusTime(iso) {

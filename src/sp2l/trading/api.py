@@ -65,8 +65,9 @@ class Prices:
 
 class TradingDesk:
     def __init__(self, cfg: Any, db: Engine, manager: TradeManager | None = None,
-                 prices: Prices | None = None) -> None:
-        self.symbols: list[str] = [str(s) for s in cfg.symbols]
+                 prices: Prices | None = None, instruments: Any = None) -> None:
+        # every dashboard market (cfg.markets), with its precision from the config or exchangeInfo
+        self.symbols: list[str] = [str(s) for s in getattr(cfg, "markets", cfg.symbols)]
         self.prices = prices or Prices()
         self.problem: str | None = None
         self.manager: TradeManager | None = manager
@@ -85,9 +86,9 @@ class TradingDesk:
         except (CredentialError, OSError) as e:  # trading stays off; the dashboard still runs
             self.problem = f"Tabdeal credentials: {e}"
             return
-        self.manager = TradeManager(
-            db, TabdealTrade(creds), self.cfg, {s: cfg.instrument(s) for s in self.symbols}
-        )
+        if instruments is None:
+            instruments = {s: cfg.instrument(s) for s in self.symbols}
+        self.manager = TradeManager(db, TabdealTrade(creds), self.cfg, instruments)
 
     def require_login(self, login_on: bool) -> None:
         """Real orders only behind the dashboard login."""
@@ -144,11 +145,8 @@ class TradingDesk:
             """What Tabdeal answers for the wallet and the positions, as is (no credentials):
             for comparing with Tabdeal's app when a number looks wrong."""
             def raw(m: TradeManager) -> Any:
-                from sp2l.marketdata.tabdeal_ws import ws_market
-
                 out: dict[str, Any] = {"balance": m.ex.balance()}
-                for s in self.symbols:
-                    out[f"positionRisk {s}"] = m.ex.position_risk(ws_market(s))
+                out["positionRisk (every market)"] = m.ex.position_risk(None)
                 out["wallet (as used here)"] = {k: str(v) for k, v in m.wallet().items()}
                 return out
 

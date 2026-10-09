@@ -83,7 +83,8 @@ function grp(v) {
 function pxs(v, sym) {
   if (v === null || v === undefined) return "—";
   const m = state.markets[sym || state.symbol];
-  return grp((+v).toFixed(m ? m.decimals : 2));
+  const d = m && m.decimals !== null && m.decimals !== undefined ? m.decimals : Math.abs(+v) >= 100 ? 2 : Math.abs(+v) >= 1 ? 4 : 6;
+  return grp((+v).toFixed(d));
 }
 const usd = (v, d) => (v === null || v === undefined ? "—" : `${+v < 0 ? "−" : ""}${grp(Math.abs(+v).toFixed(d ?? 2))}`);
 const usdSigned = (v) => (v === null || v === undefined ? "—" : `${+v > 0 ? "+" : +v < 0 ? "−" : ""}${grp(Math.abs(+v).toFixed(2))}`);
@@ -132,7 +133,8 @@ const q = (path, extra) => `${path}${path.includes("?") ? "&" : "?"}symbol=${enc
 
 /* ---- state ---------------------------------------------------------------------------------- */
 const prefs = loadPrefs();
-const state = { view: "chart", symbol: prefs.symbol || null, markets: {}, symbols: [], ws: null, trends: null,
+// symbols: the SMC engine's markets; chartMarkets: every market of the chart and of trading
+const state = { view: "chart", symbol: prefs.symbol || null, markets: {}, symbols: [], chartMarkets: [], ws: null, trends: null, comboActive: 0,
   allSignals: [], overview: null, live: null,
   sigFilter: "all", sigSym: "all", btSym: null, selectedSig: null, known: null, alerts: !!prefs.alerts, params: {} };
 function loadPrefs() { try { return JSON.parse(localStorage.getItem("smc-prefs") || "{}"); } catch { return {}; } }
@@ -143,7 +145,10 @@ function css(name) { return getComputedStyle(document.documentElement).getProper
 function ensureWorkspace() {
   if (state.ws || !window.ChartWorkspace || !state.symbol) return state.ws;
   state.ws = new ChartWorkspace($("chart-ws"), { api, symbol: state.symbol, display: symName,
-    format: (s) => (state.markets[s] ? { precision: state.markets[s].decimals, minMove: +state.markets[s].tick } : null) });
+    format: (s) => {
+      const m = state.markets[s];
+      return m && m.decimals !== null && m.decimals !== undefined && m.tick ? { precision: m.decimals, minMove: +m.tick } : null;
+    } });
   if (state.trends) state.ws.setTrends(state.trends);
   return state.ws;
 }
@@ -156,26 +161,112 @@ async function refreshTrends() {
   if (!state.symbol) return;
   try { renderTrends(await api(q("/api/chart/trends"))); } catch { /* transient */ }
 }
+/* ---- markets: every market of the chart and of trading; the SMC engine runs on state.symbols ---- */
+const marketList = () => (state.chartMarkets.length ? state.chartMarkets : state.symbols);
+/** The SMC market shown in the engine's own views (the chart's market when the engine runs on it). */
+const smcSym = () => (state.symbols.includes(state.symbol) ? state.symbol : state.symbols[0]);
+async function loadMarkets() {
+  try {
+    const r = await api("/api/markets");
+    state.chartMarkets = r.markets.map((m) => m.symbol);
+    for (const m of r.markets) {
+      const prev = state.markets[m.symbol];
+      // an engine market keeps the overview's numbers (price, collector); any other takes the precision
+      // from exchangeInfo as soon as it is known
+      state.markets[m.symbol] = m.engine && prev ? { ...m, ...prev, engine: true, known: m.known } : { ...prev, ...m };
+    }
+    if (state.ws) state.ws.applyFormat();
+    renderSymbols();
+  } catch { /* the next tick retries */ }
+}
+function priceOf(s) {
+  const ws = state.ws, m = state.markets[s];
+  const live = ws && ws.symbol === s && ws.barsFor === s && ws.bars.length ? ws.bars[ws.bars.length - 1].c : null;
+  const p = live !== null ? live : m ? m.price : null;
+  return p === null || p === undefined ? "—" : pxs(p, s);
+}
+/* The market picker: a combobox (button + searchable list); arrows, Enter and Esc work in the list. */
+function buildCombo(box) {
+  const btn = el("button", { id: "sym-btn", class: "sym-btn", type: "button", "aria-haspopup": "listbox", "aria-expanded": "false",
+    "aria-controls": "sym-pop", title: "Choose the market", onclick: () => ($("sym-pop").hidden ? openCombo() : closeCombo(true)) },
+  el("span", { class: "sym-name", id: "sym-btn-name" }), el("span", { class: "p", id: "sym-btn-price" }), el("span", { class: "caret", "aria-hidden": "true" }, "▾"));
+  const input = el("input", { id: "sym-search", type: "search", placeholder: "Search market…", autocomplete: "off", spellcheck: "false",
+    role: "combobox", "aria-label": "Search market", "aria-controls": "sym-list", "aria-expanded": "true", "aria-autocomplete": "list",
+    oninput: () => { state.comboActive = 0; renderComboList(); }, onkeydown: comboKey });
+  const pop = el("div", { id: "sym-pop", class: "sym-pop", hidden: true }, input, el("ul", { id: "sym-list", role: "listbox", "aria-label": "Markets" }));
+  box.replaceChildren(btn, pop);
+  document.addEventListener("mousedown", (e) => { if (!pop.hidden && !box.contains(e.target)) closeCombo(false); });
+}
+function comboItems() {
+  const f = $("sym-search").value.trim().toUpperCase().replace(/[\s/_-]/g, "");
+  return marketList().filter((s) => !f || s.includes(f) || symName(s).toUpperCase().replace(/[\s/_-]/g, "").includes(f));
+}
+function renderComboList() {
+  const items = comboItems();
+  state.comboActive = Math.max(0, Math.min(state.comboActive, items.length - 1));
+  $("sym-list").replaceChildren(...(items.length ? items.map((s, i) => {
+    const m = state.markets[s] || {};
+    return el("li", { role: "option", id: `sym-opt-${s}`, "aria-selected": String(s === state.symbol), class: i === state.comboActive ? "active" : null,
+      onmousedown: (e) => e.preventDefault(), onclick: () => pickCombo(s) },
+    el("span", { class: "n" }, m.display || s),
+    m.engine ? el("span", { class: "mini", title: "The SMC engine runs on this market" }, "SMC") : null,
+    m.known === false ? el("span", { class: "mini warn", title: "Price precision not loaded from Tabdeal yet: trading waits for it" }, "…") : null,
+    el("span", { class: "p num" }, priceOf(s)));
+  }) : [el("li", { class: "empty", role: "presentation" }, "No market matches")]));
+  const act = items[state.comboActive];
+  if (act) $("sym-search").setAttribute("aria-activedescendant", `sym-opt-${act}`); else $("sym-search").removeAttribute("aria-activedescendant");
+  const a = $("sym-list").querySelector(".active");
+  if (a && a.scrollIntoView) a.scrollIntoView({ block: "nearest" });
+}
+function openCombo() {
+  const pop = $("sym-pop");
+  pop.hidden = false; $("sym-btn").setAttribute("aria-expanded", "true");
+  $("sym-search").value = "";
+  state.comboActive = Math.max(0, marketList().indexOf(state.symbol));
+  renderComboList();
+  $("sym-search").focus();
+}
+function closeCombo(focusBtn) {
+  $("sym-pop").hidden = true; $("sym-btn").setAttribute("aria-expanded", "false");
+  if (focusBtn) $("sym-btn").focus();
+}
+function pickCombo(s) { closeCombo(true); selectSymbol(s); }
+function comboKey(e) {
+  const items = comboItems();
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    state.comboActive = (state.comboActive + (e.key === "ArrowDown" ? 1 : -1) + items.length) % Math.max(1, items.length);
+    renderComboList();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (items[state.comboActive]) pickCombo(items[state.comboActive]);
+  } else if (e.key === "Escape") { e.preventDefault(); closeCombo(true); }
+  else if (e.key === "Tab") closeCombo(false);
+}
 function renderSymbols() {
-  $("sym-seg").replaceChildren(...state.symbols.map((s) => {
-    const m = state.markets[s];
-    return el("button", { type: "button", role: "tab", "aria-selected": String(s === state.symbol), onclick: () => selectSymbol(s) },
-      el("span", {}, m ? m.display : s), el("span", { class: "p" }, m ? pxs(m.price, s) : "—"));
-  }));
+  const box = $("sym-combo");
+  if (!box) return;
+  if (!$("sym-btn")) buildCombo(box);
+  const m = state.markets[state.symbol];
+  $("sym-btn-name").textContent = m ? m.display : state.symbol || "—";
+  $("sym-btn-price").textContent = priceOf(state.symbol);
+  $("sym-btn").setAttribute("aria-label", `Market: ${m ? m.display : state.symbol || "none"}`);
+  if (!$("sym-pop").hidden) renderComboList();
 }
 function selectSymbol(s) {
-  if (s === state.symbol) return;
+  if (s === state.symbol || !marketList().includes(s)) return;
   state.symbol = s;
-  savePrefs(); renderSymbols();
+  savePrefs(); renderSymbols(); renderFeed();
   if (state.ws) state.ws.setSymbol(s);
   refreshTrends();
   startLive();
   refreshView().catch(() => {});
 }
-/* Live 1-minute candles from the canonical trade stream, folded into the chart's forming bar. */
+/* Live 1-minute candles from the canonical trade stream, folded into the chart's forming bar
+ * (the SMC markets have a live collector; every other market's forming bar comes from Tabdeal). */
 function startLive() {
-  if (!window.EventSource || !state.symbol) return;
   if (state.live) { state.live.close(); state.live = null; }
+  if (!window.EventSource || !state.symbol || !state.symbols.includes(state.symbol)) return;
   const sym = state.symbol;
   const es = new EventSource(`/api/live/stream?symbol=${encodeURIComponent(sym)}`);
   state.live = es;
@@ -323,7 +414,7 @@ async function renderPerformance() {
     return el("tr", {}, el("td", {}, symName(s)), el("td", { class: "num" }, show(d.closed)), el("td", { class: "num" }, pct(d.win_rate)),
       el("td", {}, rEl(d.total_r)), el("td", {}, rEl(d.avg_r)), el("td", { class: "num" }, show(d.profit_factor)));
   });
-  const bsym = state.btSym || state.symbol;
+  const bsym = state.btSym || smcSym();
   seg("bt-sym", state.symbols.map((s) => [s, symName(s)]), bsym, (k) => { state.btSym = k; renderPerformance(); });
   $("bt-meta").textContent = "running…";
   const b = await api(`/api/smc/backtest?days=30&symbol=${encodeURIComponent(bsym)}`);
@@ -409,9 +500,9 @@ async function loadParams(sym) {
   return state.params[sym];
 }
 async function renderStrategy() {
-  const p = await loadParams(state.symbol);
+  const p = await loadParams(smcSym());
   const v = Object.fromEntries(p.groups.flatMap((g) => g.items.map((i) => [i.key, i.value])));
-  $("strat-ver").textContent = `${symName(state.symbol)} · ${p.version} · parameters ${p.params_hash}`;
+  $("strat-ver").textContent = `${symName(smcSym())} · ${p.version} · parameters ${p.params_hash}`;
   const step = (tone, h, tfs, text) => el("li", { class: `t-${tone}` }, el("div", { class: "h" }, h), el("div", { class: "tfs" }, tfs), el("p", {}, text));
   $("model-flow").replaceChildren(
     step("info", "Bias", v.bias_tf, "The trend of the bias timeframe's last BOS / CHoCH is the only direction that can be traded."),
@@ -464,8 +555,8 @@ async function renderSystem() {
       el("td", {}, c.status === "CONNECTED" ? tag("ok", "Connected") : tag(c.status === "NO_DATA" ? "neutral" : "warn", c.status)),
       el("td", {}, ago(c.heartbeat_age_s)), el("td", {}, m.market.quality.label));
   });
-  $("dq-sym").textContent = symName(state.symbol);
-  const qd = await api(q("/api/market/quality?minutes=180"));
+  $("dq-sym").textContent = symName(smcSym());
+  const qd = await api(`/api/market/quality?minutes=180&symbol=${encodeURIComponent(smcSym())}`);
   $("dq-strip").replaceChildren(...qd.timeline.map((m) => el("span", { class: m.status === "OK" ? "ok" : m.status === "SYNTHETIC" ? "syn" : "gap", title: `${fmtClock.format(new Date(m.minute))} ${m.status}` })));
   table("sys-gaps", ["From", "To", "Reason", "Timeframe"], qd.gaps, (g) => el("tr", {}, el("td", {}, when(g.gap_start)), el("td", {}, when(g.gap_end)), el("td", {}, show(g.reason)), el("td", {}, show(g.timeframe))), "No gaps recorded");
 }
@@ -474,20 +565,24 @@ async function renderSystem() {
 function applyOverview(o) {
   state.overview = o;
   state.symbols = o.symbols;
-  for (const m of o.markets) state.markets[m.symbol] = m;
-  if (!state.symbol || !state.markets[state.symbol]) state.symbol = o.symbols[0];
-  const m = state.markets[state.symbol];
+  for (const m of o.markets) state.markets[m.symbol] = { ...state.markets[m.symbol], ...m, engine: true };
+  if (!state.symbol || !marketList().includes(state.symbol)) state.symbol = marketList()[0];
   const runs = o.markets.map((x) => x.smc.runner).filter(Boolean);
   const allRun = runs.length === o.markets.length && runs.every((r) => r.status === "RUNNING");
   const rp = $("runner-pill");
   rp.style.setProperty("--tone", css(allRun ? "--ok" : "--bad"));
   rp.replaceChildren(el("span", { class: "dot" }), allRun ? "Engine running" : "Engine stopped");
-  const feedUp = m.collector.status === "CONNECTED";
+  renderFeed();
+  $("foot-ver").textContent = `Eiwaz Trading System · ${marketList().length} markets · SMC engine on ${o.symbols.map(symName).join(" + ")}`;
+}
+function renderFeed() {
+  const m = state.markets[state.symbol] || {};
+  const feedUp = !!(m.collector && m.collector.status === "CONNECTED");
   const fp = $("feed-pill");
   fp.style.setProperty("--tone", css(feedUp ? "--ok" : "--warn"));
-  fp.replaceChildren(el("span", { class: "dot" }), feedUp ? "Live feed" : "History only");
-  fp.title = feedUp ? `Live trades for ${m.display}` : "No live collector: candles come from Tabdeal history, refreshed every minute";
-  $("foot-ver").textContent = `Eiwaz Trading System · ${o.symbols.map(symName).join(" + ")}`;
+  fp.replaceChildren(el("span", { class: "dot" }), feedUp ? "Live feed" : "Tabdeal feed");
+  fp.title = feedUp ? `Live trades for ${m.display}`
+    : `No live collector for ${m.display || state.symbol}: candles come from Tabdeal's chart feed, the forming bar refreshed every 10 s`;
 }
 function route() {
   const v = (location.hash.replace("#/", "") || "chart").split("?")[0];
@@ -535,6 +630,7 @@ async function init() {
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.ws && state.ws.isFull() && !document.fullscreenElement) state.ws.toggleFull(); });
   $("tz-label").textContent = `Times in ${tzText()}`;
+  await loadMarkets();  // first: a saved market that is not an SMC market stays selected
   try { await refreshFast(); } catch { /* retried below */ }
   window.addEventListener("hashchange", route);
   route();
@@ -542,5 +638,6 @@ async function init() {
   startLive();
   setInterval(refreshFast, 5000);
   setInterval(refreshTrends, 30000);
+  setInterval(loadMarkets, 60000);  // precision of the markets exchangeInfo had not answered for yet
 }
 init();

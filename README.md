@@ -27,7 +27,9 @@ precedence where they exist. It runs without the collector too (chart then updat
   position, price range, path), full screen. Candles come from Tabdeal's chart; scrolling back
   loads older bars down to the listing. **Trade** (⚡) places the selected / last Long or Short
   drawing on Tabdeal futures (leverage asked first; stop and target set once filled); the panel
-  under the chart shows open trades (Cancel / Close) and the history (`docs/CHART.md`).
+  under the chart shows open trades of every market (Cancel / Close) and the history. The market
+  picker is a searchable combobox over the config's `markets` (15 USDT futures); chart and trading
+  work on each, the SMC engine runs on `symbols` (`docs/CHART.md`).
 - **Signals** — full history with the lifecycle timeline of each signal; "Show on chart".
 - **Performance** — the shared wallet (balance, equity, fees, ledger, per-market results) and
   the backtest of the parameters in force per market (exit per trade).

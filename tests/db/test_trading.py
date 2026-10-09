@@ -420,3 +420,37 @@ def test_trade_check_tells_whether_the_key_can_trade_without_changing_anything(e
     ex.fail["set_leverage"] = ExchangeError("Access denied.", None, 403)
     steps = check_key(ex, M)
     assert steps[-1][1] is False and "futures trading" in steps[-1][2] and ex.leverage[M] == 7
+
+
+# ---- every dashboard market ------------------------------------------------------------------------
+def test_any_market_trades_at_its_exchange_info_precision_and_the_table_lists_every_market(engine, ex):
+    from sp2l.marketdata.instruments import Instruments
+
+    with engine.begin() as c:
+        c.execute(text("DELETE FROM manual_trades"))
+    info = {"symbols": [{"symbol": "SOL_USDT", "pricePrecision": 2, "quantityPrecision": 2},
+                        {"symbol": "ETH_USDT", "pricePrecision": 2, "quantityPrecision": 3}]}
+    ins = Instruments(["BTCUSDT", "SOLUSDT", "ETHUSDT", "ADAUSDT"],
+                      {"BTCUSDT": INSTR["BTCUSDT"]}, fetch=lambda: info)
+    tm = TradeManager(engine, ex, TradingConfig(enabled=True, max_leverage=100), ins)
+    sol = {"symbol": "SOLUSDT", "side": "SHORT", "entry": 150.123, "sl": 155, "tp": 140,
+           "leverage": 5, "margin_usdt": 30, "drawing_id": "s1"}
+    with pytest.raises(TradeError, match="precision is not known yet"):
+        tm.open(sol)  # exchangeInfo has not answered: nothing is sent with a guessed precision
+    assert "limit_order" not in ex.names()
+    with pytest.raises(TradeError, match="symbol must be one of"):
+        tm.open({**sol, "symbol": "DOGEUSDT"})  # not a dashboard market
+    ins.refresh()
+    t = tm.open(sol)
+    market, side, qty, price, _ = next(a for n, a in ex.calls if n == "limit_order")
+    assert (market, side, price, qty) == ("SOL_USDT", "SELL", "150.12", "0.99")  # 30 x 5 / 150.12
+    assert ex.leverage["SOL_USDT"] == 5 and t["symbol"] == "SOLUSDT"
+    ex.fill(t["order_id"])
+    ex.manual("ETH_USDT", "0.05", "3000", lev=20)  # opened in Tabdeal's app
+    ex.calls.clear()
+    tm.reconcile()
+    assert ex.names().count("position_risk") >= 1
+    assert ("position_risk", None) in ex.calls  # one call for every market's positions
+    open_ = tm.trades(None, "open")  # the table under the chart: every market
+    assert sorted((x["symbol"], x["origin"]) for x in open_) == [("ETHUSDT", "TABDEAL"), ("SOLUSDT", "CHART")]
+    assert ex.position["SOL_USDT"]["sl"] == Decimal("155.00")

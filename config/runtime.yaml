@@ -7,6 +7,11 @@ instruments:
   BTCUSDT: {tick: "0.1", step: "0.00001"}
   XRPUSDT: {tick: "0.00001", step: "0.1"}
 
+# Markets on the dashboard chart and for trading from it (the SMC engine and the collectors run on
+# `symbols` only). Price / quantity precision: `instruments` above, else Tabdeal's exchangeInfo.
+markets: [BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT, XRPUSDT, ADAUSDT, LINKUSDT, AVAXUSDT, LTCUSDT, DOTUSDT,
+          BCHUSDT, ATOMUSDT, NEARUSDT, AAVEUSDT, SUIUSDT]
+
 collector:
   grace_ms: 2000          # B05
   ping_interval_s: 1.0

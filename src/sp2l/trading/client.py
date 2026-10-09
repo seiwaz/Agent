@@ -116,8 +116,9 @@ class TabdealTrade:
     def balance(self) -> Any:
         return self.call("GET", "/r/fapi/v3/balance")
 
-    def position_risk(self, market: str) -> Any:
-        return self.call("GET", "/r/fapi/v3/positionRisk", {"symbol": market})
+    def position_risk(self, market: str | None) -> Any:
+        """One market's position, or every open position (market None): one call for all."""
+        return self.call("GET", "/r/fapi/v3/positionRisk", {"symbol": market} if market else {})
 
     def positions(self, market: str, active: bool, limit: int = 20) -> Any:
         return self.call(

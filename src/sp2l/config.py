@@ -63,6 +63,15 @@ class RuntimeConfig:
         return [str(x) for x in v]
 
     @property
+    def markets(self) -> list[str]:
+        """The dashboard's markets (chart and trading): `markets`, after the engine's `symbols`."""
+        out = list(self.symbols)
+        for x in self.raw.get("markets") or []:
+            if str(x) not in out:
+                out.append(str(x))
+        return out
+
+    @property
     def symbol(self) -> str:
         """The first market (per-market commands take `--symbol`)."""
         return str(self.raw.get("symbol") or self.symbols[0])

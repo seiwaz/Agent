@@ -43,17 +43,25 @@ def _free_port() -> int:
         return int(s.getsockname()[1])
 
 
+# exchangeInfo for the markets beyond the config's instruments (SOL: 0.01 price, 0.01 quantity)
+INFO = {"symbols": [{"symbol": "XRP_USDT", "pricePrecision": 5, "quantityPrecision": 1},
+                    {"symbol": "SOL_USDT", "pricePrecision": 2, "quantityPrecision": 2}]}
+
+
 @contextmanager
-def serve(trading: dict | None = None, exchange=None, auth: dict | None = None) -> Iterator[str]:
+def serve(trading: dict | None = None, exchange=None, auth: dict | None = None,
+          markets: list[str] | None = None) -> Iterator[str]:
     import uvicorn
 
     from sp2l.api.app import create_app
     from sp2l.config import RuntimeConfig
+    from sp2l.marketdata.instruments import Instruments
 
     cfg = RuntimeConfig(
         {
             "database_url": URL,
             "symbols": [SYM],
+            "markets": markets or [SYM],
             "instruments": {SYM: {"tick": "0.1", "step": "0.001"}},
             "costs": {"maker_fee": "0", "taker_fee": "0", "slippage_allowance": "0"},
             "smc": {"htf_grid": "utc"},
@@ -61,6 +69,8 @@ def serve(trading: dict | None = None, exchange=None, auth: dict | None = None) 
             "auth": auth or {},
         }
     )
+    ins = Instruments(cfg.markets, {SYM: cfg.instrument(SYM)}, fetch=lambda: INFO)
+    ins.refresh()
     desk = None
     if exchange is not None:  # trading against a simulated Tabdeal
         from sqlalchemy import create_engine
@@ -69,11 +79,11 @@ def serve(trading: dict | None = None, exchange=None, auth: dict | None = None) 
         from sp2l.trading.manager import TradeManager, TradingConfig
 
         tc = TradingConfig.from_mapping(trading or {})
-        tm = TradeManager(create_engine(URL), exchange, tc, {SYM: cfg.instrument(SYM)})
+        tm = TradeManager(create_engine(URL), exchange, tc, ins)
         desk = TradingDesk(cfg, tm.db, manager=tm)
     port = _free_port()
     srv = uvicorn.Server(
-        uvicorn.Config(create_app(cfg, trading=desk), host="127.0.0.1", port=port,
+        uvicorn.Config(create_app(cfg, trading=desk, instruments=ins), host="127.0.0.1", port=port,
                        log_level="warning")
     )
     th = threading.Thread(target=srv.run, daemon=True)
@@ -580,5 +590,97 @@ def test_vwap_ema_bollinger_sessions_volume_atr_adx(data, browser):
         pg.select_option("#ws-form-vwap select", "week")
         assert pg.evaluate("() => JSON.parse(localStorage.getItem('smc-chart-v1')).features.vwap.s.period") == "week"
         pg.wait_for_timeout(300)
+        assert errors == []
+        pg.close()
+
+
+def test_market_combobox_switches_every_market_and_trades_the_active_one(data, browser, engine, tmp_path):  # noqa: F811
+    from decimal import Decimal
+
+    from sp2l.api.auth import set_login
+    from tests.trading.fake_exchange import FakeExchange
+
+    with engine.begin() as c:
+        c.execute(text("DELETE FROM manual_trades"))
+    ex = FakeExchange(wallet="1000")
+    users = tmp_path / "auth" / "dashboard.auth"
+    set_login(users, "admin", "test password")
+    loaded = "(s) => state.symbol === s && state.ws && state.ws.barsFor === s && state.ws.bars.length > 0"
+    last = "() => state.ws.bars[state.ws.bars.length - 1].c"
+    with serve({"enabled": True, "poll_s": 1, "max_leverage": 100}, ex, {"enabled": True, "users_file": str(users)},
+               markets=[SYM, "XRPUSDT", "SOLUSDT"]) as url:
+        pg = browser.new_page(viewport={"width": 1500, "height": 950})
+        errors: list[str] = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(f"{url}/login")
+        pg.fill("input[name=user]", "admin")
+        pg.fill("input[name=password]", "test password")
+        pg.click(".login-btn")
+        pg.wait_for_function("() => typeof state !== 'undefined' && state.ws && state.ws.bars.length > 0 && state.ws.overlays", timeout=60000)
+        pg.evaluate("() => localStorage.removeItem('smc-drawings-v1')")
+
+        # the picker is a combobox: every market, searchable, picked with the keyboard
+        assert pg.get_attribute("#sym-btn", "aria-haspopup") == "listbox"
+        pg.click("#sym-btn")
+        assert pg.eval_on_selector_all("#sym-list li .n", "xs => xs.map(x => x.textContent)") == ["BTC/USDT", "XRP/USDT", "SOL/USDT"]
+        assert pg.eval_on_selector_all("#sym-list li .mini", "xs => xs.map(x => x.textContent)") == ["SMC"]  # the engine's market
+        pg.fill("#sym-search", "sol")
+        assert pg.eval_on_selector_all("#sym-list li", "xs => xs.length") == 1
+        pg.keyboard.press("Enter")
+        assert pg.is_hidden("#sym-pop")
+        pg.wait_for_function(f"() => ({loaded})('SOLUSDT') && state.ws.overlays", timeout=30000)
+        assert 100 < pg.evaluate(last) < 200  # SOL's own candles
+        assert pg.evaluate("() => state.ws.candles.options().priceFormat.precision") == 2  # exchangeInfo's tick
+        assert "SOL/USDT" in pg.inner_text("#sym-btn") and "Tabdeal feed" in pg.inner_text("#feed-pill")
+        pg.click("#sym-btn")
+        pg.keyboard.press("Escape")
+        assert pg.is_hidden("#sym-pop")
+
+        # quick switching: a late answer for an earlier market never lands on the chart
+        pg.evaluate("() => { selectSymbol('BTCUSDT'); selectSymbol('SOLUSDT'); selectSymbol('BTCUSDT'); }")
+        pg.wait_for_function(f"() => ({loaded})('BTCUSDT')", timeout=30000)
+        time.sleep(1.5)
+        assert pg.evaluate(last) > 1000 and pg.evaluate("() => state.ws.barsFor") == "BTCUSDT"
+
+        # Tabdeal unreachable at first (XRP not loaded yet): the chart says so and tries again until it loads
+        data.down["XRP_USDT"] = time.time() + 3
+        try:
+            pg.evaluate("() => selectSymbol('XRPUSDT')")
+            pg.wait_for_function("() => (document.querySelector('.ws-note') || {}).textContent.includes('retrying')", timeout=15000)
+            assert pg.evaluate("() => state.ws.bars.length") == 0  # BTC's candles are gone at once
+            pg.wait_for_function(f"() => ({loaded})('XRPUSDT')", timeout=30000)
+            assert pg.evaluate(last) < 2 and pg.is_hidden(".ws-note")
+        finally:
+            data.down.clear()
+
+        # the market is kept across a reload, though the engine does not run on it
+        pg.evaluate("() => selectSymbol('SOLUSDT')")
+        pg.wait_for_function(f"() => ({loaded})('SOLUSDT')", timeout=30000)
+        pg.reload()
+        pg.wait_for_function(f"() => typeof state !== 'undefined' && ({loaded})('SOLUSDT') && state.ws.trading && state.ws.trading.cfg && state.ws.trading.cfg.ready", timeout=60000)
+
+        # Trade on the active market: the order goes to SOL_USDT at SOL's precision
+        d = pg.evaluate("""() => {
+            const b = state.ws.bars, e = +b[b.length - 1].c.toFixed(2);
+            const it = { id: "S1", type: "long", t1: b[b.length - 20].t, t2: b[b.length - 1].t + 3600 * 10, entry: e, sl: +(e * 0.95).toFixed(2), tp: +(e * 1.1).toFixed(2) };
+            state.ws.tools.items.push(it); state.ws.tools.save(); state.ws.tools.redraw();
+            return it;
+        }""")
+        pg.click(".ws-trade-btn")
+        pg.wait_for_selector(".ws-modal .ws-trade-dlg")
+        assert "SOL/USDT" in pg.inner_text(".ws-trade-dlg")
+        pg.fill(".ws-trade-dlg .ws-field input >> nth=0", "50")
+        pg.fill(".ws-trade-dlg .ws-field input >> nth=1", "20")
+        pg.click(".ws-trade-dlg .ws-go")
+        pg.wait_for_selector(".ws-trade-table .b-pending", timeout=15000)
+        market, side, qty, price, _ = next(a for n, a in ex.calls if n == "limit_order")
+        assert (market, side) == ("SOL_USDT", "BUY") and ex.leverage["SOL_USDT"] == 50
+        assert Decimal(price) == Decimal(str(d["entry"])) and Decimal(price).as_tuple().exponent == -2
+        assert Decimal(qty).as_tuple().exponent >= -2  # SOL's quantity step
+
+        # the table under the chart lists the open trades of every market
+        ex.manual("BTC_USDT", "0.001", "50000")
+        pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('BTC')", timeout=15000)
+        assert "SOL" in pg.inner_text(".ws-trade-table")
         assert errors == []
         pg.close()

@@ -12,12 +12,14 @@ from sp2l.chart.history import SECONDS
 
 OFFSET = {"5m": 0, "15m": 0, "1h": 1800, "4h": 1800, "1d": 73800}  # Tehran = UTC+03:30
 LISTED_DAYS = 200
+SCALE = {"BTC": 1.0, "XRP": 1.45 / 50_000, "SOL": 150 / 50_000}  # XRP near 1.45, SOL near 150
 
 
 class FakeTabdeal:
     def __init__(self, listed_days: int = LISTED_DAYS) -> None:
         self.listed = int(time.time()) - listed_days * 86400
         self.calls: list[tuple[str, str, int, int]] = []
+        self.down: dict[str, float] = {}  # market -> Tabdeal unreachable for it until then
 
     @staticmethod
     def price(tf: str, k: int) -> float:
@@ -27,6 +29,8 @@ class FakeTabdeal:
 
     def __call__(self, market: str, tf: str, start: int, end: int) -> list[dict[str, Any]]:
         self.calls.append((market, tf, start, end))
+        if time.time() < self.down.get(market, 0):
+            raise OSError("Tabdeal unreachable (test)")
         step, off = SECONDS[tf], OFFSET[tf]
         now = int(time.time())
         lo = max(start, self.listed)
@@ -34,7 +38,7 @@ class FakeTabdeal:
         out = []
         k = k0
         while (t := k * step + off) < min(end, now + 1):
-            scale = 1.0 if market.startswith("BTC") else 1.45 / 50_000  # XRP trades near 1.45
+            scale = SCALE.get(market.split("_")[0], SCALE["XRP"])
             o, c = self.price(tf, k - 1) * scale, self.price(tf, k) * scale
             hi, lo_ = max(o, c) * 1.002, min(o, c) * 0.998
             if scale != 1.0:

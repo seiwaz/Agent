@@ -11,9 +11,12 @@
 from __future__ import annotations
 
 import html
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
@@ -132,7 +135,9 @@ def same_origin(scope: Scope) -> bool:
     return origin.split("://", 1)[-1].rstrip("/") == host
 
 
-def create_app(cfg: RuntimeConfig, trading: Any = None) -> FastAPI:
+def create_app(
+    cfg: RuntimeConfig, trading: Any = None, instruments: Any = None
+) -> FastAPI:
     db = create_engine(cfg.database_url, pool_pre_ping=True)
     symbols = cfg.symbols
     try:
@@ -149,13 +154,24 @@ def create_app(cfg: RuntimeConfig, trading: Any = None) -> FastAPI:
         auth = Auth(AuthConfig.from_mapping(dict(cfg.section("auth"))))
     except ValueError as e:
         raise ConfigError(str(e)) from e
-    desk: TradingDesk = trading or TradingDesk(cfg, db)
+    # every dashboard market (chart, trading): precision from the config, else Tabdeal exchangeInfo
+    from sp2l.marketdata.instruments import Instruments
+
+    markets = cfg.markets
+    configured = {s: cfg.instrument(s) for s in cfg.section("instruments") if s in markets}
+    if instruments is None:
+        instruments = Instruments(markets, configured)
+    desk: TradingDesk = trading or TradingDesk(cfg, db, instruments=instruments)
     desk.require_login(auth.enabled)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         stop = desk.start()  # the trade poller, while trading is on
+        stop_ins = threading.Event()  # exchangeInfo now, then hourly (in the background)
+        threading.Thread(target=instruments.run, args=(stop_ins,), name="instruments",
+                         daemon=True).start()
         yield
+        stop_ins.set()
         if stop is not None:
             stop.set()
 
@@ -306,11 +322,40 @@ def create_app(cfg: RuntimeConfig, trading: Any = None) -> FastAPI:
     from sp2l.chart.overlays import ChartParams
     from sp2l.chart.service import CHART_TFS, ChartService
 
-    charts = {s: ChartService(db, s, sparams[s]) for s in symbols}
+    charts: dict[str, ChartService] = {}
+    chart_lock = threading.Lock()
     chart_tf = "^(" + "|".join(CHART_TFS) + ")$"
 
     def chart(symbol: str | None) -> ChartService:
-        return charts[sym(symbol)]
+        """The chart of any dashboard market (engine markets use the engine's parameters)."""
+        s = symbol or markets[0]
+        if s not in markets:
+            raise HTTPException(404, f"symbol must be one of {markets}")
+        with chart_lock:
+            if s not in charts:
+                if s in sparams:
+                    params = sparams[s]
+                else:
+                    tick = instruments[s][0] if s in instruments else None
+                    params = cfg.smc_params()
+                    if tick is not None:
+                        params = replace(params, tick=tick)
+                charts[s] = ChartService(db, s, params)
+            return charts[s]
+
+    @app.get("/api/markets")
+    def market_list() -> Any:
+        """The dashboard's markets: display name, precision (config / exchangeInfo), whether the
+        SMC engine (and its live collector) runs on it."""
+        out = []
+        for s in markets:
+            d = instruments.describe(s)
+            tick: Decimal | None = d["tick"]
+            places = None if tick is None else max(0, -int(tick.normalize().as_tuple().exponent))
+            out.append({**d, "symbol": s, "display": ws_market(s).replace("_", "/"),
+                        "tick": qx.jsonable(tick), "step": qx.jsonable(d["step"]),
+                        "decimals": places, "engine": s in symbols})
+        return {"markets": out, "problem": getattr(instruments, "problem", None)}
 
     def from_tabdeal(f: Any) -> Any:
         """Chart data comes from Tabdeal's chart feed: an unreachable feed is a 502, not a 500."""
