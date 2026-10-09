@@ -147,6 +147,9 @@
     fields(settings, values, onChange) {
       const input = (f) => (f.type === "bool"
         ? h("input", { type: "checkbox", checked: !!values[f.key], onchange: (e) => { values[f.key] = e.target.checked; this.save(); onChange(); } })
+        : f.type === "select"
+        ? h("select", { onchange: (e) => { values[f.key] = e.target.value; this.save(); onChange(); } },
+          f.options.map(([v, label]) => h("option", { value: v, selected: values[f.key] === v }, label)))
         : h("input", { type: "number", value: values[f.key], min: f.min, max: f.max, step: f.step || 1, onchange: (e) => {
           let v = Number(e.target.value);
           if (!Number.isFinite(v)) v = f.def;
@@ -315,7 +318,7 @@
       for (const x of FEATURES) {
         if (x.server || !this.on(x.id)) continue;
         const idx = x.pane === "own" ? pane++ : 0;
-        this.handles.push(x.attach(this.chart, idx, this.cfg.features[x.id].s, c));
+        this.handles.push(x.attach(this.chart, idx, this.cfg.features[x.id].s, c, this));
       }
       const panes = this.chart.panes();
       panes.forEach((p, i) => p.setStretchFactor(i === 0 ? 1 : 0.28));

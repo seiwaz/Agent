@@ -30,8 +30,15 @@ item to the new timeframe.
 | Structure | OB, FVG | server (`sp2l.smc.structure`) | from the zone's candle to its mitigation / fill, or to the last bar; active zones only unless *Also mitigated / filled* |
 | Structure | BOS, CHoCH | server | from the broken swing to the closing break |
 | Structure | HH / HL / LH / LL | server | each swing against the previous swing of its kind |
-| Indicators | Donchian channels | browser | on the price pane |
-| Indicators | RSI, MACD | browser | each in its own pane; the MACD histogram is strong while it grows away from zero, faded while it shrinks |
+| Overlays | Donchian channels | browser | on the price pane |
+| Overlays | VWAP (session) | browser | restarts each UTC day / week / month; optional ± st. dev. bands |
+| Overlays | EMA 9 / 21, EMA 50 / 200 | browser | momentum and trend filters (lengths editable) |
+| Overlays | Bollinger Bands | browser | SMA ± k st. dev.: expansion / contraction of volatility |
+| Overlays | Sessions | browser | Tokyo 09–18 JST, London 08–17 UK, New York 08–17 ET (daylight saving included), weekdays, on 5m / 15m / 1h |
+| Panes | Volume | browser | coloured by candle, with its average |
+| Panes | ATR | browser | Wilder; with the round-trip cost (fees + slippage, % of price) to compare a move against |
+| Panes | ADX / DMI | browser | trend (above the level, 25) vs range; +DI / −DI |
+| Panes | RSI, MACD | browser | each in its own pane; the MACD histogram is strong while it grows away from zero, faded while it shrinks |
 
 The structure pivot length (⚙ next to *Structure*) applies to every structure and level item.
 Server items use closed bars only (a pivot is known *pivot length* bars after it); the forming bar
@@ -152,7 +159,7 @@ grey – none. Full screen (⤢) keeps the toolbar, the trend strip and the opti
 ### Adding or removing an item
 
 - **Remove:** delete its entry in `FEATURES` (`web/chart/features.js`). Nothing else refers to it.
-- **Add an indicator:** add an entry with `group: "Indicators"`, `pane: "price"` or `"own"`,
+- **Add an indicator:** add an entry with `group: "Overlays"` or `"Panes"`, `pane: "price"` or `"own"`,
   `settings` and `attach(chart, pane, s, c)` returning `{ update(bars), remove() }`; put the math
   in `indicators.js`.
 - **Add a structure / level item:** compute it in `overlays.py` (add it to the `overlays()`

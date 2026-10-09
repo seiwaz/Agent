@@ -540,3 +540,45 @@ def test_drawing_settings_vline_across_panes_and_dialogs_in_full_screen(data, br
         pg.wait_for_function("() => state.ws.tools.items.length === 0")
         assert errors == []
         pg.close()
+
+
+def test_vwap_ema_bollinger_sessions_volume_atr_adx(data, browser):
+    with serve() as url:
+        pg, errors = _open(browser, url)
+        pg.evaluate("() => localStorage.removeItem('smc-chart-v1')")
+        pg.reload()
+        pg.wait_for_function("() => state.ws && state.ws.bars.length > 0", timeout=60000)
+        pg.click(".ws-layers-btn")
+        groups = pg.eval_on_selector_all(".ws-group h3", "xs => xs.map(x => x.textContent)")
+        assert groups == ["Levels", "Structure", "Overlays", "Panes"]
+        before = pg.evaluate("() => state.ws.chart.panes()[0].getSeries().length")
+        for f in ("vwap", "ema_fast", "ema_slow", "bb", "sessions"):
+            pg.check(f"#ws-f-{f}")
+        # price pane: VWAP 1 + EMA 2 + 2 + Bollinger 3 (sessions draw under the candles)
+        assert pg.evaluate("() => state.ws.chart.panes()[0].getSeries().length") == before + 8
+        for f in ("volume", "atr", "adx"):
+            pg.check(f"#ws-f-{f}")
+        pg.wait_for_function("() => state.ws.chart.panes().length === 4")
+        titles = pg.evaluate("() => state.ws.chart.panes().slice(1).map(p => p.getSeries()[0].options().title)")
+        assert titles == ["Vol", "ATR 14", "ADX 14"]
+
+        # values: the session VWAP restarts each UTC day; ATR and ADX are filled once warmed up
+        vals = pg.evaluate("""() => {
+            const I = ChartIndicators, b = state.ws.bars, v = I.sessionVwap(b, 'day', 1).vwap;
+            const i = b.findIndex((x, k) => k > 0 && I.sessionStart(x.t, 'day') !== I.sessionStart(b[k - 1].t, 'day'));
+            const x = b[i];
+            return { first: v[i], typ: (x.h + x.l + x.c) / 3, atr: I.atr(b, 14).slice(-1)[0], adx: I.adx(b, 14).adx.slice(-1)[0] };
+        }""")
+        assert abs(vals["first"] - vals["typ"]) < 1e-9 and vals["atr"] > 0 and 0 <= vals["adx"] <= 100
+
+        # sessions: Tokyo, London and New York bands in the visible range on 1h
+        n = pg.evaluate("""() => { const b = state.ws.bars; return ChartIndicators.sessions(b[b.length - 60].t, b[b.length - 1].t).map(s => s.id); }""")
+        assert {"tokyo", "london", "newyork"} <= set(n)
+
+        # a select setting: the VWAP restarts weekly
+        pg.click("#ws-f-vwap >> xpath=ancestor::div[contains(@class,'ws-item')]//button[contains(@class,'ws-gear')]")
+        pg.select_option("#ws-form-vwap select", "week")
+        assert pg.evaluate("() => JSON.parse(localStorage.getItem('smc-chart-v1')).features.vwap.s.period") == "week"
+        pg.wait_for_timeout(300)
+        assert errors == []
+        pg.close()

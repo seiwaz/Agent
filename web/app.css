@@ -217,7 +217,7 @@ body[data-view="chart"] main { max-width: none; padding: 8px 12px 12px; }
 .tf-trend.t-bear { color: var(--bad); background: var(--bad-bg); border-color: var(--bad); }
 .tf-trend.t-bull b, .tf-trend.t-bear b { color: inherit; }
 .ws-layers-btn[aria-expanded="true"] { border-color: var(--info); color: var(--info); }
-.ws-panel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 24px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.ws-panel { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 24px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
 .ws-panel[hidden] { display: none; }
 .ws-group h3 { margin: 0; font-size: 13px; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; }
 .ws-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
@@ -332,3 +332,5 @@ body[data-view="chart"] main { max-width: none; padding: 8px 12px 12px; }
 .ws-set input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--info); }
 .ws-fib-levels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; }
 .ws-fib-levels label { display: flex; align-items: center; gap: 6px; }
+.ws-field select { padding: 4px 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 13px; }
+@media (max-width: 1400px) and (min-width: 1101px) { .ws-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
