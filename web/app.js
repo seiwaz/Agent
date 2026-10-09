@@ -144,7 +144,7 @@ function savePrefs() { try { localStorage.setItem("smc-prefs", JSON.stringify({ 
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function ensureWorkspace() {
   if (state.ws || !window.ChartWorkspace || !state.symbol) return state.ws;
-  state.ws = new ChartWorkspace($("chart-ws"), { api, symbol: state.symbol, display: symName,
+  state.ws = new ChartWorkspace($("chart-ws"), { api, symbol: state.symbol, display: symName, onPrice: () => renderSymbols(),
     format: (s) => {
       const m = state.markets[s];
       return m && m.decimals !== null && m.decimals !== undefined && m.tick ? { precision: m.decimals, minMove: +m.tick } : null;
@@ -630,6 +630,12 @@ async function init() {
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.ws && state.ws.isFull() && !document.fullscreenElement) state.ws.toggleFull(); });
   $("tz-label").textContent = `Times in ${tzText()}`;
+  // a new setup of the playbook strategy shown on the chart (web/chart/playbook.js)
+  window.addEventListener("playbook-setup", (e) => {
+    const { symbol, strategy, setup } = e.detail;
+    toast(setup.side === "LONG" ? "ok" : "bad", `${symName(symbol)} · ${strategy}`,
+      `${setup.side === "LONG" ? "Long" : "Short"} ${setup.status === "open" ? "filled" : `${setup.kind} order`} at ${pxs(setup.fill || setup.entry, symbol)}, stop ${pxs(setup.sl, symbol)}${setup.tp !== null ? `, target ${pxs(setup.tp, symbol)}` : ""}`);
+  });
   await loadMarkets();  // first: a saved market that is not an SMC market stays selected
   try { await refreshFast(); } catch { /* retried below */ }
   window.addEventListener("hashchange", route);

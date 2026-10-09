@@ -365,6 +365,39 @@ def create_app(
             detail = f"Tabdeal chart feed unavailable: {exc}"
             return JSONResponse({"detail": detail}, status_code=502)
 
+    # ---- playbook: four rule-based 1h strategies on any market (sp2l.playbook) ----------------
+    from sp2l.playbook.engine import STRATEGIES
+    from sp2l.playbook.engine import Costs as PlaybookCosts
+    from sp2l.playbook.service import Playbook
+
+    pb_costs = PlaybookCosts(
+        maker=float(costs.maker_fee), taker=float(costs.taker_fee),
+        slippage=float(costs.slippage), funding_rate=float(costs.funding_rate),
+        funding_h=costs.funding_interval_h,
+    ) if costs is not None else PlaybookCosts()
+    playbooks: dict[str, Playbook] = {}
+
+    def playbook_of(symbol: str | None) -> Playbook:
+        ch = chart(symbol)
+        with chart_lock:
+            if ch.symbol not in playbooks:
+                playbooks[ch.symbol] = Playbook(ch.history, pb_costs)
+            return playbooks[ch.symbol]
+
+    @app.get("/api/playbook")
+    def playbook(
+        symbol: str | None = None,
+        strategy: str = Query("donchian", pattern="^(" + "|".join(STRATEGIES) + ")$"),
+        days: int = Query(90, ge=14, le=365),
+        htf: bool = True,
+        brief: bool = False,
+    ) -> Any:
+        """A strategy of the playbook on the market's closed 1h bars: its lines, every setup
+        (long / short, to its target or stop), the current one with its checklist, and the
+        backtest after costs. brief: no lines or setups (the market scanner)."""
+        pb = playbook_of(symbol)
+        return from_tabdeal(lambda: qx.jsonable(pb.analyse(strategy, days, htf, brief)))
+
     @app.get("/api/chart/candles")
     def chart_candles(
         symbol: str | None = None,

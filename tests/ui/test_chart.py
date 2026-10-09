@@ -684,3 +684,62 @@ def test_market_combobox_switches_every_market_and_trades_the_active_one(data, b
         assert "SOL" in pg.inner_text(".ws-trade-table")
         assert errors == []
         pg.close()
+
+
+def test_playbook_strategy_draws_setups_current_setup_checklist_backtest_and_scan(data, browser):
+    with serve(markets=[SYM, "XRPUSDT"]) as url:
+        pg, errors = _open(browser, url)
+        pg.evaluate("() => { localStorage.removeItem('smc-playbook-v1'); localStorage.removeItem('smc-drawings-v1'); }")
+        pg.evaluate("() => state.ws.setTf('4h')")
+        pg.wait_for_function("() => state.ws.tf === '4h' && state.ws.bars.length > 0")
+        opts = pg.eval_on_selector_all(".ws-pb-select option", "xs => xs.map(x => x.textContent)")
+        assert opts == ["Strategy: off", "1. Donchian 48/24 breakout", "2. EMA 50 pullback", "3. Liquidity sweep + BOS + FVG / OB", "4. Anchored VWAP pullback"]
+        assert pg.is_hidden(".ws-pb")
+
+        # Donchian: the chart goes to 1h, draws its channel and every setup to its stop / exit
+        pg.select_option(".ws-pb-select", "donchian")
+        pg.wait_for_function("() => state.ws.tf === '1h' && state.ws.playbook.data && state.ws.bars.length > 0", timeout=60000)
+        pg.wait_for_function("() => state.ws.playbook.layer.items.boxes.length > 0", timeout=30000)
+        d = pg.evaluate("() => { const d = state.ws.playbook.data; return { n: d.setups.length, stats: d.stats, series: d.series.map(s => s.id), checks: d.checks.LONG.length }; }")
+        assert d["n"] > 0 and d["stats"]["trades"] > 0 and d["checks"] >= 3
+        assert set(d["series"]) == {"ema4", "hi_in", "lo_in", "lo_out", "hi_out"}
+        assert pg.evaluate("() => state.ws.handles.length") >= 1  # its lines on the chart
+        pg.wait_for_selector(".ws-pb .ws-pb-checks li")
+        txt = pg.inner_text(".ws-pb")
+        assert "Current setup" in txt and "Checklist" in txt and "Backtest · 90 days" in txt and "Setups" in txt
+        assert "48-bar" in txt  # the checklist names the rule
+
+        # a past setup from the table: selected on the chart; one drawn as a position (for Trade)
+        pg.click(".ws-pb-table tbody tr >> nth=0")
+        assert pg.evaluate("() => state.ws.playbook.sel") is not None
+        sid = pg.evaluate("() => state.ws.playbook.data.setups.find(s => s.fill).id")
+        pg.evaluate(f"() => state.ws.playbook.drawAsPosition(state.ws.playbook.data.setups.find(s => s.id === '{sid}'))")
+        it = pg.evaluate(f"() => state.ws.tools.items.find(i => i.id === 'pb-{sid}')")
+        assert it and it["type"] in ("long", "short") and it["sl"] and it["tp"]
+
+        # the settings reload it; another strategy shows its own lines (ADX in its own pane)
+        pg.select_option(".ws-pb-controls select", "30")
+        pg.wait_for_function("() => state.ws.playbook.data && state.ws.playbook.data.days === 30", timeout=30000)
+        pg.select_option(".ws-pb-select", "ema")
+        pg.wait_for_function("() => state.ws.playbook.data && state.ws.playbook.data.strategy === 'ema'", timeout=30000)
+        assert pg.evaluate("() => state.ws.chart.panes().length") >= 2
+        assert "EMA 50" in pg.inner_text(".ws-pb")
+
+        # every market: the scanner lists each with its current setup and backtest
+        pg.click(".ws-pb-controls button:has-text('Scan markets')")
+        pg.wait_for_function("() => state.ws.playbook.scan && !state.ws.playbook.scan.running", timeout=60000)
+        rows = pg.eval_on_selector_all(".ws-pb-list:has-text('Markets') tbody tr td:first-child", "xs => xs.map(x => x.textContent)")
+        assert sorted(rows) == ["BTC/USDT", "XRP/USDT"]
+        pg.click(".ws-pb-list:has-text('Markets') tbody tr:has-text('XRP/USDT')")
+        pg.wait_for_function("() => state.symbol === 'XRPUSDT' && state.ws.playbook.data && state.ws.barsFor === 'XRPUSDT'", timeout=60000)
+        pg.screenshot(path="/tmp/playbook.png")
+
+        # on another timeframe nothing is drawn; off: the panel goes
+        pg.evaluate("() => state.ws.setTf('4h')")
+        pg.wait_for_function("() => state.ws.tf === '4h' && state.ws.bars.length > 0", timeout=30000)
+        assert pg.evaluate("() => state.ws.playbook.layer.items.boxes.length") == 0
+        assert "shown on 1h only" in pg.inner_text(".ws-pb-summary")
+        pg.select_option(".ws-pb-select", "")
+        assert pg.is_hidden(".ws-pb")
+        assert errors == []
+        pg.close()

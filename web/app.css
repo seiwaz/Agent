@@ -351,3 +351,33 @@ body[data-view="chart"] main { max-width: none; padding: 8px 12px 12px; }
 .ws-fib-levels label { display: flex; align-items: center; gap: 6px; }
 .ws-field select { padding: 4px 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 13px; }
 @media (max-width: 1400px) and (min-width: 1101px) { .ws-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* playbook strategy panel (web/chart/playbook.js) */
+.ws-pb-select { min-height: 32px; padding: 3px 8px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-2); color: var(--text); font: 500 13px "IBM Plex Sans", sans-serif; max-width: 250px; }
+.ws-pb { border-top: 1px solid var(--border); background: var(--surface); flex: none; }
+.ws-pb[hidden] { display: none; }
+.ws-pb-name { font-size: 13px; white-space: nowrap; }
+.ws-pb-summary { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ws-pb-body { max-height: 300px; overflow: auto; border-top: 1px solid var(--border); padding: 8px 10px; display: grid; gap: 10px; }
+.ws-pb-body[hidden] { display: none; }
+.chart-ws:fullscreen .ws-pb-body, .chart-ws.ws-max .ws-pb-body { max-height: 32vh; }
+.ws-pb-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.ws-pb-controls select { padding: 3px 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); color: var(--text); }
+.ws-pb-controls .ws-check { display: inline-grid; }
+.ws-pb-rules { flex-basis: 100%; font-size: 13px; color: var(--text-2); }
+.ws-pb-rules summary { cursor: pointer; color: var(--text); }
+.ws-pb-rules ol { margin: 6px 0; padding-left: 20px; display: grid; gap: 3px; }
+.ws-pb-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr); gap: 10px; }
+@media (max-width: 1100px) { .ws-pb-grid { grid-template-columns: minmax(0, 1fr); } }
+.ws-pb-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--surface-2); min-width: 0; }
+.ws-pb-card h4, .ws-pb-list h4 { margin: 0 0 6px; font-size: 13px; }
+.ws-pb-card h5 { margin: 0 0 4px; font-size: 12px; color: var(--text-2); }
+.ws-pb-card p { margin: 4px 0; }
+.ws-pb-big { font-size: 15px; font-weight: 600; }
+.ws-pb-now .btn { margin-top: 6px; }
+.ws-pb-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.ws-pb-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 12px; }
+.ws-pb-checks li { display: grid; grid-template-columns: 14px 1fr; gap: 4px; color: var(--text-2); }
+.ws-pb-checks li.ok { color: var(--text); }
+.ws-pb-checks li.ok .mk { color: var(--ok); } .ws-pb-checks li.no .mk { color: var(--bad); }
+.ws-pb-table tr.sel td { background: var(--surface-2); font-weight: 600; }

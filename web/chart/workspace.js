@@ -48,6 +48,7 @@
     constructor(root, opts) {
       this.root = root; this.api = opts.api; this.symbol = opts.symbol; this.display = opts.display || ((s) => s);
       this.format = opts.format || (() => null);  // symbol -> { precision, minMove } of its price
+      this.onPrice = opts.onPrice || (() => {});  // new bars: the page shows the price elsewhere too
       this.cfg = this.load();
       this.tf = TFS.includes(this.cfg.tf) ? this.cfg.tf : "1h";
       this.bars = []; this.overlays = null; this.handles = []; this.trends = [];
@@ -62,6 +63,7 @@
       this.chart.subscribeCrosshairMove((p) => this.readout(p));
       this.tools = new ChartDrawingTools(this);
       this.el.slot.prepend(this.tools.bar);
+      this.playbook = window.ChartPlaybook ? new ChartPlaybook(this) : null;  // above the trades panel
       this.trading = window.ChartTrading ? new ChartTrading(this) : null;
       document.addEventListener("fullscreenchange", () => this.renderFullBtn());
       this.timer = setInterval(() => this.refreshOverlays(), OVERLAY_EVERY_MS);
@@ -217,6 +219,7 @@
       if (!c.items.length) { this.note("No market history from Tabdeal for this timeframe yet."); return; }
       this.note("");
       this.rebuildIndicators();
+      this.onPrice();
       await this.refreshOverlays();
     }
     async refreshOverlays() {
@@ -247,6 +250,7 @@
           this.candles.update({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c });
         }
         this.el.price.textContent = fmt(this.bars[this.bars.length - 1].c);
+        this.onPrice();
         if (added) { this.layer.set(this.layer.items, this.bars.map((x) => x.t)); this.refreshOverlays(); }
         this.updateIndicators();
       } catch { /* the next tick retries */ } finally { this.loadingTail = false; }
@@ -282,6 +286,7 @@
       if (bars.length) this.el.price.textContent = fmt(bars[bars.length - 1].c);
       this.layer.set(this.layer.items, bars.map((b) => b.t));
       if (this.tools) this.tools.redraw();
+      if (this.playbook) this.playbook.draw();
     }
     /** The latest traded price (every second while a position is open): moves the forming bar. */
     livePrice(price, at) {
@@ -338,6 +343,10 @@
         const idx = x.pane === "own" ? pane++ : 0;
         this.handles.push(x.attach(this.chart, idx, this.cfg.features[x.id].s, c, this));
       }
+      if (this.playbook) {  // the playbook strategy's lines (its own pane for ADX)
+        const hd = this.playbook.attach(this.chart, () => pane++);
+        if (hd) this.handles.push(hd);
+      }
       const panes = this.chart.panes();
       panes.forEach((p, i) => p.setStretchFactor(i === 0 ? 1 : 0.28));
       if (this.tools) this.tools.attachPanes();  // vertical lines cross the indicator panes too
@@ -350,6 +359,7 @@
       if (tf === this.tf) return;
       this.tf = tf; this.save(); this.renderTfs(); this.renderTitle();
       this.gen++; this.overlays = null; this.layer.set({ boxes: [], lines: [], marks: [] }, []);
+      if (this.playbook) { this.playbook.draw(); this.playbook.render(); }  // drawn on 1h only
       this.reload(false);
     }
     applyFormat() {
@@ -365,6 +375,7 @@
       this.layer.set({ boxes: [], lines: [], marks: [] }, []);
       this.updateIndicators();
       this.tools.setSymbol(sym);
+      if (this.playbook) this.playbook.setSymbol();
       this.reload(false);
     }
     focusTime(iso) {
@@ -417,6 +428,7 @@
       this.chart.applyOptions(this.theme());
       this.candles.applyOptions(this.candleColors());
       this.rebuildIndicators(); this.redraw();
+      if (this.playbook) this.playbook.draw();
     }
   }
 
