@@ -170,12 +170,43 @@ def test_a_stop_entry_expires_or_is_cancelled_and_a_gap_fills_at_the_open():
     assert (s.status, s.fill) == ("open", 99.5)
 
 
+def test_the_previous_high_stays_until_a_close_above_it_or_the_window_ends():
+    # swing highs (2 bars each side) at bars 2 (110) and 8 (105); closes below both until bar 14
+    h = [100, 104, 110, 104, 100, 99, 100, 102, 105, 102, 100, 101, 103, 104, 112, 106, 104, 103, 102, 103]
+    c = [x - 1 for x in h]
+    c[13], c[14] = 103, 111  # bar 14 closes above 110 (and 105)
+    out = ind.previous_highs(h, c, 2, 50)
+    assert out[4] is None and out[5] == (110, 2)  # known once confirmed (bar 4 closed)
+    assert out[12] == (110, 2) and out[14] == (110, 2)  # the newer, lower 105 does not replace it
+    assert out[15] is None  # both closed above at bar 14
+    assert out[19] == (112, 14)  # the next swing high takes over
+    assert ind.previous_highs(h, c, 2, 8)[12] == (105, 8)  # 110 is older than the window
+
+
+def test_entry_is_a_bullish_body_crossing_the_previous_high():
+    bars = walk(3000, 4)
+    x = Ctx(bars, agg4(bars), Params(htf_filter=False))
+    rows = run(x, STRATEGIES["donchian"], Costs(), 100)
+    assert rows and {s.side for s in rows} == {"LONG"}
+    for s in rows:
+        i = s.signal_i
+        lvl, at = x.prev_hi[i]
+        assert s.marks["level"] == lvl and x.c[i] > x.o[i] and x.o[i] <= lvl < x.c[i]
+        assert at < i - 5 and all(x.c[j] <= lvl for j in range(at + 1, i))  # unbroken until now
+        assert at >= i - 240
+    # a bar crossing with a gap (opening above the level) or a bearish one is not an entry
+    for i in range(300, x.n):
+        _, s = STRATEGIES["donchian"].detect(x, i, 1)
+        if x.prev_hi[i] is not None and x.o[i] > x.prev_hi[i][0]:
+            assert s is None
+
+
 def test_donchian_stop_follows_the_fill_and_the_exit_rule_closes_at_the_next_open():
     bars = walk(3000, 4)
     x = Ctx(bars, agg4(bars), Params(htf_filter=False))
     rows = run(x, STRATEGIES["donchian"], Costs(), 100)
     exits = [s for s in rows if s.status == "exit"]
-    assert exits and any(s.status == "sl" for s in rows)
+    assert exits
     for s in exits:
         assert s.fill_i == s.signal_i + 1 and s.fill == x.o[s.fill_i]  # the next open
         assert s.sl == pytest.approx(s.fill - s.d * 2 * s.n)

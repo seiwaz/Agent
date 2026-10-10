@@ -105,12 +105,38 @@ def prev_min(xs: Sequence[float], n: int) -> Series:
 
 
 def pivots(xs: Sequence[float], k: int, high: bool) -> list[int]:
-    """Indexes of swing highs (high=True) / lows: strictly beyond the k bars on each side.
-    Pivot p is known at the close of bar p + k."""
+    """Indexes of swing highs (high=True) / lows: beyond the k bars before it and at least
+    level with the k bars after it (of equal highs the first is the swing). Pivot p is known
+    at the close of bar p + k."""
     out = []
     for p in range(k, len(xs) - k):
         x = xs[p]
-        side = list(xs[p - k:p]) + list(xs[p + 1:p + k + 1])
-        if (high and all(x > y for y in side)) or (not high and all(x < y for y in side)):
+        left, right = xs[p - k:p], xs[p + 1:p + k + 1]
+        if high and all(x > y for y in left) and all(x >= y for y in right):
             out.append(p)
+        elif not high and all(x < y for y in left) and all(x <= y for y in right):
+            out.append(p)
+    return out
+
+
+def previous_highs(h: Sequence[float], c: Sequence[float], k: int,
+                   window: int) -> list[tuple[float, int] | None]:
+    """The previous high known before bar i: the highest swing high (k bars each side) of the
+    last `window` bars that no close has gone above since; (price, its bar) or None.
+
+    Unlike a rolling n-bar high it does not drop when an old high leaves a short window: it
+    stays until price closes above it (then the next swing high takes over) or it is older
+    than `window` bars."""
+    pv = pivots(h, k, True)
+    nxt = 0
+    live: list[int] = []  # unbroken swing highs
+    out: list[tuple[float, int] | None] = []
+    for i in range(len(c)):
+        while nxt < len(pv) and pv[nxt] + k <= i - 1:  # confirmed by the close of bar i - 1
+            live.append(pv[nxt])
+            nxt += 1
+        live = [p for p in live if p >= i - window]
+        top = max(live, key=lambda p: (h[p], p)) if live else None
+        out.append((h[top], top) if top is not None else None)
+        live = [p for p in live if c[i] <= h[p]]  # a close above breaks it
     return out

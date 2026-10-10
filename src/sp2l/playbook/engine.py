@@ -30,9 +30,11 @@ class Params:
     htf_filter: bool = True  # close above (long) / below (short) the last closed 4h EMA 200
     min_stop: float = 0.007  # stop distance, fraction of the entry: outside [min, max] no trade
     max_stop: float = 0.03
-    # 1 Donchian 48/26 (turtle system 1 on 1h), long only: on BTC 1h 2020-2026 long only beat
-    # long + short (PF 1.55 vs 1.27) and a 26-bar exit matched 24 (docs/PLAYBOOK.md)
-    entry_len: int = 48
+    # 1 previous-high breakout, Donchian 26-bar exit, long only (docs/PLAYBOOK.md): a bullish
+    # candle whose body crosses the previous high (the highest unbroken swing high of the last
+    # prev_high_bars bars); it replaced the 48-bar high, which drops when an old high leaves it
+    high_piv: int = 5  # swing-high strength (bars each side), as the chart's structure labels
+    prev_high_bars: int = 240
     exit_len: int = 26
     n_len: int = 20
     n_mult: float = 2.0
@@ -125,7 +127,7 @@ class Ctx:
         self.atr20 = ind.atr(h, lo, c, p.n_len)
         self.ema50 = ind.ema(c, p.ema_len)
         self.adx = ind.adx(h, lo, c, 14)
-        self.hi_in, self.lo_in = ind.prev_max(h, p.entry_len), ind.prev_min(lo, p.entry_len)
+        self.prev_hi = ind.previous_highs(h, c, p.high_piv, p.prev_high_bars)
         self.hi_out, self.lo_out = ind.prev_max(h, p.exit_len), ind.prev_min(lo, p.exit_len)
         self.ph, self.pl = ind.pivots(h, p.piv, True), ind.pivots(lo, p.piv, False)
         # the 4h EMA 200, from closed 4h bars only
@@ -204,23 +206,31 @@ def _finish(x: Ctx, name: str, i: int, d: int, checks: list[Check], core: int,
 
 
 def donchian(x: Ctx, i: int, d: int) -> tuple[list[Check], Setup | None]:
+    """Long only: a bullish candle whose body crosses the previous high (open at or below it,
+    close above it). Entry at the next open, stop 2N, exit on a close below the 26-bar low."""
     p = x.p
-    lvl = x.hi_in[i] if d > 0 else x.lo_in[i]
+    prev = x.prev_hi[i]
     n = x.atr20[i]
-    if lvl is None or n is None:
+    if d < 0:
+        return [], None
+    if n is None:
         return [check("Not enough bars yet", False)], None
-    c = x.c[i]
-    sl = c - d * p.n_mult * n
+    if prev is None:
+        return [check(f"A previous high (an unbroken swing high of the last {p.prev_high_bars} "
+                      "bars)", False)], None
+    lvl, at = prev
+    o, c = x.o[i], x.c[i]
+    sl = c - p.n_mult * n
     checks = [
-        check(f"Close {'above the' if d > 0 else 'below the'} {p.entry_len}-bar "
-              f"{'high' if d > 0 else 'low'}", d * (c - lvl) > 0, lvl),
+        check("A bullish candle whose body crosses the previous high", c > o and o <= lvl < c,
+              lvl),
         _htf(x, i, d),
         _stop_range(x, c, sl),
     ]
 
     def build() -> Setup:
         return Setup("donchian", _side(d), i, "market", c, sl, None, 1, n=n,
-                     marks={"level": lvl, "n": n})
+                     marks={"level": lvl, "level_t": x.t[at], "n": n})
 
     return _finish(x, "donchian", i, d, checks, 1, build)
 
@@ -475,7 +485,7 @@ class Strategy:
 
 
 STRATEGIES: dict[str, Strategy] = {
-    "donchian": Strategy("donchian", "Donchian 48/26 breakout (long only)", donchian,
+    "donchian": Strategy("donchian", "Previous-high breakout, 26-bar exit (long only)", donchian,
                          donchian_exit, "a close below the 26-bar low (or the 2N stop)", (1,)),
     "ema": Strategy("ema", "EMA 50 pullback (4h EMA 200 + ADX)", ema_pullback, None, "3R"),
     "smc": Strategy("smc", "Liquidity sweep + BOS + FVG / OB", smc, None,

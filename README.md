@@ -30,8 +30,9 @@ precedence where they exist. It runs without the collector too (chart then updat
   under the chart shows open trades of every market (Cancel / Close) and the history. The market
   picker is a searchable combobox over the config's `markets` (15 USDT futures); chart and trading
   work on each, the SMC engine runs on `symbols` (`docs/CHART.md`).
-  **Strategy** (top bar of the chart): four rule-based 1h strategies (Donchian 48/26 long only, EMA 50
-  pullback, liquidity sweep + BOS + FVG / OB, anchored VWAP), long and short: the current setup,
+  **Strategy** (top bar of the chart): four rule-based 1h strategies (previous-high breakout with
+  a 26-bar exit, long only; EMA 50 pullback, liquidity sweep + BOS + FVG / OB, anchored VWAP, long
+  and short): the current setup,
   every past setup to its target / stop, the checklist of each rule, a backtest after costs, and a
   scan of every market (`docs/PLAYBOOK.md`).
 - **Signals** — full history with the lifecycle timeline of each signal; "Show on chart".

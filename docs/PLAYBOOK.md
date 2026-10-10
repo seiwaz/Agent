@@ -28,10 +28,15 @@ Common: closed 1h bars only, orders act from the next bar; the 4h filter (switch
 close above the EMA 200 of the last **closed** 4h bar; the stop must be 0.7–3 % from the entry,
 else the setup is shown as rejected and not traded. One setup at a time per strategy.
 
-1. **Donchian 48/26, long only.** Close above the highest high of the previous 48 bars. Entry:
-   the next open. Stop: entry − 2 N, N = ATR(20) (Wilder) of the signal bar, fixed. Exit: a close
-   below the lowest low of the previous 26 bars, at the next open; or the stop. No shorts.
-   (The guide: 48/24, both sides; changed after the BTC test below.)
+1. **Previous-high breakout, Donchian 26-bar exit, long only.** The previous high: the highest
+   swing high (5 bars each side, as the chart's HH / LH labels; of equal highs the first) of the
+   last 240 bars that no close has gone above since. It stays where it is until price closes
+   above it — the guide's 48-bar high dropped as soon as an old high left its 48-bar window, so
+   an entry could come below the real previous high. Signal: a **bullish candle whose body
+   crosses the previous high** (opens at or below it, closes above it). Entry: the next open.
+   Stop: entry − 2 N, N = ATR(20) (Wilder) of the signal bar, fixed. Exit: a close below the
+   lowest low of the previous 26 bars, at the next open; or the stop. No shorts. (The guide:
+   48-bar high / 24-bar low, both sides; changed after the BTC tests below.)
 2. **EMA 50 pullback.** EMA 50 above the 4h EMA 200, close above it, EMA 50 above its value 5 bars
    ago, ADX(14) > 20; ≥ 2 ATR(14) from the highest high of the previous 15 bars to the signal low;
    signal candle: low ≤ EMA 50, close > EMA 50, bullish. Buy stop at its high, valid 3 bars,
@@ -63,14 +68,34 @@ later), the 4h EMA from closed 4h bars only, each rule (`tests/unit/test_playboo
 
 ## What a test on real data said (not a promise)
 
-**Donchian on BTC, 2020-01 → 2026-10** (Binance BTCUSDT 1h, ~6.7 years, Tabdeal's costs, 4h
-filter on), the guide's version against the variants asked for:
+**Strategy 1 on BTC, 2020-01 → 2026-10** (Binance BTCUSDT 1h, ~6.7 years, Tabdeal's costs, 4h
+filter on).
+
+The entry level: the previous high (body crossing it) against the 48-bar high, all long only with
+the 26-bar exit:
+
+| Entry level | Trades | Win | Total R | Avg R | PF | Max DD R | 2025 | 2026 |
+|---|---|---|---|---|---|---|---|---|
+| 48-bar high (the previous version) | 298 | 28 % | +134.3 | +0.45 | 1.55 | 32.3 | −6.5 | +1.1 |
+| previous high, swing highs of the last 72 bars | 254 | 26 % | +151.9 | +0.60 | 1.75 | 24.9 | +7.9 | −3.2 |
+| previous high, last 120 bars | 209 | 27 % | +157.2 | +0.75 | 1.97 | 19.7 | +8.7 | +2.0 |
+| **previous high, last 240 bars (in use)** | 173 | 28 % | +152.8 | +0.88 | 2.15 | 15.0 | +9.9 | +6.7 |
+| previous high, last 480 bars | 144 | 26 % | +113.4 | +0.79 | 1.98 | 16.7 | +1.2 | +8.0 |
+| previous high, never forgotten | 35 | 31 % | +24.5 | +0.70 | 1.97 | 8.4 | +1.3 | 0 |
+
+The previous high halves the drawdown and doubles the average trade; 120–240 bars are a plateau
+(not one lucky value); kept for ever, the level sits at a past top for months (none of 2022 or
+2023 traded). The same 240-bar rule on the 8 markets over 13 months below: 165 trades, +59.4 R
+(the 48-bar high: 338 trades, +13.5 R), better on 7 of 8 markets, worse on ADA. Yearly on BTC:
+2020 +58.6, 2021 −1.6, 2022 −1.8, 2023 +59.3, 2024 +21.7, 2025 +9.9, 2026 +6.7 R.
+
+The earlier step, the guide's 48/24 against long only and 26-bar channels:
 
 | Variant | Trades | Win | Total R | Avg R | PF | Max DD R | 2025 | 2026 |
 |---|---|---|---|---|---|---|---|---|
 | 48/24 long + short (the guide) | 561 | 27 % | +123.2 | +0.22 | 1.27 | 37.5 | −21.5 | +13.2 |
 | 48/24 long only | 305 | 29 % | +133.7 | +0.44 | 1.55 | 30.1 | −6.3 | +3.2 |
-| **48/26 long only (in use)** | 298 | 28 % | +134.3 | +0.45 | 1.55 | 32.3 | −6.5 | +1.1 |
+| 48/26 long only | 298 | 28 % | +134.3 | +0.45 | 1.55 | 32.3 | −6.5 | +1.1 |
 | 26/24 long only | 376 | 27 % | +122.6 | +0.33 | 1.41 | 28.3 | −7.1 | +0.2 |
 | 26/26 long only | 366 | 27 % | +122.3 | +0.33 | 1.41 | 31.1 | −8.1 | −1.8 |
 

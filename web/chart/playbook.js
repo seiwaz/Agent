@@ -23,8 +23,9 @@
   const REFRESH_MS = 60000;
   const H1 = 3600;
   const STRATEGIES = [
-    { id: "donchian", n: 1, label: "Donchian 48/26 breakout (long only)",
-      rules: ["Long only: a close above the highest high of the previous 48 bars, above the 4h EMA 200.",
+    { id: "donchian", n: 1, label: "Previous-high breakout (long only)",
+      rules: ["Previous high: the highest swing high (5 bars each side) of the last 240 bars that no close has gone above since; it stays until price closes above it (an n-bar high would drop when an old high leaves its window).",
+        "Long only: a bullish candle whose body crosses the previous high (opens at or below it, closes above it), above the 4h EMA 200.",
         "Entry at the next bar's open (market). Stop: entry − 2 × N, N = ATR(20) of the signal bar; fixed.",
         "Exit: a close below the lowest low of the previous 26 bars, at the next open; or the stop.",
         "Few winners, large ones: many small losses are normal."] },
@@ -48,7 +49,7 @@
   const STATUS = { pending: ["Order pending", "b-pending"], open: ["Open", "b-active"], tp: ["Target", "pos"], sl: ["Stop", "neg"],
     exit: ["Exit rule", ""], expired: ["Expired", "b-canceled"], cancelled: ["Cancelled", "b-canceled"], missed: ["Missed (target first)", "b-canceled"],
     rejected: ["Rejected", "b-rejected"] };
-  const SERIES_COLORS = { ema4: "150,150,160", hi_in: "41,98,255", lo_in: "41,98,255", lo_out: "255,152,0", hi_out: "255,152,0",
+  const SERIES_COLORS = { ema4: "150,150,160", prev_hi: "41,98,255", hi_in: "41,98,255", lo_in: "41,98,255", lo_out: "255,152,0", hi_out: "255,152,0",
     ema50: "0,188,212", adx: "156,39,176", vwap_lo: "156,39,176", vwap_hi: "233,30,99" };
   const store = {
     get() { try { return JSON.parse(localStorage.getItem(PREFS) || "{}"); } catch { return {}; } },
@@ -164,7 +165,7 @@
       const series = d.series.map((s) => {
         const rgb = SERIES_COLORS[s.id] || "120,120,120";
         const x = chart.addSeries(LightweightCharts.LineSeries, { color: `rgba(${rgb},0.9)`, lineWidth: s.id === "ema4" ? 2 : 1.5,
-          lineStyle: s.id === "lo_out" ? 2 : 0, priceLineVisible: false, lastValueVisible: s.pane === "own",
+          lineStyle: s.id === "lo_out" ? 2 : 0, lineType: s.id === "prev_hi" ? 1 : 0, priceLineVisible: false, lastValueVisible: s.pane === "own",
           crosshairMarkerVisible: false, title: s.label }, s.pane === "own" ? own : 0);
         for (const lv of s.levels || []) x.createPriceLine({ price: lv, color: `rgba(${rgb},0.55)`, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "" });
         return { s, x };
@@ -249,7 +250,7 @@
       if (m.fvg) items.boxes.push({ t1: m.fvg[0], t2: m.fvg[1] + 6 * H1, top: m.fvg[3], bottom: m.fvg[2], fill: `rgba(${c.fvgBull},0.18)`, stroke: `rgba(${c.fvgBull},0.7)`, label: "FVG", labelColor: `rgba(${c.fvgBull},1)` });
       if (m.ob) items.boxes.push({ t1: m.ob[0], t2: (r.fill_t || r.signal_t) + H1, top: m.ob[1], bottom: m.ob[2], fill: "rgba(156,39,176,0.16)", stroke: "rgba(156,39,176,0.8)", label: "OB", labelColor: "rgba(156,39,176,1)" });
       if (m.anchor) items.marks.push({ t: m.anchor[0], p: m.anchor[1], text: "anchor", color: "rgba(156,39,176,1)", pos: r.side === "LONG" ? "below" : "above" });
-      if (m.level !== undefined) items.lines.push({ t1: r.signal_t - 48 * H1, t2: r.signal_t, p1: m.level, p2: m.level, color: "rgba(41,98,255,0.9)", dash: true, label: "48-bar " + (r.side === "LONG" ? "high" : "low") });
+      if (m.level !== undefined) items.lines.push({ t1: m.level_t || r.signal_t - 48 * H1, t2: r.signal_t + H1, p1: m.level, p2: m.level, color: "rgba(41,98,255,0.9)", dash: true, label: "Previous high" });
     }
 
     /* ---- the panel --------------------------------------------------------------------------- */
