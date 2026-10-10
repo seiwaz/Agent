@@ -23,10 +23,10 @@
   const REFRESH_MS = 60000;
   const H1 = 3600;
   const STRATEGIES = [
-    { id: "donchian", n: 1, label: "Donchian 48/24 breakout",
-      rules: ["Long: a close above the highest high of the previous 48 bars, above the 4h EMA 200 (short: the mirror).",
+    { id: "donchian", n: 1, label: "Donchian 48/26 breakout (long only)",
+      rules: ["Long only: a close above the highest high of the previous 48 bars, above the 4h EMA 200.",
         "Entry at the next bar's open (market). Stop: entry − 2 × N, N = ATR(20) of the signal bar; fixed.",
-        "Exit: a close below the lowest low of the previous 24 bars (short: above the 24-bar high), at the next open; or the stop.",
+        "Exit: a close below the lowest low of the previous 26 bars, at the next open; or the stop.",
         "Few winners, large ones: many small losses are normal."] },
     { id: "ema", n: 2, label: "EMA 50 pullback",
       rules: ["Trend: EMA 50 (1h) above the 4h EMA 200, close above it, EMA 50 rising over 5 bars, ADX(14) > 20.",
@@ -164,7 +164,7 @@
       const series = d.series.map((s) => {
         const rgb = SERIES_COLORS[s.id] || "120,120,120";
         const x = chart.addSeries(LightweightCharts.LineSeries, { color: `rgba(${rgb},0.9)`, lineWidth: s.id === "ema4" ? 2 : 1.5,
-          lineStyle: s.id === "lo_out" || s.id === "hi_out" ? 2 : 0, priceLineVisible: false, lastValueVisible: s.pane === "own",
+          lineStyle: s.id === "lo_out" ? 2 : 0, priceLineVisible: false, lastValueVisible: s.pane === "own",
           crosshairMarkerVisible: false, title: s.label }, s.pane === "own" ? own : 0);
         for (const lv of s.levels || []) x.createPriceLine({ price: lv, color: `rgba(${rgb},0.55)`, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "" });
         return { s, x };
@@ -310,7 +310,7 @@
         h("ul", { class: "ws-pb-checks" }, (d.checks[side] || []).map((c) => h("li", { class: c.ok ? "ok" : "no" },
           h("span", { class: "mk", "aria-hidden": "true" }, c.ok ? "✓" : "✗"), h("span", { class: "sr-only" }, c.ok ? "met: " : "not met: "),
           h("span", {}, c.label, h("span", { class: "num muted" }, val(c)))))));
-      return h("div", { class: "ws-pb-card" }, h("h4", {}, `Checklist · bar ${when(d.asof)}`), h("div", { class: "ws-pb-two" }, col("LONG"), col("SHORT")));
+      return h("div", { class: "ws-pb-card" }, h("h4", {}, `Checklist · bar ${when(d.asof)}`), h("div", { class: "ws-pb-two" }, ["LONG", "SHORT"].filter((s) => d.checks[s]).map(col)));
     }
     statsCard(d) {
       const s = d.stats;

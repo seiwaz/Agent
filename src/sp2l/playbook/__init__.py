@@ -1,4 +1,5 @@
-"""Playbook: four rule-based 1h strategies (Donchian 48/24 breakout, EMA 50 pullback, liquidity
+"""Playbook: four rule-based 1h strategies (Donchian 48/26 breakout (long
+only), EMA 50 pullback, liquidity
 sweep + structure + FVG / OB, anchored-VWAP pullback), long and short, drawn on the chart with
 the current setup, every past setup to its target / stop, and a cost-aware backtest.
 

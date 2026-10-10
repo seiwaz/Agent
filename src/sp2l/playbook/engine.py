@@ -30,9 +30,10 @@ class Params:
     htf_filter: bool = True  # close above (long) / below (short) the last closed 4h EMA 200
     min_stop: float = 0.007  # stop distance, fraction of the entry: outside [min, max] no trade
     max_stop: float = 0.03
-    # 1 Donchian 48/24 (turtle system 1 on 1h)
+    # 1 Donchian 48/26 (turtle system 1 on 1h), long only: on BTC 1h 2020-2026 long only beat
+    # long + short (PF 1.55 vs 1.27) and a 26-bar exit matched 24 (docs/PLAYBOOK.md)
     entry_len: int = 48
-    exit_len: int = 24
+    exit_len: int = 26
     n_len: int = 20
     n_mult: float = 2.0
     # 2 EMA 50 pullback
@@ -470,11 +471,12 @@ class Strategy:
     detect: Callable[[Ctx, int, int], tuple[list[Check], Setup | None]]
     exit_rule: Callable[[Ctx, int, int], bool] | None = None
     target: str = ""
+    sides: tuple[int, ...] = (1, -1)  # 1 long, -1 short
 
 
 STRATEGIES: dict[str, Strategy] = {
-    "donchian": Strategy("donchian", "Donchian 48/24 breakout", donchian, donchian_exit,
-                         "close beyond the 24-bar low / high (or the 2N stop)"),
+    "donchian": Strategy("donchian", "Donchian 48/26 breakout (long only)", donchian,
+                         donchian_exit, "a close below the 26-bar low (or the 2N stop)", (1,)),
     "ema": Strategy("ema", "EMA 50 pullback (4h EMA 200 + ADX)", ema_pullback, None, "3R"),
     "smc": Strategy("smc", "Liquidity sweep + BOS + FVG / OB", smc, None,
                     "the high / low before the equal lows / highs (>= 2R)"),
@@ -583,7 +585,7 @@ def run(x: Ctx, st: Strategy, costs: Costs, start: int = 0) -> list[Setup]:
                 active = None
         if active is not None or i < start:
             continue
-        for d in (1, -1):
+        for d in st.sides:
             _, s = st.detect(x, i, d)
             if s is None:
                 continue

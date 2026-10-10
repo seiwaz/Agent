@@ -28,9 +28,10 @@ Common: closed 1h bars only, orders act from the next bar; the 4h filter (switch
 close above the EMA 200 of the last **closed** 4h bar; the stop must be 0.7–3 % from the entry,
 else the setup is shown as rejected and not traded. One setup at a time per strategy.
 
-1. **Donchian 48/24.** Close above the highest high of the previous 48 bars. Entry: the next
-   open. Stop: entry − 2 N, N = ATR(20) (Wilder) of the signal bar, fixed. Exit: a close below the
-   lowest low of the previous 24 bars, at the next open; or the stop.
+1. **Donchian 48/26, long only.** Close above the highest high of the previous 48 bars. Entry:
+   the next open. Stop: entry − 2 N, N = ATR(20) (Wilder) of the signal bar, fixed. Exit: a close
+   below the lowest low of the previous 26 bars, at the next open; or the stop. No shorts.
+   (The guide: 48/24, both sides; changed after the BTC test below.)
 2. **EMA 50 pullback.** EMA 50 above the 4h EMA 200, close above it, EMA 50 above its value 5 bars
    ago, ADX(14) > 20; ≥ 2 ATR(14) from the highest high of the previous 15 bars to the signal low;
    signal candle: low ≤ EMA 50, close > EMA 50, bullish. Buy stop at its high, valid 3 bars,
@@ -62,7 +63,23 @@ later), the 4h EMA from closed 4h bars only, each rule (`tests/unit/test_playboo
 
 ## What a test on real data said (not a promise)
 
-The same code on ~13 months of public 1h / 4h candles (Binance spot, 2025-09 → 2026-10; BTC,
+**Donchian on BTC, 2020-01 → 2026-10** (Binance BTCUSDT 1h, ~6.7 years, Tabdeal's costs, 4h
+filter on), the guide's version against the variants asked for:
+
+| Variant | Trades | Win | Total R | Avg R | PF | Max DD R | 2025 | 2026 |
+|---|---|---|---|---|---|---|---|---|
+| 48/24 long + short (the guide) | 561 | 27 % | +123.2 | +0.22 | 1.27 | 37.5 | −21.5 | +13.2 |
+| 48/24 long only | 305 | 29 % | +133.7 | +0.44 | 1.55 | 30.1 | −6.3 | +3.2 |
+| **48/26 long only (in use)** | 298 | 28 % | +134.3 | +0.45 | 1.55 | 32.3 | −6.5 | +1.1 |
+| 26/24 long only | 376 | 27 % | +122.6 | +0.33 | 1.41 | 28.3 | −7.1 | +0.2 |
+| 26/26 long only | 366 | 27 % | +122.3 | +0.33 | 1.41 | 31.1 | −8.1 | −1.8 |
+
+Long only doubles the average trade and cuts the drawdown; a 26-bar exit is as good as 24 (the
+difference is noise); a 26-bar entry is worse. Over the last 13 months alone (BTC falling) long +
+short did better (+10.4 R against +1.2 R): shorts pay in a falling market, longs in a rising one.
+2020 alone gave ~+65 R of the total in every variant.
+
+The guide's original rules (Donchian 48/24 long + short) on ~13 months of public 1h / 4h candles (Binance spot, 2025-09 → 2026-10; BTC,
 ETH, SOL, XRP, BNB, ADA, LINK, AVAX), Tabdeal's fees from the config, 4h filter on:
 
 | Strategy | Trades | Total (R, after costs) | Average |

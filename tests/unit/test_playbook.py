@@ -180,6 +180,9 @@ def test_donchian_stop_follows_the_fill_and_the_exit_rule_closes_at_the_next_ope
         assert s.fill_i == s.signal_i + 1 and s.fill == x.o[s.fill_i]  # the next open
         assert s.sl == pytest.approx(s.fill - s.d * 2 * s.n)
         assert donchian_exit(x, s.exit_i - 1, s.d) and s.exit_price == x.o[s.exit_i]
+        j = s.exit_i - 1  # the exit channel: the lowest low of the previous 26 bars
+        assert x.c[j] < min(x.l[j - 26:j]) and x.lo_out[j] == min(x.l[j - 26:j])
+    assert {s.side for s in rows} == {"LONG"}
 
 
 # ---- costs and statistics ----------------------------------------------------------------------
@@ -233,7 +236,9 @@ def test_setups_never_depend_on_later_bars(name):
 def test_every_strategy_trades_on_a_random_walk_long_and_short():
     bars = walk(5000, 1)
     x = Ctx(bars, agg4(bars), Params())
-    for name in ("donchian", "ema", "avwap"):
+    don = {s.side for s in run(x, STRATEGIES["donchian"], Costs(), 300)}
+    assert don == {"LONG"}  # Donchian trades long only
+    for name in ("ema", "avwap"):
         rows = run(x, STRATEGIES[name], Costs(), 300)
         sides = {s.side for s in rows if s.status in ("tp", "sl", "exit")}
         assert sides == {"LONG", "SHORT"}, name

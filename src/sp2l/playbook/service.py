@@ -43,12 +43,8 @@ def _series(x: Ctx, st: Strategy, start: int) -> list[dict[str, Any]]:
         out += [
             {"id": "hi_in", "label": f"{x.p.entry_len}-bar high", "pane": "price",
              "points": pts(x.hi_in)},
-            {"id": "lo_in", "label": f"{x.p.entry_len}-bar low", "pane": "price",
-             "points": pts(x.lo_in)},
-            {"id": "lo_out", "label": f"{x.p.exit_len}-bar low (long exit)", "pane": "price",
+            {"id": "lo_out", "label": f"{x.p.exit_len}-bar low (exit)", "pane": "price",
              "points": pts(x.lo_out)},
-            {"id": "hi_out", "label": f"{x.p.exit_len}-bar high (short exit)", "pane": "price",
-             "points": pts(x.hi_out)},
         ]
     elif st.id == "ema":
         out += [
@@ -144,7 +140,7 @@ class Playbook:
                     "from": x.t[start], "bars": x.n - start,
                     "current": (live or fresh)[-1] if live or fresh else None,
                     "checks": {side: st.detect(x, last, d)[0]
-                               for side, d in (("LONG", 1), ("SHORT", -1))},
+                               for side, d in (("LONG", 1), ("SHORT", -1)) if d in st.sides},
                     "setups": rows,
                     "stats": stats(rows),
                     "series": _series(x, st, start),
