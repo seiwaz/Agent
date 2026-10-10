@@ -41,10 +41,12 @@ def _series(x: Ctx, st: Strategy, start: int) -> list[dict[str, Any]]:
         {"id": "ema4", "label": "EMA 200 (4h)", "pane": "price", "points": pts(x.ema4)}]
     if st.id == "donchian":
         out += [
-            {"id": "prev_hi", "label": "Previous high (entry)", "pane": "price",
-             "points": pts([None if v is None else v[0] for v in x.prev_hi])},
-            {"id": "lo_out", "label": f"{x.p.exit_len}-bar low (exit)", "pane": "price",
-             "points": pts(x.lo_out)},
+            {"id": "dc_up", "label": f"Donchian {x.p.dc_len} upper", "pane": "price",
+             "points": pts(x.dc_up)},
+            {"id": "dc_mid", "label": "Donchian middle (exit)", "pane": "price",
+             "points": pts(x.dc_mid)},
+            {"id": "dc_lo", "label": "Donchian lower (stop)", "pane": "price",
+             "points": pts(x.dc_lo)},
         ]
     elif st.id == "ema":
         out += [

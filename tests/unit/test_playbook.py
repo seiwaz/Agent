@@ -62,6 +62,8 @@ def test_indicators():
     assert ind.wilder([2, 4, 6, 8], 2) == [None, 3.0, 4.5, 6.25]
     assert ind.prev_max([1, 5, 2, 3, 4], 2) == [None, None, 5, 5, 3]  # bar i excluded
     assert ind.prev_min([5, 1, 2, 3, 0], 2) == [None, None, 1, 1, 2]
+    assert ind.highest([1, 5, 2, 3, 4], 2) == [None, 5, 5, 3, 4]  # bar i included
+    assert ind.lowest([5, 1, 2, 3, 0], 2) == [None, 1, 1, 2, 0]
     assert ind.pivots([3, 2, 1, 2, 3, 2, 3], 2, high=False) == [2]
     up = [{"h": 100 + i + 0.5, "l": 100 + i - 0.5, "c": 100 + i} for i in range(60)]
     adx = ind.adx([b["h"] for b in up], [b["l"] for b in up], [b["c"] for b in up], 14)
@@ -170,50 +172,68 @@ def test_a_stop_entry_expires_or_is_cancelled_and_a_gap_fills_at_the_open():
     assert (s.status, s.fill) == ("open", 99.5)
 
 
-def test_the_previous_high_stays_until_a_close_above_it_or_the_window_ends():
-    # swing highs (2 bars each side) at bars 2 (110) and 8 (105); closes below both until bar 14
-    h = [100, 104, 110, 104, 100, 99, 100, 102, 105, 102, 100, 101, 103, 104, 112, 106, 104, 103, 102, 103]
-    c = [x - 1 for x in h]
-    c[13], c[14] = 103, 111  # bar 14 closes above 110 (and 105)
-    out = ind.previous_highs(h, c, 2, 50)
-    assert out[4] is None and out[5] == (110, 2)  # known once confirmed (bar 4 closed)
-    assert out[12] == (110, 2) and out[14] == (110, 2)  # the newer, lower 105 does not replace it
-    assert out[15] is None  # both closed above at bar 14
-    assert out[19] == (112, 14)  # the next swing high takes over
-    assert ind.previous_highs(h, c, 2, 8)[12] == (105, 8)  # 110 is older than the window
+def donchian_rows(change: str = "") -> list[tuple[float, float, float, float]]:
+    """A rise, a 45-bar range (its high 101.5 at bar 85, its low 99.0 at bar 90), a strong
+    bullish candle closing above the flat upper line (bar 105), a rally, a fall below the middle."""
+    rows = []
+    for i in range(60):
+        b = (110 - i * 0.165) if change == "downtrend" else (90 + i * 0.165)  # down into the range
+        rows.append((b, b + 0.4, b - 0.4, b + 0.165))
+    for i in range(45):
+        o, h, lo, c = (100.2, 100.9, 99.6, 100.6) if i % 2 == 0 else (100.6, 101.0, 99.8, 100.3)
+        if i == (40 if change == "short_flat" else 25):
+            h = 101.5
+        if i == (43 if change == "lower_moves" else 30):
+            lo = 99.0
+        if i == 44:
+            o, c = 100.3, 100.8
+        rows.append((o, h, lo, c))
+    rows.append((100.8, 102.7, 100.7, 102.6) if change != "weak" else (100.8, 102.7, 100.0, 101.6))
+    rows += [(102.6, 103.5, 102.4, 103.3), (103.3, 104.2, 103.0, 104.0), (104.0, 104.3, 103.2, 103.4),
+             (103.4, 103.5, 102.0, 102.2), (102.2, 102.3, 100.9, 101.0), (101.0, 101.4, 100.6, 101.2)]
+    return rows
 
 
-def test_entry_is_a_bullish_body_crossing_the_previous_high():
-    bars = walk(3000, 4)
-    x = Ctx(bars, agg4(bars), Params(htf_filter=False))
-    rows = run(x, STRATEGIES["donchian"], Costs(), 100)
-    assert rows and {s.side for s in rows} == {"LONG"}
-    for s in rows:
-        i = s.signal_i
-        lvl, at = x.prev_hi[i]
-        assert s.marks["level"] == lvl and x.c[i] > x.o[i] and x.o[i] <= lvl < x.c[i]
-        assert at < i - 5 and all(x.c[j] <= lvl for j in range(at + 1, i))  # unbroken until now
-        assert at >= i - 240
-    # a bar crossing with a gap (opening above the level) or a bearish one is not an entry
-    for i in range(300, x.n):
-        _, s = STRATEGIES["donchian"].detect(x, i, 1)
-        if x.prev_hi[i] is not None and x.o[i] > x.prev_hi[i][0]:
-            assert s is None
+def test_donchian_long_buys_a_strong_break_of_the_flat_upper_line_and_exits_below_the_middle():
+    x = Ctx(bars_from(donchian_rows()), [], Params(htf_filter=False))
+    assert x.dc_up[104] == 101.5 and x.dc_lo[104] == 99.0 and x.dc_mid[104] == 100.25
+    assert x.dc_up[105] == 102.7  # the channel includes the bar itself (as TradingView)
+    checks, s = STRATEGIES["donchian"].detect(x, 105, 1)
+    assert s is not None and s.status == "pending" and all(c["ok"] for c in checks)
+    assert [c["value"] for c in checks[2:4]] == [20, 15]  # flat for 20 / 15 bars
+    assert STRATEGIES["donchian"].detect(x, 104, 1)[1] is None
+    assert STRATEGIES["donchian"].detect(x, 105, -1) == ([], None)  # long only
+    [t] = run(x, STRATEGIES["donchian"], Costs(), 0)
+    assert (t.signal_i, t.fill_i, t.fill, t.sl) == (105, 106, 102.6, 99.0)  # stop: the lower line
+    # bar 110 closes at 101.0, below the middle line (104.3 + 99.0) / 2: out at the next open
+    assert x.c[110] < x.dc_mid[110] and all(x.c[j] >= x.dc_mid[j] for j in range(106, 110))
+    assert (t.status, t.exit_i, t.exit_price) == ("exit", 111, 101.0)
+    assert t.marks["upper"] == [x.t[85], 101.5] and t.marks["lower"] == [x.t[90], 99.0]
 
 
-def test_donchian_stop_follows_the_fill_and_the_exit_rule_closes_at_the_next_open():
-    bars = walk(3000, 4)
-    x = Ctx(bars, agg4(bars), Params(htf_filter=False))
-    rows = run(x, STRATEGIES["donchian"], Costs(), 100)
-    exits = [s for s in rows if s.status == "exit"]
-    assert exits
-    for s in exits:
-        assert s.fill_i == s.signal_i + 1 and s.fill == x.o[s.fill_i]  # the next open
-        assert s.sl == pytest.approx(s.fill - s.d * 2 * s.n)
-        assert donchian_exit(x, s.exit_i - 1, s.d) and s.exit_price == x.o[s.exit_i]
-        j = s.exit_i - 1  # the exit channel: the lowest low of the previous 26 bars
-        assert x.c[j] < min(x.l[j - 26:j]) and x.lo_out[j] == min(x.l[j - 26:j])
-    assert {s.side for s in rows} == {"LONG"}
+@pytest.mark.parametrize("change", ["weak", "short_flat", "lower_moves", "downtrend"])
+def test_donchian_long_needs_every_rule(change):
+    x = Ctx(bars_from(donchian_rows(change)), [], Params(htf_filter=False))
+    assert run(x, STRATEGIES["donchian"], Costs(), 0) == []
+
+
+def test_donchian_long_rules_hold_for_every_trade_of_a_random_walk():
+    trades = []
+    for seed in range(1, 7):
+        bars = walk(5000, seed)
+        x = Ctx(bars, agg4(bars), Params(htf_filter=False))
+        trades += [(x, s) for s in run(x, STRATEGIES["donchian"], Costs(), 100)]
+    assert len(trades) >= 5 and {s.side for _, s in trades} == {"LONG"}
+    for x, s in trades:
+        i, k = s.signal_i, s.signal_i - 1
+        body = x.c[i] - x.o[i]
+        assert body >= 0.6 * (x.h[i] - x.l[i]) and body >= x.atr14[i] and x.c[i] > x.dc_up[k]
+        assert x.c[k] > x.dc_mid[k] > x.dc_mid[k - 26]
+        assert len({x.dc_up[j] for j in range(k - 9, k + 1)}) == 1
+        assert len({x.dc_lo[j] for j in range(k - 4, k + 1)}) == 1
+        assert s.fill_i == i + 1 and s.fill == x.o[i + 1] and s.sl == x.dc_lo[k]
+        if s.status == "exit":
+            assert donchian_exit(x, s.exit_i - 1, 1) and s.exit_price == x.o[s.exit_i]
 
 
 # ---- costs and statistics ----------------------------------------------------------------------
@@ -268,7 +288,7 @@ def test_every_strategy_trades_on_a_random_walk_long_and_short():
     bars = walk(5000, 1)
     x = Ctx(bars, agg4(bars), Params())
     don = {s.side for s in run(x, STRATEGIES["donchian"], Costs(), 300)}
-    assert don == {"LONG"}  # Donchian trades long only
+    assert don <= {"LONG"}  # Donchian Long trades long only
     for name in ("ema", "avwap"):
         rows = run(x, STRATEGIES[name], Costs(), 300)
         sides = {s.side for s in rows if s.status in ("tp", "sl", "exit")}

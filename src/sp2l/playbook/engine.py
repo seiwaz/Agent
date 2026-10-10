@@ -30,14 +30,16 @@ class Params:
     htf_filter: bool = True  # close above (long) / below (short) the last closed 4h EMA 200
     min_stop: float = 0.007  # stop distance, fraction of the entry: outside [min, max] no trade
     max_stop: float = 0.03
-    # 1 previous-high breakout, Donchian 26-bar exit, long only (docs/PLAYBOOK.md): a bullish
-    # candle whose body crosses the previous high (the highest unbroken swing high of the last
-    # prev_high_bars bars); it replaced the 48-bar high, which drops when an old high leaves it
-    high_piv: int = 5  # swing-high strength (bars each side), as the chart's structure labels
-    prev_high_bars: int = 240
-    exit_len: int = 26
-    n_len: int = 20
-    n_mult: float = 2.0
+    # 1 Donchian Long (the user's rules): a Donchian channel of dc_len bars; in an uptrend
+    # (the last close above the middle line, the middle line rising over dc_len bars), the upper
+    # line flat for dc_upper_flat bars and the lower one for dc_lower_flat; a strong bullish
+    # candle (body >= dc_body_range of its range and >= dc_body_atr ATR) closes above the flat
+    # upper line: buy at the next open; out at the next open after a close below the middle line
+    dc_len: int = 26
+    dc_upper_flat: int = 10
+    dc_lower_flat: int = 5
+    dc_body_range: float = 0.6
+    dc_body_atr: float = 1.0
     # 2 EMA 50 pullback
     ema_len: int = 50
     adx_min: float = 20.0
@@ -95,7 +97,6 @@ class Setup:
     reason: str = ""
     cancel: Callable[[int], bool] | None = None
     marks: dict[str, Any] = field(default_factory=dict)
-    n: float = 0.0  # Donchian: N at the signal (the stop is set from the fill)
     fill_i: int | None = None
     fill: float | None = None
     exit_i: int | None = None
@@ -124,11 +125,12 @@ class Ctx:
         self.n = len(self.c)
         h, lo, c = self.h, self.l, self.c
         self.atr14 = ind.atr(h, lo, c, 14)
-        self.atr20 = ind.atr(h, lo, c, p.n_len)
         self.ema50 = ind.ema(c, p.ema_len)
         self.adx = ind.adx(h, lo, c, 14)
-        self.prev_hi = ind.previous_highs(h, c, p.high_piv, p.prev_high_bars)
-        self.hi_out, self.lo_out = ind.prev_max(h, p.exit_len), ind.prev_min(lo, p.exit_len)
+        # the Donchian channel as TradingView draws it (the bar itself included)
+        self.dc_up, self.dc_lo = ind.highest(h, p.dc_len), ind.lowest(lo, p.dc_len)
+        self.dc_mid = [None if a is None or b is None else (a + b) / 2
+                       for a, b in zip(self.dc_up, self.dc_lo, strict=True)]
         self.ph, self.pl = ind.pivots(h, p.piv, True), ind.pivots(lo, p.piv, False)
         # the 4h EMA 200, from closed 4h bars only
         t4 = [int(b["t"]) for b in htf]
@@ -205,39 +207,53 @@ def _finish(x: Ctx, name: str, i: int, d: int, checks: list[Check], core: int,
     return checks, s
 
 
+def _flat(xs: list[float | None], i: int) -> int:
+    """Bars the line has stayed level up to bar i (1: it changed at bar i)."""
+    n = 1
+    while i - n >= 0 and xs[i - n] is not None and xs[i - n] == xs[i]:
+        n += 1
+    return n
+
+
 def donchian(x: Ctx, i: int, d: int) -> tuple[list[Check], Setup | None]:
-    """Long only: a bullish candle whose body crosses the previous high (open at or below it,
-    close above it). Entry at the next open, stop 2N, exit on a close below the 26-bar low."""
+    """Donchian Long: a strong bullish candle closes above the upper line after it stayed flat
+    (with the lower one) in an uptrend. Long only."""
     p = x.p
-    prev = x.prev_hi[i]
-    n = x.atr20[i]
     if d < 0:
         return [], None
-    if n is None:
+    k = i - 1  # the channel before the breakout candle
+    a = x.atr14[i]
+    up, low, mid = x.dc_up[k], x.dc_lo[k], x.dc_mid[k]
+    back = x.dc_mid[k - p.dc_len] if k - p.dc_len >= 0 else None
+    if up is None or low is None or mid is None or back is None or a is None:
         return [check("Not enough bars yet", False)], None
-    if prev is None:
-        return [check(f"A previous high (an unbroken swing high of the last {p.prev_high_bars} "
-                      "bars)", False)], None
-    lvl, at = prev
-    o, c = x.o[i], x.c[i]
-    sl = c - p.n_mult * n
+    o, h, lo, c = x.o[i], x.h[i], x.l[i], x.c[i]
+    body = c - o
+    fu, fl = _flat(x.dc_up, k), _flat(x.dc_lo, k)
+    strong = body > 0 and body >= p.dc_body_range * (h - lo) and body >= p.dc_body_atr * a
     checks = [
-        check("A bullish candle whose body crosses the previous high", c > o and o <= lvl < c,
-              lvl),
+        check("Uptrend: the last close above the middle line", x.c[k] > mid, mid),
+        check(f"Uptrend: the middle line rising ({p.dc_len} bars)", mid > back, back),
+        check(f"Upper line flat >= {p.dc_upper_flat} bars", fu >= p.dc_upper_flat, fu, "n"),
+        check(f"Lower line flat >= {p.dc_lower_flat} bars", fl >= p.dc_lower_flat, fl, "n"),
+        check(f"A strong bullish candle (body >= {p.dc_body_range * 100:g}% of it and "
+              f">= {p.dc_body_atr:g} ATR) closes above the upper line", strong and c > up, up),
         _htf(x, i, d),
-        _stop_range(x, c, sl),
     ]
 
     def build() -> Setup:
-        return Setup("donchian", _side(d), i, "market", c, sl, None, 1, n=n,
-                     marks={"level": lvl, "level_t": x.t[at], "n": n})
+        # the stop on the exchange: the lower line (the exit is the close below the middle)
+        return Setup("donchian", "LONG", i, "market", c, low, None, 1,
+                     marks={"upper": [x.t[k - fu + 1], up], "lower": [x.t[k - fl + 1], low],
+                            "mid": mid})
 
-    return _finish(x, "donchian", i, d, checks, 1, build)
+    return _finish(x, "donchian", i, d, checks, 5, build)
 
 
 def donchian_exit(x: Ctx, j: int, d: int) -> bool:
-    lvl = x.lo_out[j] if d > 0 else x.hi_out[j]
-    return lvl is not None and d * (x.c[j] - lvl) < 0
+    """A close below the middle line (the exit at the next open)."""
+    mid = x.dc_mid[j]
+    return mid is not None and x.c[j] < mid
 
 
 def ema_pullback(x: Ctx, i: int, d: int) -> tuple[list[Check], Setup | None]:
@@ -485,8 +501,8 @@ class Strategy:
 
 
 STRATEGIES: dict[str, Strategy] = {
-    "donchian": Strategy("donchian", "Previous-high breakout, 26-bar exit (long only)", donchian,
-                         donchian_exit, "a close below the 26-bar low (or the 2N stop)", (1,)),
+    "donchian": Strategy("donchian", "Donchian Long", donchian, donchian_exit,
+                         "a close below the middle line (or the lower line as the stop)", (1,)),
     "ema": Strategy("ema", "EMA 50 pullback (4h EMA 200 + ADX)", ema_pullback, None, "3R"),
     "smc": Strategy("smc", "Liquidity sweep + BOS + FVG / OB", smc, None,
                     "the high / low before the equal lows / highs (>= 2R)"),
@@ -497,8 +513,6 @@ STRATEGIES: dict[str, Strategy] = {
 # ---- simulation -------------------------------------------------------------------------------
 def _fill(s: Setup, x: Ctx, j: int, price: float, st: Strategy) -> None:
     s.status, s.fill_i, s.fill = "open", j, price
-    if s.strategy == "donchian":  # the stop follows the actual entry: entry - 2N
-        s.sl = price - s.d * x.p.n_mult * s.n
     d = s.d
     if (d > 0 and x.l[j] <= s.sl) or (d < 0 and x.h[j] >= s.sl):
         # the stop on the fill bar (a target there is not counted)

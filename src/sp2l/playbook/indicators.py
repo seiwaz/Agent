@@ -112,31 +112,23 @@ def pivots(xs: Sequence[float], k: int, high: bool) -> list[int]:
     for p in range(k, len(xs) - k):
         x = xs[p]
         left, right = xs[p - k:p], xs[p + 1:p + k + 1]
-        if high and all(x > y for y in left) and all(x >= y for y in right):
-            out.append(p)
-        elif not high and all(x < y for y in left) and all(x <= y for y in right):
+        s = 1 if high else -1  # a low is a high of the negated series
+        if all(s * (x - y) > 0 for y in left) and all(s * (x - y) >= 0 for y in right):
             out.append(p)
     return out
 
 
-def previous_highs(h: Sequence[float], c: Sequence[float], k: int,
-                   window: int) -> list[tuple[float, int] | None]:
-    """The previous high known before bar i: the highest swing high (k bars each side) of the
-    last `window` bars that no close has gone above since; (price, its bar) or None.
 
-    Unlike a rolling n-bar high it does not drop when an old high leaves a short window: it
-    stays until price closes above it (then the next swing high takes over) or it is older
-    than `window` bars."""
-    pv = pivots(h, k, True)
-    nxt = 0
-    live: list[int] = []  # unbroken swing highs
-    out: list[tuple[float, int] | None] = []
-    for i in range(len(c)):
-        while nxt < len(pv) and pv[nxt] + k <= i - 1:  # confirmed by the close of bar i - 1
-            live.append(pv[nxt])
-            nxt += 1
-        live = [p for p in live if p >= i - window]
-        top = max(live, key=lambda p: (h[p], p)) if live else None
-        out.append((h[top], top) if top is not None else None)
-        live = [p for p in live if c[i] <= h[p]]  # a close above breaks it
+def highest(xs: Sequence[float], n: int) -> Series:
+    """max(xs[i - n + 1 : i + 1]): the highest of the last n bars, bar i included."""
+    out: Series = [None] * len(xs)
+    for i in range(n - 1, len(xs)):
+        out[i] = max(xs[i - n + 1:i + 1])
+    return out
+
+
+def lowest(xs: Sequence[float], n: int) -> Series:
+    out: Series = [None] * len(xs)
+    for i in range(n - 1, len(xs)):
+        out[i] = min(xs[i - n + 1:i + 1])
     return out

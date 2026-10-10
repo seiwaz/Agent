@@ -23,12 +23,12 @@
   const REFRESH_MS = 60000;
   const H1 = 3600;
   const STRATEGIES = [
-    { id: "donchian", n: 1, label: "Previous-high breakout (long only)",
-      rules: ["Previous high: the highest swing high (5 bars each side) of the last 240 bars that no close has gone above since; it stays until price closes above it (an n-bar high would drop when an old high leaves its window).",
-        "Long only: a bullish candle whose body crosses the previous high (opens at or below it, closes above it), above the 4h EMA 200.",
-        "Entry at the next bar's open (market). Stop: entry − 2 × N, N = ATR(20) of the signal bar; fixed.",
-        "Exit: a close below the lowest low of the previous 26 bars, at the next open; or the stop.",
-        "Few winners, large ones: many small losses are normal."] },
+    { id: "donchian", n: 1, label: "Donchian Long",
+      rules: ["Donchian channel, length 26: the upper line is the highest high of the last 26 bars, the lower line the lowest low, the middle line their average. Long only.",
+        "Uptrend: the last close above the middle line, and the middle line higher than 26 bars ago.",
+        "The upper line has stayed flat for at least 10 bars, and the lower line for at least 5.",
+        "A strong bullish candle closes above the flat upper line: its body ≥ 60 % of the candle and ≥ 1 ATR(14). Buy at the next open.",
+        "Exit: the first close below the middle line, at the next open. Stop on the exchange: the lower line at the entry (rarely reached)."] },
     { id: "ema", n: 2, label: "EMA 50 pullback",
       rules: ["Trend: EMA 50 (1h) above the 4h EMA 200, close above it, EMA 50 rising over 5 bars, ADX(14) > 20.",
         "Pullback: ≥ 2 ATR(14) from the highest high of the previous 15 bars to the signal bar's low.",
@@ -45,11 +45,11 @@
         "Signal candle: low within 0.5 ATR of the VWAP, bullish, closing above it. Entry: buy stop at its high, valid 3 bars; cancelled on a close below the VWAP or its low.",
         "Stop: min(signal low, VWAP) − 0.5 ATR. Target: 2R. Short: the mirror (anchor at a swing high)."] },
   ];
-  const COMMON = "Every strategy: closed 1h bars only; with the 4h filter, longs only above (shorts below) the last closed 4h EMA 200; the stop must be 0.7–3 % from the entry, else the setup is rejected. Backtest: one setup at a time, the stop first when stop and target share a bar, Tabdeal's fees and slippage from the config. Not proven: test before real money.";
+  const COMMON = "Every strategy: closed 1h bars only; with the 4h filter, longs only above (shorts below) the last closed 4h EMA 200; the stop must be 0.7–3 % from the entry, else the setup is rejected (not for Donchian Long, whose stop is the channel's lower line). Backtest: one setup at a time, the stop first when stop and target share a bar, Tabdeal's fees and slippage from the config. Not proven: test before real money.";
   const STATUS = { pending: ["Order pending", "b-pending"], open: ["Open", "b-active"], tp: ["Target", "pos"], sl: ["Stop", "neg"],
     exit: ["Exit rule", ""], expired: ["Expired", "b-canceled"], cancelled: ["Cancelled", "b-canceled"], missed: ["Missed (target first)", "b-canceled"],
     rejected: ["Rejected", "b-rejected"] };
-  const SERIES_COLORS = { ema4: "150,150,160", prev_hi: "41,98,255", hi_in: "41,98,255", lo_in: "41,98,255", lo_out: "255,152,0", hi_out: "255,152,0",
+  const SERIES_COLORS = { ema4: "150,150,160", dc_up: "41,98,255", dc_lo: "41,98,255", dc_mid: "255,152,0",
     ema50: "0,188,212", adx: "156,39,176", vwap_lo: "156,39,176", vwap_hi: "233,30,99" };
   const store = {
     get() { try { return JSON.parse(localStorage.getItem(PREFS) || "{}"); } catch { return {}; } },
@@ -165,7 +165,7 @@
       const series = d.series.map((s) => {
         const rgb = SERIES_COLORS[s.id] || "120,120,120";
         const x = chart.addSeries(LightweightCharts.LineSeries, { color: `rgba(${rgb},0.9)`, lineWidth: s.id === "ema4" ? 2 : 1.5,
-          lineStyle: s.id === "lo_out" ? 2 : 0, lineType: s.id === "prev_hi" ? 1 : 0, priceLineVisible: false, lastValueVisible: s.pane === "own",
+          lineStyle: 0, priceLineVisible: false, lastValueVisible: s.pane === "own",
           crosshairMarkerVisible: false, title: s.label }, s.pane === "own" ? own : 0);
         for (const lv of s.levels || []) x.createPriceLine({ price: lv, color: `rgba(${rgb},0.55)`, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "" });
         return { s, x };
@@ -250,7 +250,9 @@
       if (m.fvg) items.boxes.push({ t1: m.fvg[0], t2: m.fvg[1] + 6 * H1, top: m.fvg[3], bottom: m.fvg[2], fill: `rgba(${c.fvgBull},0.18)`, stroke: `rgba(${c.fvgBull},0.7)`, label: "FVG", labelColor: `rgba(${c.fvgBull},1)` });
       if (m.ob) items.boxes.push({ t1: m.ob[0], t2: (r.fill_t || r.signal_t) + H1, top: m.ob[1], bottom: m.ob[2], fill: "rgba(156,39,176,0.16)", stroke: "rgba(156,39,176,0.8)", label: "OB", labelColor: "rgba(156,39,176,1)" });
       if (m.anchor) items.marks.push({ t: m.anchor[0], p: m.anchor[1], text: "anchor", color: "rgba(156,39,176,1)", pos: r.side === "LONG" ? "below" : "above" });
-      if (m.level !== undefined) items.lines.push({ t1: m.level_t || r.signal_t - 48 * H1, t2: r.signal_t + H1, p1: m.level, p2: m.level, color: "rgba(41,98,255,0.9)", dash: true, label: "Previous high" });
+      // Donchian Long: the flat upper and lower lines the breakout came from
+      if (m.upper) items.lines.push({ t1: m.upper[0], t2: r.signal_t + H1, p1: m.upper[1], p2: m.upper[1], color: "rgba(41,98,255,1)", width: 2.5, label: "Flat upper" });
+      if (m.lower) items.lines.push({ t1: m.lower[0], t2: r.signal_t + H1, p1: m.lower[1], p2: m.lower[1], color: "rgba(41,98,255,1)", width: 2.5, label: "Flat lower" });
     }
 
     /* ---- the panel --------------------------------------------------------------------------- */
@@ -311,7 +313,7 @@
         const v = c.value;
         if (v === null || v === undefined) return "";
         if (typeof v !== "number") return ` (${v})`;
-        return ` (${c.unit === "time" ? when(v) : c.unit === "%" ? `${v.toFixed(2)}%` : c.unit === "x" ? v.toFixed(2) : this.fmt(v)})`;
+        return ` (${c.unit === "time" ? when(v) : c.unit === "%" ? `${v.toFixed(2)}%` : c.unit === "x" ? v.toFixed(2) : c.unit === "n" ? `${v} bars` : this.fmt(v)})`;
       };
       const col = (side) => h("div", {}, h("h5", {}, side === "LONG" ? "Long" : "Short"),
         h("ul", { class: "ws-pb-checks" }, (d.checks[side] || []).map((c) => h("li", { class: c.ok ? "ok" : "no" },

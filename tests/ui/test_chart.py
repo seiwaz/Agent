@@ -693,32 +693,23 @@ def test_playbook_strategy_draws_setups_current_setup_checklist_backtest_and_sca
         pg.evaluate("() => state.ws.setTf('4h')")
         pg.wait_for_function("() => state.ws.tf === '4h' && state.ws.bars.length > 0")
         opts = pg.eval_on_selector_all(".ws-pb-select option", "xs => xs.map(x => x.textContent)")
-        assert opts == ["Strategy: off", "1. Previous-high breakout (long only)", "2. EMA 50 pullback", "3. Liquidity sweep + BOS + FVG / OB", "4. Anchored VWAP pullback"]
+        assert opts == ["Strategy: off", "1. Donchian Long", "2. EMA 50 pullback", "3. Liquidity sweep + BOS + FVG / OB", "4. Anchored VWAP pullback"]
         assert pg.is_hidden(".ws-pb")
 
-        # Donchian: the chart goes to 1h, draws its channel and every setup to its stop / exit
+        # Donchian Long: the chart goes to 1h and draws its channel (upper, middle, lower); the
+        # stand-in feed (smooth waves) has no flat range to break, so no setup here
         pg.select_option(".ws-pb-select", "donchian")
         pg.wait_for_function("() => state.ws.tf === '1h' && state.ws.playbook.data && state.ws.bars.length > 0", timeout=60000)
-        pg.wait_for_function("() => state.ws.playbook.layer.items.boxes.length > 0", timeout=30000)
         d = pg.evaluate("() => { const d = state.ws.playbook.data; return { n: d.setups.length, stats: d.stats, series: d.series.map(s => s.id), checks: d.checks.LONG.length }; }")
-        assert d["stats"]["short"]["trades"] == 0
-        assert d["n"] > 0 and d["stats"]["trades"] > 0 and d["checks"] >= 3
-        assert set(d["series"]) == {"ema4", "prev_hi", "lo_out"}
+        assert d["stats"]["short"]["trades"] == 0 and d["checks"] == 6
+        assert set(d["series"]) == {"ema4", "dc_up", "dc_mid", "dc_lo"}
         assert pg.evaluate("() => Object.keys(state.ws.playbook.data.checks)") == ["LONG"]  # long only
         assert pg.evaluate("() => state.ws.playbook.data.setups.every(s => s.side === 'LONG')")
         assert pg.evaluate("() => state.ws.handles.length") >= 1  # its lines on the chart
         pg.wait_for_selector(".ws-pb .ws-pb-checks li")
         txt = pg.inner_text(".ws-pb")
         assert "Current setup" in txt and "Checklist" in txt and "Backtest · 90 days" in txt and "Setups" in txt
-        assert "previous high" in txt  # the checklist names the rule
-
-        # a past setup from the table: selected on the chart; one drawn as a position (for Trade)
-        pg.click(".ws-pb-table tbody tr >> nth=0")
-        assert pg.evaluate("() => state.ws.playbook.sel") is not None
-        sid = pg.evaluate("() => state.ws.playbook.data.setups.find(s => s.fill).id")
-        pg.evaluate(f"() => state.ws.playbook.drawAsPosition(state.ws.playbook.data.setups.find(s => s.id === '{sid}'))")
-        it = pg.evaluate(f"() => state.ws.tools.items.find(i => i.id === 'pb-{sid}')")
-        assert it and it["type"] in ("long", "short") and it["sl"] and it["tp"]
+        assert "middle line" in txt and "Upper line flat" in txt  # the checklist names the rules
 
         # the settings reload it; another strategy shows its own lines (ADX in its own pane)
         pg.select_option(".ws-pb-controls select", "30")
@@ -742,6 +733,10 @@ def test_playbook_strategy_draws_setups_current_setup_checklist_backtest_and_sca
         boxes = pg.evaluate(f"() => state.ws.playbook.layer.items.boxes.filter(b => b.t1 === {short['fill_t']})")
         stop = next(b for b in boxes if b["fill"].startswith("rgba(" + pg.evaluate("() => state.ws.colors().bear")))
         assert stop["bottom"] == pytest.approx(short["fill"]) and stop["top"] == pytest.approx(short["sl"])  # the stop above
+        # a setup drawn as a position (for the Trade button)
+        pg.evaluate(f"() => state.ws.playbook.drawAsPosition(state.ws.playbook.data.setups.find(s => s.id === '{short['id']}'))")
+        it = pg.evaluate(f"() => state.ws.tools.items.find(i => i.id === 'pb-{short['id']}')")
+        assert it and it["type"] == "short" and it["sl"] == pytest.approx(short["sl"]) and it["tp"] == pytest.approx(short["tp"])
 
         # every market: the scanner lists each with its current setup and backtest
         pg.click(".ws-pb-controls button:has-text('Scan markets')")
