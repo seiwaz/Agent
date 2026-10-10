@@ -221,6 +221,12 @@
       items.boxes.push({ t1: start, t2: end, top: Math.max(entry, r.sl), bottom: Math.min(entry, r.sl),
         fill: `rgba(${c.bear},${0.13 * a})`, stroke: strong ? `rgba(${c.bear},0.9)` : null, dash: r.status === "pending", label: "", labelColor: null });
       items.lines.push({ t1: start, t2: end, p1: entry, p2: entry, color: `rgba(${c.text},${0.5 * a + 0.2})`, width: strong ? 1.5 : 1, label: "" });
+      if (isSel && !isCur) {  // the setup picked in the table: which one, and how it ended
+        const [label] = STATUS[r.status] || [r.status];
+        items.marks.push({ t: start + 4 * H1, p: long ? Math.max(entry, tp !== null ? tp : entry) : Math.min(entry, tp !== null ? tp : entry),
+          text: `${long ? "Long" : "Short"} ${this.fmt(entry)} · ${label} ${rText(r.net_r)}`,
+          color: `rgba(${long ? c.bull : c.bear},1)`, pos: long ? "above" : "below" });
+      }
       if (isCur) {  // its label just right of where it starts (the box runs past the last bar)
         items.marks.push({ t: start + 4 * H1, p: long ? Math.max(entry, tp !== null ? tp : entry) : Math.min(entry, tp !== null ? tp : entry),
           text: `NOW · ${long ? "Long" : "Short"} ${r.status === "pending" ? `${r.kind} order` : "open"} ${this.fmt(entry)}${r.rr ? ` · R:R ${r.rr}` : ""}`,
@@ -343,12 +349,32 @@
       t.append(body);
       return h("div", { class: "ws-pb-list" }, h("h4", {}, "Setups"), t);
     }
-    focus(r) {
+    /** A setup from the table: older bars are loaded until it is on the chart (the backtest
+     * reaches further back than the chart's first page), then it is centred and labelled. */
+    async focus(r) {
+      const ws = this.ws;
       this.sel = this.sel === r.id ? null : r.id;
-      if (this.ws.tf !== "1h") this.ws.setTf("1h");
-      const t = r.signal_t, i = this.ws.bars.findIndex((b) => b.t >= t);
-      if (i >= 0) this.ws.chart.timeScale().setVisibleLogicalRange({ from: i - 60, to: i + 60 });
       this.draw(); this.render();
+      if (!this.sel) return;
+      const gen = this.gen, sel = this.sel, sym = ws.symbol;
+      if (ws.tf !== "1h") ws.setTf("1h");
+      const ok = () => gen === this.gen && this.sel === sel && ws.tf === "1h" && ws.symbol === sym;
+      const loaded = () => ws.bars.length > 0 && ws.barsFor === sym;
+      const want = r.signal_t - 40 * H1;
+      let fails = 0;
+      for (let k = 0; k < 600 && ok() && fails < 3; k++) {
+        if (loaded() && (ws.bars[0].t <= want || !ws.more)) break;
+        if (!loaded() || ws.loadingOlder) { await new Promise((res) => setTimeout(res, 100)); continue; }
+        const first = ws.bars[0].t;
+        await ws.loadOlder();
+        if (ws.bars.length && ws.bars[0].t === first) fails++;  // Tabdeal did not answer
+      }
+      if (!ok() || !loaded()) return;
+      const b = ws.bars, at = (t) => b.findIndex((x) => x.t >= t);
+      const i = at(r.signal_t), j = r.exit_t || r.end_t ? at(r.exit_t || r.end_t) : b.length - 1;
+      if (i >= 0) ws.chart.timeScale().setVisibleLogicalRange({ from: i - 40, to: Math.max(i, j < 0 ? b.length - 1 : j) + 40 });
+      ws.el.slot.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      this.draw();
     }
     drawAsPosition(r) {
       const tools = this.ws.tools, long = r.side === "LONG";

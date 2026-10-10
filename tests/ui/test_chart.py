@@ -728,6 +728,21 @@ def test_playbook_strategy_draws_setups_current_setup_checklist_backtest_and_sca
         assert pg.evaluate("() => state.ws.chart.panes().length") >= 2
         assert "EMA 50" in pg.inner_text(".ws-pb")
 
+        # a setup older than the chart's bars (a short a year back): clicked in the table, the
+        # chart loads back to it, centres it and labels it as the short it is
+        pg.select_option(".ws-pb-controls select", "365")
+        pg.wait_for_function("() => state.ws.playbook.data && state.ws.playbook.data.days === 365", timeout=60000)
+        short = pg.evaluate("() => state.ws.playbook.data.setups.find(s => s.side === 'SHORT' && s.fill)")
+        assert short and short["signal_t"] < pg.evaluate("() => state.ws.bars[0].t")
+        pg.click(".ws-pb-table tbody tr:has-text('Short') >> nth=0")
+        pg.wait_for_function(f"() => state.ws.bars[0].t <= {short['signal_t']} && state.ws.playbook.sel === '{short['id']}'", timeout=60000)
+        pg.wait_for_function(f"() => {{ const r = state.ws.chart.timeScale().getVisibleRange(); return r && r.from <= {short['signal_t']} && r.to >= {short['signal_t']}; }}", timeout=15000)
+        marks = pg.evaluate("() => state.ws.playbook.layer.items.marks.map(m => m.text)")
+        assert any(m.startswith("Short ") for m in marks) and not any(m.startswith("Long ") for m in marks)
+        boxes = pg.evaluate(f"() => state.ws.playbook.layer.items.boxes.filter(b => b.t1 === {short['fill_t']})")
+        stop = next(b for b in boxes if b["fill"].startswith("rgba(" + pg.evaluate("() => state.ws.colors().bear")))
+        assert stop["bottom"] == pytest.approx(short["fill"]) and stop["top"] == pytest.approx(short["sl"])  # the stop above
+
         # every market: the scanner lists each with its current setup and backtest
         pg.click(".ws-pb-controls button:has-text('Scan markets')")
         pg.wait_for_function("() => state.ws.playbook.scan && !state.ws.playbook.scan.running", timeout=60000)
