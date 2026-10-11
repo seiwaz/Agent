@@ -127,13 +127,17 @@ price, not at the entry. The dialog shows the current price and, for such an ent
 places it only with "Fill now at about the market price" ticked (the server refuses it without
 `fill_now`). To wait for a price, put a long's entry below the price (a short's above it).
 
-**Break-even line.** On an open trade's position drawing a dashed amber line marks where it
-nets zero after Tabdeal's current fees: the commission level for `trading.fee_volume_usdt` read
-from Tabdeal's public table (`get-commission-levels-v2`, hourly; the config's `costs` until it
-answers), the entry at the maker fee (a LIMIT order; the taker fee for a position opened on
-Tabdeal) and the exit at the taker fee (the stop, the target and a close execute at market).
-Long: entry × (1 + entry fee) / (1 − exit fee); short: entry × (1 − entry fee) / (1 + exit fee).
-Selected, the drawing labels it with its price and distance.
+**Break-even line.** Every Long / Short position drawing (while it is placed or moved, pending
+or open) shows a dashed amber line where the trade nets zero after Tabdeal's current fees: the
+commission level for `trading.fee_volume_usdt` read from Tabdeal's public table
+(`get-commission-levels-v2`, hourly; the config's `costs` until it answers), the entry at the
+maker fee (a LIMIT order; the taker fee for a position opened on Tabdeal) and the exit at the
+taker fee (the stop, the target and a close execute at market). Long: entry × (1 + entry fee) /
+(1 − exit fee); short: entry × (1 − entry fee) / (1 + exit fee). Leverage and margin do not move
+it: the fees and the profit both scale with the size (they change the USDT amounts and the
+ROE, not the price). Selected, the drawing labels the break-even, the target's and the stop's
+result after fees and the R:R after fees; the trade dialog adds the fees and the net results in
+USDT for the chosen size.
 
 **A short's side.** Tabdeal's `positionRisk` gives a position's size in `positionAmt`, not
 negative for a short as Binance's does; the side is the `side` (BUY / SELL) of the position list.

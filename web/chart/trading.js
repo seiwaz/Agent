@@ -322,6 +322,10 @@
       const update = () => {
         const L = numIn(lev.value), m = numIn(margin.value), qty = (m * L) / d.entry;
         const loss = qty * Math.abs(d.entry - d.sl), gain = qty * Math.abs(d.tp - d.entry);
+        // Tabdeal's fees: the entry at the maker fee, the exit at the taker fee (web/chart/tools.js)
+        const be = this.ws.tools && this.ws.tools.breakEven ? this.ws.tools.breakEven(d) : null;
+        const netGain = be ? gain - qty * d.entry * be.fin - qty * d.tp * be.fout : gain;
+        const netLoss = be ? loss + qty * d.entry * be.fin + qty * d.sl * be.fout : loss;
         const row = (k, v, cls) => [h("dt", {}, k), h("dd", { class: `num ${cls || ""}` }, v)];
         calc.replaceChildren(
           ...row("Entry (limit)", num(d.entry)), ...row("Current price", price === null ? "—" : num(price)),
@@ -329,6 +333,11 @@
           ...row("Size ≈", `${num(qty, 5)} (${num(qty * d.entry, 2)} USDT)`),
           ...row("Loss at the stop ≈", `−${num(loss, 2)} USDT`, "neg"), ...row("Gain at the target ≈", `+${num(gain, 2)} USDT`, "pos"),
           ...row("R:R", loss ? (gain / loss).toFixed(2) : "—"),
+          ...(be ? [
+            ...row("Fees (in + out) ≈", `${num(qty * d.entry * be.fin + qty * d.tp * be.fout, 2)} USDT`),
+            ...row("Net at the target ≈", `${netGain >= 0 ? "+" : "−"}${num(Math.abs(netGain), 2)} USDT`, netGain >= 0 ? "pos" : "neg"),
+            ...row("Net at the stop ≈", `−${num(netLoss, 2)} USDT`, "neg"),
+            ...row("Break-even", `${num(be.price)} (fees ${(be.fin * 100).toFixed(3)}% + ${(be.fout * 100).toFixed(3)}%)`)] : []),
           ...row("Futures wallet", account ? `${num(account.wallet_usdt, 2)} USDT (${account.available_estimated ? "≈ " : ""}${num(account.available_usdt, 2)} available)` : "—"));
         const far = marketable();
         nowWarn.hidden = !far; nowRow.hidden = !far;

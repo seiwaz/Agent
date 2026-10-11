@@ -217,6 +217,13 @@
       const price = long ? (it.entry * (1 + fin)) / (1 - fout) : (it.entry * (1 - fin)) / (1 + fout);
       return { price, pct: (Math.abs(price - it.entry) / it.entry) * 100, fin, fout, source: f.source };
     }
+    /** The gain at the target and the loss at the stop after the fees, in % of the entry. */
+    net(it, be) {
+      const { fin, fout } = be, e = it.entry, long = it.type === "long";
+      const gain = long ? (it.tp * (1 - fout) - e * (1 + fin)) / e : (e * (1 - fin) - it.tp * (1 + fout)) / e;
+      const loss = long ? (e * (1 + fin) - it.sl * (1 - fout)) / e : (it.sl * (1 + fout) - e * (1 - fin)) / e;
+      return { gain: gain * 100, loss: loss * 100 };
+    }
     /** The selected position drawing, else the last one placed (not one of an open trade). */
     lastPosition() {
       const isPos = (x) => (x.type === "long" || x.type === "short") && !(x.trade && x.status);
@@ -579,16 +586,19 @@
             const vx1 = Math.max(x1, 0), vx2 = Math.min(x2, T.ws.chart.timeScale().width());
             const cx = vx2 > vx1 ? (vx1 + vx2) / 2 : (x1 + x2) / 2;  // labels on the visible part
             // labels only while the drawing is selected (clicked) or being placed
-            if (selected) label(`Target ${fmt(it.tp)} (${long ? "+" : "−"}${pct(reward)})`, cx, T.y(it.tp) + (long ? -11 : 11), `rgba(${col.bull},0.95)`, "center");
-            if (selected) label(`Stop ${fmt(it.sl)} (${long ? "−" : "+"}${pct(risk)})`, cx, T.y(it.sl) + (long ? 11 : -11), `rgba(${col.bear},0.95)`, "center");
+            // after Tabdeal's fees (the same whatever the leverage and the margin: fees and profit
+            // both scale with the size), from the moment the drawing is placed
+            const be = T.breakEven(it), net = be ? T.net(it, be) : null;
+            const nt = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`;
+            if (selected) label(`Target ${fmt(it.tp)} (${long ? "+" : "−"}${pct(reward)}${net ? `, net ${nt(net.gain)}` : ""})`, cx, T.y(it.tp) + (long ? -11 : 11), `rgba(${col.bull},0.95)`, "center");
+            if (selected) label(`Stop ${fmt(it.sl)} (${long ? "−" : "+"}${pct(risk)}${net ? `, net ${nt(-net.loss)}` : ""})`, cx, T.y(it.sl) + (long ? 11 : -11), `rgba(${col.bear},0.95)`, "center");
             if (it.trade && it.status && (it.unset || it.dirty)) {  // not (yet) the stop / target on Tabdeal
               ctx.save(); ctx.setLineDash([5, 4]); ctx.lineWidth = 1.2;
               ctx.strokeStyle = `rgba(${col.bull},0.9)`; ctx.strokeRect(rt[0], rt[1], rt[2] - rt[0], rt[3] - rt[1]);
               ctx.strokeStyle = `rgba(${col.bear},0.9)`; ctx.strokeRect(rs[0], rs[1], rs[2] - rs[0], rs[3] - rs[1]);
               ctx.restore();
             }
-            const be = it.trade && it.status === "ACTIVE" ? T.breakEven(it) : null;
-            if (be) {  // an open trade: where it nets zero after Tabdeal's entry and exit fees
+            if (be) {  // where the trade nets zero after Tabdeal's entry and exit fees
               const yb = T.y(be.price);
               if (yb !== null) {
                 ctx.save(); ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(230,160,0,0.95)";
@@ -599,7 +609,7 @@
               }
             }
             const tag = it.trade && it.status ? `#${it.trade} ${it.status === "ACTIVE" ? "open" : "pending"}${it.origin === "TABDEAL" ? " (Tabdeal)" : ""} · ` : "";
-            if (selected) label(`${tag}${long ? "Long" : "Short"} ${fmt(it.entry)} · R:R ${risk ? (reward / risk).toFixed(2) : "—"}${pnl}`, cx, ye, it.trade && it.status ? "rgba(70,90,150,0.95)" : "rgba(90,98,110,0.95)", "center");
+            if (selected) label(`${tag}${long ? "Long" : "Short"} ${fmt(it.entry)} · R:R ${risk ? (reward / risk).toFixed(2) : "—"}${net && net.loss > 0 ? ` (net ${(net.gain / net.loss).toFixed(2)})` : ""}${pnl}`, cx, ye, it.trade && it.status ? "rgba(70,90,150,0.95)" : "rgba(90,98,110,0.95)", "center");
             if (selected && it.trade && it.status && (it.unset || it.dirty)) {
               label(it.dirty ? "Moved: press SL/TP below to apply on Tabdeal" : "No stop / target on Tabdeal: drag them, then SL/TP", Math.max(x1, 0) + 4, Math.min(rt[1], rs[1]) - 34, "rgba(196,118,0,0.95)", "left");
             }

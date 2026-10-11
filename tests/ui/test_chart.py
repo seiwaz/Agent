@@ -367,6 +367,17 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         }""")
         assert d["out"] is not None and d["out"]["t0"] >= d["it"]["t1"]
 
+        # before any trade: the drawing's break-even after Tabdeal's fees and its net figures
+        # (leverage and margin do not move them: fees and profit both scale with the size)
+        n = pg.evaluate("""() => { const t = state.ws.tools, it = t.items.find(i => i.id === 'L1');
+            const be = t.breakEven(it); return { be, net: t.net(it, be), it }; }""")
+        e, tp, sl = n["it"]["entry"], n["it"]["tp"], n["it"]["sl"]
+        assert n["be"]["price"] == pytest.approx(e * 1.0008 / (1 - 0.00095))
+        assert n["net"]["gain"] == pytest.approx((tp * (1 - 0.00095) - e * 1.0008) / e * 100)
+        assert n["net"]["loss"] == pytest.approx((e * 1.0008 - sl * (1 - 0.00095)) / e * 100)
+        pg.evaluate("() => { state.ws.tools.sel = 'L1'; state.ws.tools.redraw(); }")
+        pg.screenshot(path="/tmp/be2.png")
+
         # an entry above the price would fill at once: the dialog says so and wants "fill now"
         PRICE["v"] = d["it"]["entry"] * 0.99
         pg.click(".ws-trade-btn")
@@ -384,6 +395,8 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         pg.wait_for_selector(".ws-modal .ws-trade-dlg")  # an in-page window: shown in full screen too
         assert "Long" in pg.inner_text(".ws-trade-dlg h2")
         pg.wait_for_selector(".ws-trade-dlg .ws-dlg-rest:not([hidden])")  # below the price: pending
+        dl = pg.inner_text(".ws-trade-dlg .ws-dl")
+        assert "Fees (in + out)" in dl and "Net at the target" in dl and "Break-even" in dl
         assert "Pending on Tabdeal" in pg.inner_text(".ws-dlg-rest") and pg.is_hidden(".ws-fill-now-row")
         pg.fill(".ws-trade-dlg .ws-field input >> nth=0", "۵")  # Persian digits are accepted
         pg.fill(".ws-trade-dlg .ws-field input >> nth=1", "۲۰")
