@@ -205,6 +205,18 @@
       if (changed) { this.save(); this.redraw(); }
     }
     linked(tradeId) { return this.items.find((x) => x.trade === tradeId) || null; }
+    /** The price an open trade nets zero at, after Tabdeal's current fees (/api/trade/config):
+     * the entry at the maker fee (a LIMIT order; taker for a position opened on Tabdeal), the
+     * exit at the taker fee (Tabdeal's stop / target and a close execute at market). */
+    breakEven(it) {
+      const tr = this.ws.trading, f = tr && tr.cfg && tr.cfg.fees;
+      if (!f || !(it.entry > 0)) return null;
+      const fin = it.origin === "TABDEAL" ? +f.taker : +f.maker, fout = +f.taker;
+      if (!Number.isFinite(fin) || !Number.isFinite(fout)) return null;
+      const long = it.type === "long";
+      const price = long ? (it.entry * (1 + fin)) / (1 - fout) : (it.entry * (1 - fin)) / (1 + fout);
+      return { price, pct: (Math.abs(price - it.entry) / it.entry) * 100, fin, fout, source: f.source };
+    }
     /** The selected position drawing, else the last one placed (not one of an open trade). */
     lastPosition() {
       const isPos = (x) => (x.type === "long" || x.type === "short") && !(x.trade && x.status);
@@ -574,6 +586,17 @@
               ctx.strokeStyle = `rgba(${col.bull},0.9)`; ctx.strokeRect(rt[0], rt[1], rt[2] - rt[0], rt[3] - rt[1]);
               ctx.strokeStyle = `rgba(${col.bear},0.9)`; ctx.strokeRect(rs[0], rs[1], rs[2] - rs[0], rs[3] - rs[1]);
               ctx.restore();
+            }
+            const be = it.trade && it.status === "ACTIVE" ? T.breakEven(it) : null;
+            if (be) {  // an open trade: where it nets zero after Tabdeal's entry and exit fees
+              const yb = T.y(be.price);
+              if (yb !== null) {
+                ctx.save(); ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(230,160,0,0.95)";
+                ctx.beginPath(); ctx.moveTo(x1, yb); ctx.lineTo(x2, yb); ctx.stroke(); ctx.restore();
+                const bx = Math.min(Math.max(x1, 0) + 4, x2);
+                if (selected) label(`Break-even after fees ${fmt(be.price)} (${long ? "+" : "−"}${be.pct.toFixed(3)}%)`, bx, yb + (long ? -11 : 11), "rgba(196,128,0,0.95)", "left");
+                else { ctx.fillStyle = "rgba(230,160,0,1)"; ctx.textAlign = "left"; ctx.fillText("BE", bx, yb + (long ? -8 : 8)); }
+              }
             }
             const tag = it.trade && it.status ? `#${it.trade} ${it.status === "ACTIVE" ? "open" : "pending"}${it.origin === "TABDEAL" ? " (Tabdeal)" : ""} · ` : "";
             if (selected) label(`${tag}${long ? "Long" : "Short"} ${fmt(it.entry)} · R:R ${risk ? (reward / risk).toFixed(2) : "—"}${pnl}`, cx, ye, it.trade && it.status ? "rgba(70,90,150,0.95)" : "rgba(90,98,110,0.95)", "center");

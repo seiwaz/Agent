@@ -29,7 +29,8 @@ from decimal import Decimal
 from typing import Any
 
 BASE = "https://api-web.tabdeal.org"
-_ALLOWED = ("/special-margin/recent-trades/", "/special-margin/plots/history/")
+_ALLOWED = ("/special-margin/recent-trades/", "/special-margin/plots/history/",
+            "/get-commission-levels-v2/")
 
 
 @dataclass(frozen=True, slots=True)

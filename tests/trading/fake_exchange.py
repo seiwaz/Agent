@@ -22,6 +22,8 @@ class FakeExchange:
         self.fail: dict[str, ExchangeError] = {}  # call name -> the error it raises once
         self.lost_reply = False  # place the next order but answer with a timeout
         self.reports_sltp = False  # positionRisk carries the stop / target (undocumented)
+        # as seen on Tabdeal (2026-10-10): positionSlTp on a short takes tpPrice as the stop
+        self.swaps_short_sltp = True
         self._ids = 5000
 
     def _call(self, name: str, args: Any) -> None:
@@ -134,6 +136,8 @@ class FakeExchange:
         p = self.position.get(market)
         if not p or p["id"] != position_id:
             raise ExchangeError("position not found", 1300, 400)
+        if p["amt"] < 0 and self.swaps_short_sltp:
+            sl, tp = tp, sl
         if sl is not None:
             p["sl"] = Decimal(sl)
         if tp is not None:

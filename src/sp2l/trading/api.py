@@ -65,11 +65,21 @@ class Prices:
 
 class TradingDesk:
     def __init__(self, cfg: Any, db: Engine, manager: TradeManager | None = None,
-                 prices: Prices | None = None, instruments: Any = None) -> None:
+                 prices: Prices | None = None, instruments: Any = None,
+                 fees: Any = None) -> None:
         # every dashboard market (cfg.markets), with its precision from the config or exchangeInfo
         self.symbols: list[str] = [str(s) for s in getattr(cfg, "markets", cfg.symbols)]
         self.prices = prices or Prices()
         self.problem: str | None = None
+        from sp2l.trading.fees import Fees
+
+        try:
+            costs = cfg.costs()
+            maker, taker = float(costs.maker_fee), float(costs.taker_fee)
+        except Exception:  # no valid costs in the config: Tabdeal's table only
+            maker = taker = 0.0
+        tc = dict(cfg.section("trading")) if hasattr(cfg, "section") else {}
+        self.fees = fees or Fees(maker, taker, float(tc.get("fee_volume_usdt", 0) or 0))
         self.manager: TradeManager | None = manager
         try:
             self.cfg = TradingConfig.from_mapping(dict(cfg.section("trading")))
@@ -131,6 +141,7 @@ class TradingDesk:
         @app.get("/api/trade/config")
         def trade_config() -> Any:
             return {**self.cfg.public(), "ready": self.manager is not None,
+                    "fees": self.fees.get(),  # Tabdeal's current commission (break-even lines)
                     "problem": self.problem, "symbols": self.symbols,
                     "poll_error": self.manager.poll_error if self.manager else None}
 

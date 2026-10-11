@@ -65,6 +65,9 @@
       this.timer = setInterval(() => { if (!document.hidden) this.refresh(); }, OPEN_EVERY_MS);
       this.priceTimer = setInterval(() => { if (!document.hidden) this.loadPrices(); }, PRICE_EVERY_MS);
       this.histTimer = setInterval(() => { if (!document.hidden && this.tab === "history") this.loadHistory(); }, HISTORY_EVERY_MS);
+      // Tabdeal's fees (break-even lines) are read in the background: again shortly, then hourly
+      setTimeout(() => this.loadConfig(), 15000);
+      this.cfgTimer = setInterval(() => this.loadConfig(), 3600000);
     }
 
     /* ---- server ------------------------------------------------------------------------------ */
@@ -79,9 +82,10 @@
       return data;
     }
     async loadConfig() {
-      try { this.cfg = await (await fetch("/api/trade/config", { headers: { Accept: "application/json" } })).json(); } catch { this.cfg = null; }
+      try { this.cfg = await (await fetch("/api/trade/config", { headers: { Accept: "application/json" } })).json(); } catch { /* keep what we have */ }
       this.render();
       this.refresh();
+      if (this.ws.tools) this.ws.tools.redraw();  // the break-even lines use its fees
     }
     ready() { return this.cfg && this.cfg.enabled && this.cfg.ready; }
     async refresh() {

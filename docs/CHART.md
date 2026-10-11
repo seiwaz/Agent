@@ -121,6 +121,20 @@ The panel under the chart (▾ / ▴ hides it) has two tabs:
 - **History** — closed (target, stop, closed here, closed on Tabdeal), canceled and rejected
   trades with entry, exit and realized PnL.
 
+**Break-even line.** On an open trade's position drawing a dashed amber line marks where it
+nets zero after Tabdeal's current fees: the commission level for `trading.fee_volume_usdt` read
+from Tabdeal's public table (`get-commission-levels-v2`, hourly; the config's `costs` until it
+answers), the entry at the maker fee (a LIMIT order; the taker fee for a position opened on
+Tabdeal) and the exit at the taker fee (the stop, the target and a close execute at market).
+Long: entry × (1 + entry fee) / (1 − exit fee); short: entry × (1 − entry fee) / (1 + exit fee).
+Selected, the drawing labels it with its price and distance.
+
+**A short's stop and target.** Tabdeal's `positionSlTp` took a short position's `tpPrice` as its
+stop (2026-10-10: an ADA short's target, below the entry, became a "stop loss" that fired at
+once). A short's stop and target are therefore sent in each other's field
+(`trading.short_sltp_swapped: true`); each trade's log names the fields sent. A stop / target
+read back from Tabdeal the wrong way round for the side is put right.
+
 **Positions opened directly on Tabdeal** (in its app or site) are adopted: when a market has a
 position and no open trade here, the poller adds it to Open trades (marked *Tabdeal*) and follows
 it like the others — size and average entry as they change, mark price, PnL, its end. The chart

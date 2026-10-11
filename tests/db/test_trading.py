@@ -454,3 +454,43 @@ def test_any_market_trades_at_its_exchange_info_precision_and_the_table_lists_ev
     open_ = tm.trades(None, "open")  # the table under the chart: every market
     assert sorted((x["symbol"], x["origin"]) for x in open_) == [("ETHUSDT", "TABDEAL"), ("SOLUSDT", "CHART")]
     assert ex.position["SOL_USDT"]["sl"] == Decimal("155.00")
+
+
+# ---- a short's stop / target on Tabdeal ---------------------------------------------------------
+SHORT = {**LONG, "side": "SHORT", "sl": 61000, "tp": 57000}
+
+
+def test_a_short_gets_its_stop_above_and_its_target_below_on_tabdeal(tm, ex):
+    t = tm.open(SHORT)
+    ex.fill(t["order_id"])
+    tm.reconcile()
+    sent = [a for n, a in ex.calls if n == "position_sl_tp"][-1]
+    # Tabdeal takes a short's tpPrice as its stop: the stop goes in tpPrice, the target in slPrice
+    assert sent[2:4] == ("57000.0", "61000.0")
+    assert (ex.position[M]["sl"], ex.position[M]["tp"]) == (Decimal("61000.0"), Decimal("57000.0"))
+    a = tm.trades(None, "open")[0]
+    assert a["protected"] and (a["sl"], a["tp"]) == (61000, 57000)
+    assert any("swapped for a short" in e["event"] and "slPrice=57000.0" in e["event"]
+               for e in a["events"])  # a long is sent as documented (the first test above)
+
+
+def test_the_short_swap_can_be_switched_off(engine, ex):
+    with engine.begin() as c:
+        c.execute(text("DELETE FROM manual_trades"))
+    ex.swaps_short_sltp = False  # an exchange that reads the fields as documented
+    tm = TradeManager(engine, ex, TradingConfig(enabled=True, short_sltp_swapped=False), INSTR)
+    t = tm.open(SHORT)
+    ex.fill(t["order_id"])
+    tm.reconcile()
+    assert [a for n, a in ex.calls if n == "position_sl_tp"][-1][2:4] == ("61000.0", "57000.0")
+    assert ex.position[M]["sl"] == Decimal("61000.0")
+    with pytest.raises(ValueError, match="short_sltp_swapped"):
+        TradingConfig.from_mapping({"short_sltp_swapped": "yes"})
+
+
+def test_a_reversed_stop_and_target_read_from_tabdeal_are_put_right(tm, ex):
+    ex.reports_sltp = True
+    ex.manual(M, "-0.004", "61000", lev=5, sl="58000", tp="63000")  # a short, reported reversed
+    tm.reconcile()
+    a = tm.trades(None, "open")[0]
+    assert a["side"] == "SHORT" and (a["sl"], a["tp"]) == (63000, 58000)

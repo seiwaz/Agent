@@ -80,7 +80,14 @@ def serve(trading: dict | None = None, exchange=None, auth: dict | None = None,
 
         tc = TradingConfig.from_mapping(trading or {})
         tm = TradeManager(create_engine(URL), exchange, tc, ins)
-        desk = TradingDesk(cfg, tm.db, manager=tm)
+        from sp2l.trading.fees import Fees
+
+        table = {"special_margin_commission_levels": [  # Tabdeal's commission table, stand-in
+            {"name": "Level 1", "maker_commission_percent": "0.0008",
+             "taker_commission_percent": "0.00095", "from_volume": "0", "to_volume": "1000000"}]}
+        fees = Fees(0.001, 0.002, fetch=lambda: table)
+        fees.refresh()
+        desk = TradingDesk(cfg, tm.db, manager=tm, fees=fees)
     port = _free_port()
     srv = uvicorn.Server(
         uvicorn.Config(create_app(cfg, trading=desk, instruments=ins), host="127.0.0.1", port=port,
@@ -371,6 +378,12 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         pg.wait_for_function("() => document.querySelector('.ws-trade-table').innerText.includes('✓')", timeout=15000)
         assert "+" in pg.inner_text(".ws-trade-table tbody tr >> nth=0")
         assert ex.position["BTC_USDT"]["sl"] == Decimal(str(d["it"]["sl"])).quantize(Decimal("0.1"))
+        # the open trade's break-even line: entry at Tabdeal's maker fee, exit at its taker fee
+        be = pg.evaluate("() => { const it = state.ws.tools.items.find(i => i.trade && i.status === 'ACTIVE'); return { be: state.ws.tools.breakEven(it), entry: it.entry }; }")
+        assert be["be"]["source"] == "tabdeal" and (be["be"]["fin"], be["be"]["fout"]) == (0.0008, 0.00095)
+        assert be["be"]["price"] == pytest.approx(be["entry"] * 1.0008 / (1 - 0.00095))
+        assert be["be"]["pct"] == pytest.approx((1.0008 / (1 - 0.00095) - 1) * 100)
+        pg.screenshot(path="/tmp/be.png")
         pg.click(".ws-trade-table button:has-text('Close')")
         pg.click(".ws-modal .ws-danger")  # confirm, in the page
         pg.wait_for_function("() => document.querySelector('.ws-trade-table td.empty')", timeout=15000)
