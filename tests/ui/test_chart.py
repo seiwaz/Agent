@@ -383,6 +383,8 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         pg.click(".ws-trade-btn")
         pg.wait_for_selector(".ws-modal .ws-trade-dlg")  # an in-page window: shown in full screen too
         assert "Long" in pg.inner_text(".ws-trade-dlg h2")
+        pg.wait_for_selector(".ws-trade-dlg .ws-dlg-rest:not([hidden])")  # below the price: pending
+        assert "Pending on Tabdeal" in pg.inner_text(".ws-dlg-rest") and pg.is_hidden(".ws-fill-now-row")
         pg.fill(".ws-trade-dlg .ws-field input >> nth=0", "۵")  # Persian digits are accepted
         pg.fill(".ws-trade-dlg .ws-field input >> nth=1", "۲۰")
         pg.click(".ws-trade-dlg .ws-go")

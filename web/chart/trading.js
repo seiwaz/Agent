@@ -312,6 +312,7 @@
       let price = null;
       const nowBox = h("input", { type: "checkbox", class: "ws-fill-now" });
       const nowWarn = h("p", { class: "ws-dlg-warn", hidden: true });
+      const restNote = h("p", { class: "ws-dlg-rest small", hidden: true });
       const nowRow = h("label", { class: "ws-check ws-fill-now-row", hidden: true }, nowBox, "Fill now at about the market price");
       const marketable = () => price !== null && (side === "LONG" ? d.entry > price : d.entry < price);
       const go = h("button", { class: `btn ws-go ${side === "LONG" ? "go-long" : "go-short"}`, type: "submit" }, `Place ${side} limit on Tabdeal`);
@@ -331,6 +332,8 @@
           ...row("Futures wallet", account ? `${num(account.wallet_usdt, 2)} USDT (${account.available_estimated ? "≈ " : ""}${num(account.available_usdt, 2)} available)` : "—"));
         const far = marketable();
         nowWarn.hidden = !far; nowRow.hidden = !far;
+        restNote.hidden = far || price === null;
+        restNote.textContent = `Pending on Tabdeal: the LIMIT ${side === "LONG" ? "buy" : "sell"} rests in its order book until the price ${side === "LONG" ? "falls" : "rises"} to ${num(d.entry)} (now ${price === null ? "—" : num(price)}).`;
         if (far) {
           nowWarn.textContent = `The entry ${num(d.entry)} is ${side === "LONG" ? "above" : "below"} the current price ${num(price)}: a LIMIT ${side === "LONG" ? "buy" : "sell"} there fills NOW at about ${num(price)}, not at your entry. To wait for ${num(d.entry)}, move the entry ${side === "LONG" ? "below" : "above"} the price.`;
         }
@@ -362,7 +365,7 @@
       h("div", { class: "ws-fields" },
         h("label", { class: "ws-field" }, h("span", {}, `Leverage (1–${max})`), lev),
         h("label", { class: "ws-field" }, h("span", {}, `Margin, USDT (≤ ${maxMargin})`), margin)),
-      calc, nowWarn, nowRow, msg,
+      calc, restNote, nowWarn, nowRow, msg,
       h("div", { class: "ws-dlg-actions" }, h("button", { class: "btn", type: "button", onclick: close }, "Cancel"), go));
       lev.addEventListener("input", update); margin.addEventListener("input", update);
       nowBox.addEventListener("change", update);
