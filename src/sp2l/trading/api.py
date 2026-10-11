@@ -76,10 +76,11 @@ class TradingDesk:
         try:
             costs = cfg.costs()
             maker, taker = float(costs.maker_fee), float(costs.taker_fee)
+            slip = float(costs.slippage)
         except Exception:  # no valid costs in the config: Tabdeal's table only
-            maker = taker = 0.0
+            maker = taker = slip = 0.0
         tc = dict(cfg.section("trading")) if hasattr(cfg, "section") else {}
-        self.fees = fees or Fees(maker, taker, float(tc.get("fee_volume_usdt", 0) or 0))
+        self.fees = fees or Fees(maker, taker, float(tc.get("fee_volume_usdt", 0) or 0), slip)
         self.manager: TradeManager | None = manager
         try:
             self.cfg = TradingConfig.from_mapping(dict(cfg.section("trading")))

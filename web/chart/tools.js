@@ -211,7 +211,9 @@
     breakEven(it) {
       const tr = this.ws.trading, f = tr && tr.cfg && tr.cfg.fees;
       if (!f || !(it.entry > 0)) return null;
-      const fin = it.origin === "TABDEAL" ? +f.taker : +f.maker, fout = +f.taker;
+      // a market fill (the exit; an entry made on Tabdeal) also pays the slippage allowance
+      const slip = +(f.slippage || 0);
+      const fin = it.origin === "TABDEAL" ? +f.taker + slip : +f.maker, fout = +f.taker + slip;
       if (!Number.isFinite(fin) || !Number.isFinite(fout)) return null;
       const long = it.type === "long";
       const price = long ? (it.entry * (1 + fin)) / (1 - fout) : (it.entry * (1 - fin)) / (1 + fout);

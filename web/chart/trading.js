@@ -334,10 +334,10 @@
           ...row("Loss at the stop ≈", `−${num(loss, 2)} USDT`, "neg"), ...row("Gain at the target ≈", `+${num(gain, 2)} USDT`, "pos"),
           ...row("R:R", loss ? (gain / loss).toFixed(2) : "—"),
           ...(be ? [
-            ...row("Fees (in + out) ≈", `${num(qty * d.entry * be.fin + qty * d.tp * be.fout, 2)} USDT`),
+            ...row("Fees + slippage ≈", `${num(qty * d.entry * be.fin + qty * d.tp * be.fout, 2)} USDT`),
             ...row("Net at the target ≈", `${netGain >= 0 ? "+" : "−"}${num(Math.abs(netGain), 2)} USDT`, netGain >= 0 ? "pos" : "neg"),
             ...row("Net at the stop ≈", `−${num(netLoss, 2)} USDT`, "neg"),
-            ...row("Break-even", `${num(be.price)} (fees ${(be.fin * 100).toFixed(3)}% + ${(be.fout * 100).toFixed(3)}%)`)] : []),
+            ...row("Break-even", `${num(be.price)} (in ${(be.fin * 100).toFixed(3)}% + out ${(be.fout * 100).toFixed(3)}% incl. slippage)`)] : []),
           ...row("Futures wallet", account ? `${num(account.wallet_usdt, 2)} USDT (${account.available_estimated ? "≈ " : ""}${num(account.available_usdt, 2)} available)` : "—"));
         const far = marketable();
         nowWarn.hidden = !far; nowRow.hidden = !far;

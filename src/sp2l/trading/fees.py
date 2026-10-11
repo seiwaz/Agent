@@ -34,8 +34,12 @@ def pick_level(payload: Any, volume_usdt: float) -> dict[str, Any]:
 
 class Fees:
     def __init__(self, maker: float, taker: float, volume_usdt: float = 0.0,
+                 slippage: float = 0.0,
                  fetch: Callable[[], Any] | None = commission_levels,
                  clock: Callable[[], float] = time.time) -> None:
+        # slippage: how much worse than its price a market exit fills (config's
+        # costs.slippage_allowance; Tabdeal publishes none), added to every answer
+        self.slippage = slippage
         self.fallback = {"maker": maker, "taker": taker, "level": None, "source": "config"}
         self.volume, self.fetch, self.clock = volume_usdt, fetch, clock
         self._lock = threading.Lock()
@@ -55,7 +59,8 @@ class Fees:
             v = {**self.fallback, "problem": f"{type(e).__name__}: {e}"[:200]}
             until = now + RETRY_S
         with self._lock:
-            self._value, self._until, self._busy = {**v, "fetched_at": now}, until, False
+            self._value, self._until, self._busy = (
+                {**v, "slippage": self.slippage, "fetched_at": now}, until, False)
             return self._value
 
     def get(self) -> dict[str, Any]:
@@ -68,4 +73,5 @@ class Fees:
                 self._busy = True
         if start:
             threading.Thread(target=self.refresh, name="fees", daemon=True).start()
-        return value if value is not None else {**self.fallback, "fetched_at": None}
+        return value if value is not None else {**self.fallback, "slippage": self.slippage,
+                                                "fetched_at": None}

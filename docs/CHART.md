@@ -132,7 +132,9 @@ or open) shows a dashed amber line where the trade nets zero after Tabdeal's cur
 commission level for `trading.fee_volume_usdt` read from Tabdeal's public table
 (`get-commission-levels-v2`, hourly; the config's `costs` until it answers), the entry at the
 maker fee (a LIMIT order; the taker fee for a position opened on Tabdeal) and the exit at the
-taker fee (the stop, the target and a close execute at market). Long: entry × (1 + entry fee) /
+taker fee plus the config's slippage allowance (`costs.slippage_allowance`: the stop, the target
+and a close execute at market and may fill a little worse; a position opened on Tabdeal pays
+both on its entry too). Long: entry × (1 + entry fee) /
 (1 − exit fee); short: entry × (1 − entry fee) / (1 + exit fee). Leverage and margin do not move
 it: the fees and the profit both scale with the size (they change the USDT amounts and the
 ROE, not the price). Selected, the drawing labels the break-even, the target's and the stop's

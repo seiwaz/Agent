@@ -28,7 +28,8 @@ def test_tabdeal_first_the_config_while_it_fails_and_a_request_never_waits():
     clock = [1000.0]
     f = Fees(0.001, 0.002, fetch=lambda: TABLE, clock=lambda: clock[0])
     assert f.refresh() == {"maker": 0.0008, "taker": 0.00095, "level": "Level 1",
-                           "source": "tabdeal", "fetched_at": 1000.0}
+                           "source": "tabdeal", "slippage": 0.0, "fetched_at": 1000.0}
+    assert Fees(0.001, 0.002, slippage=0.0003, fetch=lambda: TABLE).refresh()["slippage"] == 0.0003
 
     def down():
         raise OSError("unreachable")

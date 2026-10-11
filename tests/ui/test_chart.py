@@ -88,7 +88,7 @@ def serve(trading: dict | None = None, exchange=None, auth: dict | None = None,
         table = {"special_margin_commission_levels": [  # Tabdeal's commission table, stand-in
             {"name": "Level 1", "maker_commission_percent": "0.0008",
              "taker_commission_percent": "0.00095", "from_volume": "0", "to_volume": "1000000"}]}
-        fees = Fees(0.001, 0.002, fetch=lambda: table)
+        fees = Fees(0.001, 0.002, slippage=0.0003, fetch=lambda: table)
         fees.refresh()
         from sp2l.trading.api import Prices
 
@@ -372,9 +372,9 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         n = pg.evaluate("""() => { const t = state.ws.tools, it = t.items.find(i => i.id === 'L1');
             const be = t.breakEven(it); return { be, net: t.net(it, be), it }; }""")
         e, tp, sl = n["it"]["entry"], n["it"]["tp"], n["it"]["sl"]
-        assert n["be"]["price"] == pytest.approx(e * 1.0008 / (1 - 0.00095))
-        assert n["net"]["gain"] == pytest.approx((tp * (1 - 0.00095) - e * 1.0008) / e * 100)
-        assert n["net"]["loss"] == pytest.approx((e * 1.0008 - sl * (1 - 0.00095)) / e * 100)
+        assert n["be"]["price"] == pytest.approx(e * 1.0008 / (1 - 0.00125))
+        assert n["net"]["gain"] == pytest.approx((tp * (1 - 0.00125) - e * 1.0008) / e * 100)
+        assert n["net"]["loss"] == pytest.approx((e * 1.0008 - sl * (1 - 0.00125)) / e * 100)
         pg.evaluate("() => { state.ws.tools.sel = 'L1'; state.ws.tools.redraw(); }")
         pg.screenshot(path="/tmp/be2.png")
 
@@ -396,7 +396,7 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         assert "Long" in pg.inner_text(".ws-trade-dlg h2")
         pg.wait_for_selector(".ws-trade-dlg .ws-dlg-rest:not([hidden])")  # below the price: pending
         dl = pg.inner_text(".ws-trade-dlg .ws-dl")
-        assert "Fees (in + out)" in dl and "Net at the target" in dl and "Break-even" in dl
+        assert "Fees + slippage" in dl and "Net at the target" in dl and "Break-even" in dl
         assert "Pending on Tabdeal" in pg.inner_text(".ws-dlg-rest") and pg.is_hidden(".ws-fill-now-row")
         pg.fill(".ws-trade-dlg .ws-field input >> nth=0", "۵")  # Persian digits are accepted
         pg.fill(".ws-trade-dlg .ws-field input >> nth=1", "۲۰")
@@ -417,9 +417,9 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
         assert ex.position["BTC_USDT"]["sl"] == Decimal(str(d["it"]["sl"])).quantize(Decimal("0.1"))
         # the open trade's break-even line: entry at Tabdeal's maker fee, exit at its taker fee
         be = pg.evaluate("() => { const it = state.ws.tools.items.find(i => i.trade && i.status === 'ACTIVE'); return { be: state.ws.tools.breakEven(it), entry: it.entry }; }")
-        assert be["be"]["source"] == "tabdeal" and (be["be"]["fin"], be["be"]["fout"]) == (0.0008, 0.00095)
-        assert be["be"]["price"] == pytest.approx(be["entry"] * 1.0008 / (1 - 0.00095))
-        assert be["be"]["pct"] == pytest.approx((1.0008 / (1 - 0.00095) - 1) * 100)
+        assert be["be"]["source"] == "tabdeal" and (be["be"]["fin"], be["be"]["fout"]) == pytest.approx((0.0008, 0.00125))
+        assert be["be"]["price"] == pytest.approx(be["entry"] * 1.0008 / (1 - 0.00125))
+        assert be["be"]["pct"] == pytest.approx((1.0008 / (1 - 0.00125) - 1) * 100)
         pg.screenshot(path="/tmp/be.png")
         pg.click(".ws-trade-table button:has-text('Close')")
         pg.click(".ws-modal .ws-danger")  # confirm, in the page
