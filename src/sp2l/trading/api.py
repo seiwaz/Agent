@@ -129,6 +129,30 @@ class TradingDesk:
         except ExchangeError as e:
             return _err(502, f"Tabdeal: {e}")
 
+    def _marketable(self, body: dict[str, Any]) -> None:
+        """A LIMIT entry on the far side of the price (a long above it, a short below it) fills
+        at once at about the market price, not at the entry (Tabdeal has no stop entries): only
+        with fill_now (the dialog's confirmation)."""
+        if body.get("fill_now") is True:
+            return
+        symbol, side = str(body.get("symbol", "")), str(body.get("side", "")).upper()
+        if symbol not in self.symbols or side not in ("LONG", "SHORT"):
+            return  # the manager refuses it
+        try:
+            entry = float(body.get("entry"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return
+        price = self.prices.get(symbol).get("price")
+        if price is None:
+            return  # no price now: the order goes as asked
+        long = side == "LONG"
+        if (entry > price) if long else (entry < price):
+            raise TradeError(
+                f"the entry {entry:g} is {'above' if long else 'below'} the current price "
+                f"{price:g}: a LIMIT {'buy' if long else 'sell'} there fills at once at about "
+                f"{price:g}, not at {entry:g}. Confirm \"fill now\", or move the entry "
+                f"{'below' if long else 'above'} the price")
+
     def _sym(self, symbol: str | None) -> str:
         if symbol is None:
             return self.symbols[0]
@@ -181,7 +205,11 @@ class TradingDesk:
 
         @app.post("/api/trade/open")
         def trade_open(body: dict[str, Any] = JSON_BODY) -> Any:
-            return self._do(lambda m: m.open(body))
+            def go(m: TradeManager) -> Any:
+                self._marketable(body)
+                return m.open(body)
+
+            return self._do(go)
 
         @app.post("/api/trade/{tid}/cancel")
         def trade_cancel(tid: int) -> Any:

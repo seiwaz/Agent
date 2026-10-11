@@ -121,6 +121,12 @@ The panel under the chart (▾ / ▴ hides it) has two tabs:
 - **History** — closed (target, stop, closed here, closed on Tabdeal), canceled and rejected
   trades with entry, exit and realized PnL.
 
+**An entry that fills at once.** The entry is a LIMIT order, and Tabdeal has no stop entries: a
+long's entry above the current price (a short's below it) fills at once at about the market
+price, not at the entry. The dialog shows the current price and, for such an entry, says so and
+places it only with "Fill now at about the market price" ticked (the server refuses it without
+`fill_now`). To wait for a price, put a long's entry below the price (a short's above it).
+
 **Break-even line.** On an open trade's position drawing a dashed amber line marks where it
 nets zero after Tabdeal's current fees: the commission level for `trading.fee_volume_usdt` read
 from Tabdeal's public table (`get-commission-levels-v2`, hourly; the config's `costs` until it
@@ -129,11 +135,11 @@ Tabdeal) and the exit at the taker fee (the stop, the target and a close execute
 Long: entry × (1 + entry fee) / (1 − exit fee); short: entry × (1 − entry fee) / (1 + exit fee).
 Selected, the drawing labels it with its price and distance.
 
-**A short's stop and target.** Tabdeal's `positionSlTp` took a short position's `tpPrice` as its
-stop (2026-10-10: an ADA short's target, below the entry, became a "stop loss" that fired at
-once). A short's stop and target are therefore sent in each other's field
-(`trading.short_sltp_swapped: true`); each trade's log names the fields sent. A stop / target
-read back from Tabdeal the wrong way round for the side is put right.
+**A short's side.** Tabdeal's `positionRisk` gives a position's size in `positionAmt`, not
+negative for a short as Binance's does; the side is the `side` (BUY / SELL) of the position list.
+Read as a sign, a short looked like a long (2026-10-10 / 11: an ADA short got a long's stop below
+the price, which fired at once; an AAVE short was ended here and adopted as a long). The side is
+now read from the position list; a trade adopted with the wrong side is corrected in place.
 
 **Positions opened directly on Tabdeal** (in its app or site) are adopted: when a market has a
 position and no open trade here, the poller adds it to Open trades (marked *Tabdeal*) and follows

@@ -307,6 +307,13 @@
       const margin = h("input", { type: "text", inputmode: "decimal", autocomplete: "off", value: String(Math.min(maxMargin, prefs.margin || 5)) });
       const calc = h("dl", { class: "ws-dl" });
       const msg = h("p", { class: "ws-dlg-msg", "aria-live": "polite" });
+      // a LIMIT on the far side of the price fills at once at about the market price, not at the
+      // entry (Tabdeal has no stop entries): only with this box ticked
+      let price = null;
+      const nowBox = h("input", { type: "checkbox", class: "ws-fill-now" });
+      const nowWarn = h("p", { class: "ws-dlg-warn", hidden: true });
+      const nowRow = h("label", { class: "ws-check ws-fill-now-row", hidden: true }, nowBox, "Fill now at about the market price");
+      const marketable = () => price !== null && (side === "LONG" ? d.entry > price : d.entry < price);
       const go = h("button", { class: `btn ws-go ${side === "LONG" ? "go-long" : "go-short"}`, type: "submit" }, `Place ${side} limit on Tabdeal`);
       let modal = null;
       const close = () => { if (modal) modal.close(); };
@@ -316,11 +323,18 @@
         const loss = qty * Math.abs(d.entry - d.sl), gain = qty * Math.abs(d.tp - d.entry);
         const row = (k, v, cls) => [h("dt", {}, k), h("dd", { class: `num ${cls || ""}` }, v)];
         calc.replaceChildren(
-          ...row("Entry (limit)", num(d.entry)), ...row("Stop", num(d.sl), "neg"), ...row("Target", num(d.tp), "pos"),
+          ...row("Entry (limit)", num(d.entry)), ...row("Current price", price === null ? "—" : num(price)),
+          ...row("Stop", num(d.sl), "neg"), ...row("Target", num(d.tp), "pos"),
           ...row("Size ≈", `${num(qty, 5)} (${num(qty * d.entry, 2)} USDT)`),
           ...row("Loss at the stop ≈", `−${num(loss, 2)} USDT`, "neg"), ...row("Gain at the target ≈", `+${num(gain, 2)} USDT`, "pos"),
           ...row("R:R", loss ? (gain / loss).toFixed(2) : "—"),
           ...row("Futures wallet", account ? `${num(account.wallet_usdt, 2)} USDT (${account.available_estimated ? "≈ " : ""}${num(account.available_usdt, 2)} available)` : "—"));
+        const far = marketable();
+        nowWarn.hidden = !far; nowRow.hidden = !far;
+        if (far) {
+          nowWarn.textContent = `The entry ${num(d.entry)} is ${side === "LONG" ? "above" : "below"} the current price ${num(price)}: a LIMIT ${side === "LONG" ? "buy" : "sell"} there fills NOW at about ${num(price)}, not at your entry. To wait for ${num(d.entry)}, move the entry ${side === "LONG" ? "below" : "above"} the price.`;
+        }
+        if (!go.dataset.busy) go.disabled = !!notReady || (far && !nowBox.checked);
       };
       const notReady = !this.cfg ? "Trading status unavailable." : !this.cfg.enabled ? "Trading is off: set trading.enabled: true in the server config and restart the API." : !this.cfg.ready ? `Trading is not ready: ${this.cfg.problem}` : "";
       const form = h("form", { novalidate: true, onsubmit: async (e) => {
@@ -332,13 +346,15 @@
         if (m > maxMargin) { msg.textContent = `Margin is at most ${maxMargin} USDT per trade (trading.max_margin_usdt).`; return; }
         if (avail !== null && m > avail) { msg.textContent = `Margin ${m} USDT is more than the ${num(avail, 2)} USDT available in your Tabdeal futures wallet.`; return; }
         store.set(PREFS, { ...store.get(PREFS, {}), leverage: L, margin: m });
-        go.disabled = true; msg.textContent = "Placing the order on Tabdeal…";
+        if (marketable() && !nowBox.checked) { msg.textContent = "Tick \"Fill now\" to fill at the market price, or move the entry."; return; }
+        go.disabled = true; go.dataset.busy = "1"; msg.textContent = "Placing the order on Tabdeal…";
         try {
-          const t = await this.call("POST", "/api/trade/open", { symbol: sym, side, entry: d.entry, sl: d.sl, tp: d.tp, leverage: L, margin_usdt: m, drawing_id: d.id });
-          if (t.status === "REJECTED") { msg.textContent = `Tabdeal rejected it: ${t.last_error}`; go.disabled = false; return; }
+          const t = await this.call("POST", "/api/trade/open", { symbol: sym, side, entry: d.entry, sl: d.sl, tp: d.tp, leverage: L, margin_usdt: m, drawing_id: d.id, fill_now: nowBox.checked });
+          if (t.status === "REJECTED") { msg.textContent = `Tabdeal rejected it: ${t.last_error}`; delete go.dataset.busy; go.disabled = false; return; }
           close(); this.tab = "open"; this.setCollapsed(false); this.refresh();
         } catch (err) {
-          msg.textContent = err.message; go.disabled = false;
+          msg.textContent = err.message; delete go.dataset.busy; go.disabled = false;
+          if (/fills at once/.test(err.message)) { await loadPrice(); update(); }  // the price moved past the entry
         }
       } },
       h("h2", {}, `${side === "LONG" ? "Long" : "Short"} ${this.ws.display(sym)} on Tabdeal futures`),
@@ -346,17 +362,23 @@
       h("div", { class: "ws-fields" },
         h("label", { class: "ws-field" }, h("span", {}, `Leverage (1–${max})`), lev),
         h("label", { class: "ws-field" }, h("span", {}, `Margin, USDT (≤ ${maxMargin})`), margin)),
-      calc, msg,
+      calc, nowWarn, nowRow, msg,
       h("div", { class: "ws-dlg-actions" }, h("button", { class: "btn", type: "button", onclick: close }, "Cancel"), go));
       lev.addEventListener("input", update); margin.addEventListener("input", update);
+      nowBox.addEventListener("change", update);
+      const loadPrice = async () => {
+        try { const p = await this.call("GET", `/api/trade/prices?symbols=${encodeURIComponent(sym)}`); price = p[sym] && p[sym].price !== null ? +p[sym].price : null; } catch { /* no price: the server checks too */ }
+      };
       // an in-page overlay (not <dialog>): it shows in full screen too
       modal = ChartUI.open(this.ws.root, form, { label: "Trade on Tabdeal", cls: "ws-trade-dlg" });
       update();
       if (notReady) { msg.textContent = notReady; go.disabled = true; return; }
+      await loadPrice();
+      update();
       try {
         account = await this.call("GET", `/api/trade/account?symbol=${encodeURIComponent(sym)}`);
-        if (account.busy) { msg.textContent = `Not now: ${account.busy}.`; go.disabled = true; }
         update();
+        if (account.busy) { msg.textContent = `Not now: ${account.busy}.`; go.disabled = true; go.dataset.busy = "1"; }
       } catch (e) { msg.textContent = e.message; }
     }
   }

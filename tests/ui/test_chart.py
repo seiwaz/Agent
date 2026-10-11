@@ -43,6 +43,8 @@ def _free_port() -> int:
         return int(s.getsockname()[1])
 
 
+PRICE: dict[str, float | None] = {"v": None}  # the trade desk's last price (None: unknown)
+
 # exchangeInfo for the markets beyond the config's instruments (SOL: 0.01 price, 0.01 quantity)
 INFO = {"symbols": [{"symbol": "XRP_USDT", "pricePrecision": 5, "quantityPrecision": 1},
                     {"symbol": "SOL_USDT", "pricePrecision": 2, "quantityPrecision": 2}]}
@@ -69,6 +71,7 @@ def serve(trading: dict | None = None, exchange=None, auth: dict | None = None,
             "auth": auth or {},
         }
     )
+    PRICE["v"] = None
     ins = Instruments(cfg.markets, {SYM: cfg.instrument(SYM)}, fetch=lambda: INFO)
     ins.refresh()
     desk = None
@@ -87,7 +90,14 @@ def serve(trading: dict | None = None, exchange=None, auth: dict | None = None,
              "taker_commission_percent": "0.00095", "from_volume": "0", "to_volume": "1000000"}]}
         fees = Fees(0.001, 0.002, fetch=lambda: table)
         fees.refresh()
-        desk = TradingDesk(cfg, tm.db, manager=tm, fees=fees)
+        from sp2l.trading.api import Prices
+
+        def last(market):  # the market's last price, as the test sets it (none: unknown)
+            if PRICE["v"] is None:
+                raise OSError("no price (test)")
+            return PRICE["v"], time.time()
+
+        desk = TradingDesk(cfg, tm.db, manager=tm, fees=fees, prices=Prices(fetch=last))
     port = _free_port()
     srv = uvicorn.Server(
         uvicorn.Config(create_app(cfg, trading=desk, instruments=ins), host="127.0.0.1", port=port,
@@ -356,6 +366,18 @@ def test_trade_from_a_long_drawing_through_the_panel(data, browser, engine, tmp_
             return { it, out: state.ws.tools.outcome(it) };
         }""")
         assert d["out"] is not None and d["out"]["t0"] >= d["it"]["t1"]
+
+        # an entry above the price would fill at once: the dialog says so and wants "fill now"
+        PRICE["v"] = d["it"]["entry"] * 0.99
+        pg.click(".ws-trade-btn")
+        pg.wait_for_selector(".ws-modal .ws-trade-dlg .ws-dlg-warn:not([hidden])")
+        assert "fills NOW at about" in pg.inner_text(".ws-dlg-warn")
+        assert pg.is_disabled(".ws-trade-dlg .ws-go")
+        pg.check(".ws-fill-now")
+        assert pg.is_enabled(".ws-trade-dlg .ws-go")
+        pg.click(".ws-trade-dlg button:has-text('Cancel')")
+        PRICE["v"] = d["it"]["entry"] * 1.01  # the price above the entry: a resting buy
+        time.sleep(1.2)  # the desk keeps a price for a second
 
         # Trade: the dialog asks for the leverage (and the margin), then places the order
         pg.click(".ws-trade-btn")

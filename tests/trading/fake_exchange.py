@@ -22,8 +22,9 @@ class FakeExchange:
         self.fail: dict[str, ExchangeError] = {}  # call name -> the error it raises once
         self.lost_reply = False  # place the next order but answer with a timeout
         self.reports_sltp = False  # positionRisk carries the stop / target (undocumented)
-        # as seen on Tabdeal (2026-10-10): positionSlTp on a short takes tpPrice as the stop
-        self.swaps_short_sltp = True
+        # Tabdeal's positionRisk gives the size, not negative for a short (2026-10-11: an AAVE
+        # short read as a long); the side is the position list's `side`. False: Binance-style
+        self.unsigned_amt = True
         self._ids = 5000
 
     def _call(self, name: str, args: Any) -> None:
@@ -59,7 +60,8 @@ class FakeExchange:
         if not p:
             return []
         mark = self.mark.get(market, p["entry"])
-        return [{"symbol": market, "positionAmt": str(p["amt"]), "entryPrice": str(p["entry"]),
+        amt = abs(p["amt"]) if self.unsigned_amt else p["amt"]
+        return [{"symbol": market, "positionAmt": str(amt), "entryPrice": str(p["entry"]),
                  "markPrice": str(mark), "unRealizedProfit": str((mark - p["entry"]) * p["amt"]),
                  "liquidationPrice": "1", "leverage": str(p["lev"]), "marginType": "cross",
                  "positionSide": "BOTH",
@@ -136,8 +138,6 @@ class FakeExchange:
         p = self.position.get(market)
         if not p or p["id"] != position_id:
             raise ExchangeError("position not found", 1300, 400)
-        if p["amt"] < 0 and self.swaps_short_sltp:
-            sl, tp = tp, sl
         if sl is not None:
             p["sl"] = Decimal(sl)
         if tp is not None:

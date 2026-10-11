@@ -179,9 +179,6 @@ trading:
   working_type: MARK_PRICE  # stop / target trigger: MARK_PRICE or CONTRACT_PRICE
   poll_s: 2                 # Tabdeal has no futures user stream: fills and exits are polled
   credentials_file: ~/.config/sp2l/tabdeal.env
-  # Tabdeal's positionSlTp on a SHORT took tpPrice as the stop (2026-10-10): a short's stop and
-  # target go in each other's field; set false if Tabdeal starts reading them as documented
-  short_sltp_swapped: true
   fee_volume_usdt: 0        # 30-day futures volume: Tabdeal's commission level (break-even lines)
 
 # Dashboard login (src/sp2l/api/auth.py). Users and their password hashes live outside the repo

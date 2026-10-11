@@ -61,10 +61,6 @@ class TradingConfig:
     working_type: str = "MARK_PRICE"
     poll_s: float = 3.0
     credentials_file: str = "~/.config/sp2l/tabdeal.env"
-    # Tabdeal's positionSlTp on a SHORT position took tpPrice as the stop (2026-10-10, ADA: the
-    # target 0.24912 below the entry became a "stop loss" that fired at once): a short's stop
-    # and target are sent in each other's field; false sends them as documented
-    short_sltp_swapped: bool = True
     fee_volume_usdt: float = 0.0  # 30-day futures volume: picks Tabdeal's commission level
 
     @classmethod
@@ -82,11 +78,9 @@ class TradingConfig:
             str(m.get("working_type", cls.working_type)),
             float(m.get("poll_s", cls.poll_s)),
             str(m.get("credentials_file", cls.credentials_file)),
-            m.get("short_sltp_swapped", cls.short_sltp_swapped),
             float(m.get("fee_volume_usdt", cls.fee_volume_usdt)),
         )
-        if not isinstance(c.short_sltp_swapped, bool):
-            raise ValueError("trading.short_sltp_swapped must be true or false")
+
         if not 1 <= c.max_leverage <= 125:
             raise ValueError("trading.max_leverage must be 1..125")
         if c.max_margin_usdt <= 0:
@@ -148,6 +142,11 @@ def _first(rows: Any, market: str) -> dict[str, Any] | None:
 
 SL_KEYS = ("slPrice", "stopLossPrice", "stopLoss", "sl_price", "sl")
 TP_KEYS = ("tpPrice", "takeProfitPrice", "takeProfit", "tp_price", "tp")
+
+
+def _side_word(v: Any) -> str | None:
+    s = str(v or "").upper()
+    return "LONG" if s in ("BUY", "LONG") else "SHORT" if s in ("SELL", "SHORT") else None
 
 
 def _by_side(side: str, sl: Decimal | None, tp: Decimal | None) -> tuple[Decimal | None,
@@ -287,6 +286,22 @@ class TradeManager:
             if str(r.get("asset", "")).upper() == "USDT":
                 return r
         raise TradeError("no USDT balance in the futures wallet")
+
+    def _held(self, pos: dict[str, Any] | None, market: str,
+              prow: dict[str, Any] | None = None) -> tuple[str | None, Decimal]:
+        """(LONG / SHORT / None when flat, size) of the position on Tabdeal. Tabdeal's
+        positionAmt is the size (not negative for a short, unlike Binance's): the side comes
+        from the position list's `side` (BUY / SELL), a negative amount, or positionSide."""
+        amt = D((pos or {}).get("positionAmt", 0))
+        if amt == 0:
+            return None, Decimal(0)
+        if amt < 0:
+            return "SHORT", -amt
+        side = _side_word((pos or {}).get("side")) or _side_word((pos or {}).get("positionSide"))
+        if side is None:
+            prow = prow if prow is not None else self._position(market)
+            side = _side_word((prow or {}).get("side"))
+        return side or "LONG", amt
 
     def _busy(self, symbol: str, market: str) -> str | None:
         if self._open_ids(symbol):
@@ -552,17 +567,17 @@ class TradeManager:
         """A position opened directly on Tabdeal: follow it as a trade from now on."""
         market = ws_market(symbol)
         pos = _first(self.ex.position_risk(market), market)
-        amt = D(pos.get("positionAmt", 0)) if pos else Decimal(0)
-        if pos is None or amt == 0:
+        if pos is None or D(pos.get("positionAmt", 0)) == 0:
             return None
         p = self._position(market) or {}
+        side, qty = self._held(pos, market, p)
+        if side is None:
+            return None
         entry = D(pos.get("entryPrice") or p.get("entryPrice") or 0)
         lev = int(D(pos.get("leverage") or 1)) or 1
-        side = "LONG" if amt > 0 else "SHORT"
         sl, tp = _by_side(side, _price([pos, p], SL_KEYS), _price([pos, p], TP_KEYS))
         opened = epoch(p.get("createdTime") or p.get("updateTime") or pos.get("updateTime"),
                        self.clock())
-        qty = abs(amt)
         pid = p.get("id")
         from datetime import UTC, datetime
 
@@ -637,11 +652,11 @@ class TradeManager:
                 self._set(t["id"], f"order {o.get('orderId')} found", order_id=o.get("orderId"))
                 return
         pos = _first(self.ex.position_risk(market), market)
-        amt = D(pos.get("positionAmt", 0)) if pos else Decimal(0)
-        if amt != 0 and (amt > 0) == (t["side"] == "LONG"):
-            avg = D(pos.get("entryPrice") or t["entry"]) if pos else Decimal(t["entry"])
+        side, amt = self._held(pos, market)
+        if side == t["side"] and pos is not None:
+            avg = D(pos.get("entryPrice") or t["entry"])
             self._set(t["id"], "order filled at once (found the position)", status="ACTIVE",
-                      filled_qty=abs(amt), avg_entry=avg, filled_at=_now())
+                      filled_qty=amt, avg_entry=avg, filled_at=_now())
             self._active(self._get(t["id"]), market, "FILLED")
             return
         if wait and (_now() - t["created_at"]).total_seconds() < NOT_FOUND_S:
@@ -650,8 +665,15 @@ class TradeManager:
 
     def _active(self, t: dict[str, Any], market: str, order_status: str) -> None:
         pos = _first(self.ex.position_risk(market), market)
-        amt = D(pos.get("positionAmt", 0)) if pos else Decimal(0)
-        if amt == 0 or (amt > 0) != (t["side"] == "LONG"):  # closed (or flipped on Tabdeal)
+        side, amt = self._held(pos, market)
+        if side is not None and side != t["side"] and t["origin"] == "TABDEAL" and (
+            Decimal(t["filled_qty"]) == amt
+        ):  # adopted with the wrong side (a short's size read as a long before 2026-10-11)
+            sl, tp = _by_side(side, t["sl"], t["tp"])
+            self._set(t["id"], f"side corrected to {side} (Tabdeal's position side)", side=side,
+                      sl=sl, tp=tp)
+            t = self._get(t["id"])
+        if side != t["side"]:  # closed (or flipped on Tabdeal)
             return self._ended(t, market, order_status)
         if t["origin"] == "TABDEAL" and t["filled_at"] is not None and (
             t["filled_at"].timestamp() < EARLIEST
@@ -666,13 +688,13 @@ class TradeManager:
             self._set(t["id"], f"opening time corrected to {at.isoformat()}", filled_at=at,
                       created_at=at)
             t = self._get(t["id"])
-        if t["origin"] == "TABDEAL" and abs(amt) != Decimal(t["filled_qty"]):
+        if t["origin"] == "TABDEAL" and amt != Decimal(t["filled_qty"]):
             entry = D(pos.get("entryPrice") or t["avg_entry"]) if pos else Decimal(t["entry"])
-            self._set(t["id"], f"size on Tabdeal now {abs(amt).normalize()} @ {entry}",
-                      filled_qty=abs(amt), qty=abs(amt), avg_entry=entry)
+            self._set(t["id"], f"size on Tabdeal now {amt.normalize()} @ {entry}",
+                      filled_qty=amt, qty=amt, avg_entry=entry)
             t = self._get(t["id"])
         self.live[t["symbol"]] = {
-            "position_amt": float(amt),
+            "position_amt": float(amt if t["side"] == "LONG" else -amt),
             "entry_price": fnum(pos.get("entryPrice")) if pos else None,
             "mark": fnum(pos.get("markPrice")) if pos else None,
             "upnl": fnum(pos.get("unRealizedProfit")) if pos else None,
@@ -709,16 +731,12 @@ class TradeManager:
         tick = self.instruments[t["symbol"]][0]
         sl = None if t["sl"] is None else wire(t["sl"], tick)
         tp = None if t["tp"] is None else wire(t["tp"], tick)
-        swap = t["side"] == "SHORT" and self.cfg.short_sltp_swapped
-        sent_sl, sent_tp = (tp, sl) if swap else (sl, tp)
         try:
-            self.ex.position_sl_tp(t["position_id"], market, sent_sl, sent_tp,
-                                   self.cfg.working_type)
+            self.ex.position_sl_tp(t["position_id"], market, sl, tp, self.cfg.working_type)
         except ExchangeError as e:
             self._set(t["id"], f"stop / target refused: {e}", last_error=str(e))
             raise TradeError(f"Tabdeal refused the stop / target: {e}") from e
-        self._set(t["id"], f"stop {sl} / target {tp} set (sent slPrice={sent_sl},"
-                  f" tpPrice={sent_tp}{', swapped for a short' if swap else ''}) on"
+        self._set(t["id"], f"stop {sl} / target {tp} set (slPrice={sl}, tpPrice={tp}) on"
                   f" {Decimal(t['filled_qty']).normalize()}",
                   sltp_qty=t["filled_qty"], last_error=None)
 

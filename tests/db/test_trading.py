@@ -207,7 +207,10 @@ def _client(engine, tmp_path: Path, tm: TradeManager | None, enabled: bool = Tru
         "trading": {"enabled": enabled},
         "auth": {"enabled": login, "users_file": str(users)},
     })
-    desk = TradingDesk(cfg, engine, manager=tm)
+    from sp2l.trading.api import Prices
+
+    prices = Prices(fetch=lambda market: (60500.0, 1.0))  # the market trades at 60 500
+    desk = TradingDesk(cfg, engine, manager=tm, prices=prices)
     return TestClient(create_app(cfg, trading=desk), base_url="http://dash.local")
 
 
@@ -231,6 +234,13 @@ def test_api_needs_the_login_and_a_trade_round_trip(engine, tm, ex, tmp_path):
     assert c.post("/api/trade/open", json=LONG).status_code == 403  # no Origin: not the dashboard
     assert c.post("/api/trade/open", json=LONG, headers={"Origin": "http://evil.example"}).status_code == 403
     assert c.post("/api/smc/signals", headers=ORIGIN).status_code == 405
+    # a LIMIT on the far side of the price fills at once at the market: only when confirmed
+    now = c.post("/api/trade/open", json={**LONG, "entry": 61000, "tp": 63000}, headers=ORIGIN)
+    assert now.status_code == 400 and "fills at once at about 60500" in now.json()["detail"]
+    short = {**LONG, "side": "SHORT", "entry": 60000, "sl": 61000, "tp": 58000}
+    assert "below the current price" in c.post("/api/trade/open", json=short,
+                                               headers=ORIGIN).json()["detail"]
+    assert "limit_order" not in ex.names()
     r = c.post("/api/trade/open", json=LONG, headers=ORIGIN)
     assert r.status_code == 200 and r.json()["status"] == "PENDING"
     bad = c.post("/api/trade/open", json=LONG, headers=ORIGIN)
@@ -456,41 +466,55 @@ def test_any_market_trades_at_its_exchange_info_precision_and_the_table_lists_ev
     assert ex.position["SOL_USDT"]["sl"] == Decimal("155.00")
 
 
-# ---- a short's stop / target on Tabdeal ---------------------------------------------------------
+# ---- shorts: Tabdeal gives the size, the side is the position list's ----------------------------
 SHORT = {**LONG, "side": "SHORT", "sl": 61000, "tp": 57000}
 
 
-def test_a_short_gets_its_stop_above_and_its_target_below_on_tabdeal(tm, ex):
+def test_a_short_stays_a_short_and_gets_its_stop_above_and_target_below(tm, ex):
+    assert ex.unsigned_amt  # positionAmt is the size, as on Tabdeal
     t = tm.open(SHORT)
     ex.fill(t["order_id"])
+    ex.mark[M] = Decimal("59000")
     tm.reconcile()
-    sent = [a for n, a in ex.calls if n == "position_sl_tp"][-1]
-    # Tabdeal takes a short's tpPrice as its stop: the stop goes in tpPrice, the target in slPrice
-    assert sent[2:4] == ("57000.0", "61000.0")
+    tm.reconcile()
+    [a] = tm.trades(None, "open")
+    assert (a["id"], a["side"], a["status"], a["origin"]) == (t["id"], "SHORT", "ACTIVE", "CHART")
+    assert [x for n, x in ex.calls if n == "position_sl_tp"][-1][2:4] == ("61000.0", "57000.0")
     assert (ex.position[M]["sl"], ex.position[M]["tp"]) == (Decimal("61000.0"), Decimal("57000.0"))
-    a = tm.trades(None, "open")[0]
-    assert a["protected"] and (a["sl"], a["tp"]) == (61000, 57000)
-    assert any("swapped for a short" in e["event"] and "slPrice=57000.0" in e["event"]
-               for e in a["events"])  # a long is sent as documented (the first test above)
-
-
-def test_the_short_swap_can_be_switched_off(engine, ex):
-    with engine.begin() as c:
-        c.execute(text("DELETE FROM manual_trades"))
-    ex.swaps_short_sltp = False  # an exchange that reads the fields as documented
-    tm = TradeManager(engine, ex, TradingConfig(enabled=True, short_sltp_swapped=False), INSTR)
-    t = tm.open(SHORT)
-    ex.fill(t["order_id"])
+    assert a["live"]["position_amt"] < 0
+    ex.end(M, "57000")
     tm.reconcile()
-    assert [a for n, a in ex.calls if n == "position_sl_tp"][-1][2:4] == ("61000.0", "57000.0")
-    assert ex.position[M]["sl"] == Decimal("61000.0")
-    with pytest.raises(ValueError, match="short_sltp_swapped"):
-        TradingConfig.from_mapping({"short_sltp_swapped": "yes"})
+    h = tm.trades(None, "history")[0]
+    assert (h["side"], h["close_reason"]) == ("SHORT", "TP") and tm.trades(None, "open") == []
 
 
-def test_a_reversed_stop_and_target_read_from_tabdeal_are_put_right(tm, ex):
-    ex.reports_sltp = True
-    ex.manual(M, "-0.004", "61000", lev=5, sl="58000", tp="63000")  # a short, reported reversed
+def test_a_short_opened_on_tabdeal_is_adopted_as_a_short(tm, ex):
+    ex.manual(M, "-0.004", "61000", lev=2)
     tm.reconcile()
-    a = tm.trades(None, "open")[0]
-    assert a["side"] == "SHORT" and (a["sl"], a["tp"]) == (63000, 58000)
+    [a] = tm.trades(None, "open")
+    assert (a["side"], a["origin"]) == ("SHORT", "TABDEAL")
+    with pytest.raises(TradeError, match="stop must be above"):
+        tm.set_sltp(a["id"], 60000, 58000)  # a long's stop on a short is refused
+
+
+def test_a_short_adopted_as_a_long_before_is_corrected_in_place(tm, ex):
+    ex.unsigned_amt, ex.reports_sltp = True, False
+    ex.manual(M, "-0.004", "61000", lev=2)
+    with tm.db.begin() as c:  # as stored by the old reading (the size as a long)
+        tid = int(c.execute(text(
+            "INSERT INTO manual_trades (symbol, side, status, leverage, margin_usdt, qty, entry,"
+            " client_id, position_id, filled_qty, avg_entry, sltp_qty, origin, filled_at, events)"
+            " VALUES ('BTCUSDT', 'LONG', 'ACTIVE', 2, 122, 0.004, 61000, 'x1', :pid, 0.004,"
+            " 61000, 0, 'TABDEAL', now(), '[]') RETURNING id"), {"pid": ex.position[M]["id"]}
+        ).scalar_one())
+    tm.reconcile()
+    [a] = tm.trades(None, "open")
+    assert (a["id"], a["side"], a["status"]) == (tid, "SHORT", "ACTIVE")
+    assert any("side corrected to SHORT" in e["event"] for e in a["events"])
+
+
+def test_a_binance_style_negative_size_is_a_short_too(tm, ex):
+    ex.unsigned_amt = False
+    ex.manual(M, "-0.004", "61000", lev=2)
+    tm.reconcile()
+    assert tm.trades(None, "open")[0]["side"] == "SHORT"
